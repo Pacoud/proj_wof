@@ -1,48 +1,36 @@
 using WoF.Simulation.Core;
+using WoF.Simulation.Logistics;
 using WoF.Simulation.Military;
 using WoF.Simulation.World;
 
 var provinceA = new Province(1, "Province A");
-var provinceB = new Province(2, "Province B");
 
-provinceA.ConnectTo(provinceB);
-
-var division1 = new Division(
-    name: "1re Division",
-    position: provinceA,
-    fuel: 100,
+var division = new Division(
+    "1re Division",
+    provinceA,
+    fuel: 20,
     ammunition: 100
 );
 
-var division2 = new Division(
-    name: "2e Division",
-    position: provinceA,
-    fuel: 100,
-    ammunition: 100
+var depot = new SupplyDepot(
+    "Dépôt principal",
+    provinceA,
+    fuelStock: 500,
+    fuelTransferPerHour: 20
 );
 
 var simulation = new SimulationEngine();
 
-simulation.AddDivision(division1);
-simulation.AddDivision(division2);
+simulation.AddDivision(division);
+simulation.AddSupplyDepot(depot);
 
-division1.TryMoveTo(provinceB);
-division2.TryMoveTo(provinceB);
-
-for (int i = 0; i < 3; i++)
+for (int i = 0; i < 5; i++)
 {
+    Console.WriteLine(
+        $"Heure {simulation.Clock.CurrentHour} | " +
+        $"Division : {division.Fuel}/{division.FuelCapacity} | " +
+        $"Dépôt : {depot.FuelStock}"
+    );
+
     simulation.Tick();
-
-    Console.WriteLine($"Heure {simulation.Clock.CurrentHour}");
-
-    foreach (var division in simulation.Divisions)
-    {
-        Console.WriteLine(
-            $"{division.Name} | " +
-            $"Position : {division.Position.Name} | " +
-            $"En mouvement : {division.IsMoving}"
-        );
-    }
-
-    Console.WriteLine();
 }

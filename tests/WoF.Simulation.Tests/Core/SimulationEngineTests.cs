@@ -1,6 +1,7 @@
 using WoF.Simulation.Core;
 using WoF.Simulation.World;
 using WoF.Simulation.Military;
+using WoF.Simulation.Logistics;
 
 namespace WoF.Simulation.Tests.Core;
 
@@ -77,6 +78,38 @@ public class SimulationEngineTests
     Assert.False(division.IsMoving);
     }
 
+
+    [Fact]
+    public void Tick_ProcessesSupplyDepots()
+    {
+        var province = new Province(1, "Province A");
+
+        var division = new Division(
+            "1re Division",
+            province,
+            fuel: 20,
+            ammunition: 100
+        );
+
+        var depot = new SupplyDepot(
+            "Dépôt A",
+            province,
+            fuelStock: 500,
+            fuelTransferPerHour: 20
+        );
+
+        var simulation = new SimulationEngine();
+
+        simulation.AddDivision(division);
+        simulation.AddSupplyDepot(depot);
+
+        simulation.Tick();
+
+        Assert.Equal(1, simulation.Clock.CurrentHour);
+
+        Assert.Equal(40, division.Fuel);
+        Assert.Equal(480, depot.FuelStock);
+    }
 
 
 

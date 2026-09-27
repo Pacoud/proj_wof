@@ -12,6 +12,8 @@ public sealed class Division
     public Province Position { get; private set; }
 
     public double Fuel { get; private set; }
+    
+    public double FuelCapacity {get;}
 
     public double Ammunition { get; private set; }
 
@@ -23,12 +25,14 @@ public sealed class Division
         string name,
         Province position,
         double fuel,
-        double ammunition)
+        double ammunition,
+        double fuelCapacity = 100)
     {
         Name = name;
         Position = position;
         Fuel = fuel;
         Ammunition = ammunition;
+        FuelCapacity = fuelCapacity;
     }
 
     public bool TryMoveTo(Province destination)
@@ -65,4 +69,22 @@ public sealed class Division
             CurrentMovement = null;
         }
     }
+
+    public double ReceiveFuel(double amount)
+    {
+        if (amount <= 0)
+        return 0;
+
+    double availableSpace = FuelCapacity - Fuel;
+
+    if (availableSpace <= 0)
+        return 0;
+
+    double received = Math.Min(amount, availableSpace);
+
+    Fuel += received;
+
+    return received;
+}
+
 }
