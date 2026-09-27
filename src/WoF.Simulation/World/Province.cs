@@ -1,4 +1,4 @@
-namespace GrandStrategy.Simulation.World;
+namespace WoF.Simulation.World;
 
 public sealed class Province
 {
@@ -16,11 +16,20 @@ public sealed class Province
         Name = name;
     }
 
-    public void AddNeighbour(Province province)
+    public void ConnectTo(Province province)
     {
+        if (province == this)
+            return;
+
         if (!_neighbours.Contains(province))
-        {
             _neighbours.Add(province);
-        }
+
+        if (!province._neighbours.Contains(this))
+            province._neighbours.Add(this);
+    }
+
+    public bool IsNeighbourOf(Province province)
+    {
+        return _neighbours.Contains(province);
     }
 }

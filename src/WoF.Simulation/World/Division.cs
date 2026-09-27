@@ -1,9 +1,11 @@
-using GrandStrategy.Simulation.World;
+using WoF.Simulation.World;
 
-namespace GrandStrategy.Simulation.Military;
+namespace WoF.Simulation.Military;
 
 public sealed class Division
 {
+    private const double MovementFuelCost = 8;
+
     public string Name { get; }
 
     public Province Position { get; private set; }
@@ -22,5 +24,19 @@ public sealed class Division
         Position = position;
         Fuel = fuel;
         Ammunition = ammunition;
+    }
+
+    public bool MoveTo(Province destination)
+    {
+        if (!Position.IsNeighbourOf(destination))
+            return false;
+
+        if (Fuel < MovementFuelCost)
+            return false;
+
+        Fuel -= MovementFuelCost;
+        Position = destination;
+
+        return true;
     }
 }

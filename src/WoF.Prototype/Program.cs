@@ -1,11 +1,11 @@
-using GrandStrategy.Simulation.Military;
-using GrandStrategy.Simulation.World;
+using WoF.Simulation.Military;
+using WoF.Simulation.World;
 
 var provinceA = new Province(1, "Province A");
 var provinceB = new Province(2, "Province B");
+var provinceC = new Province(3, "Province C");
 
-provinceA.AddNeighbour(provinceB);
-provinceB.AddNeighbour(provinceA);
+provinceA.ConnectTo(provinceB);
 
 var division = new Division(
     name: "1re Division",
@@ -17,16 +17,33 @@ var division = new Division(
 Console.WriteLine("=== GRAND STRATEGY PROTOTYPE ===");
 Console.WriteLine();
 
-Console.WriteLine($"Division : {division.Name}");
-Console.WriteLine($"Position : {division.Position.Name}");
+Console.WriteLine(
+    $"{division.Name} se trouve dans {division.Position.Name}"
+);
+
 Console.WriteLine($"Carburant : {division.Fuel}");
-Console.WriteLine($"Munitions : {division.Ammunition}");
 
 Console.WriteLine();
+Console.WriteLine("Ordre : déplacement vers Province B");
 
-Console.WriteLine("Provinces voisines :");
+bool success = division.MoveTo(provinceB);
 
-foreach (var neighbour in division.Position.Neighbours)
-{
-    Console.WriteLine($"- {neighbour.Name}");
-}
+Console.WriteLine(
+    success
+        ? "Déplacement réussi."
+        : "Déplacement impossible."
+);
+
+Console.WriteLine($"Position : {division.Position.Name}");
+Console.WriteLine($"Carburant : {division.Fuel}");
+
+Console.WriteLine();
+Console.WriteLine("Ordre : déplacement vers Province C");
+
+success = division.MoveTo(provinceC);
+
+Console.WriteLine(
+    success
+        ? "Déplacement réussi."
+        : "Déplacement impossible."
+);
