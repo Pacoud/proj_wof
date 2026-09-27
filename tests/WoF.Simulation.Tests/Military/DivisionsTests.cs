@@ -6,7 +6,7 @@ namespace WoF.Simulation.Tests.Military;
 public class DivisionTests
 {
     [Fact]
-    public void Division_CanMoveToNeighbouringProvince()
+    public void Division_CanStartMovingToNeighbouringProvince()
     {
         var provinceA = new Province(1, "Province A");
         var provinceB = new Province(2, "Province B");
@@ -20,11 +20,14 @@ public class DivisionTests
             ammunition: 100
         );
 
-        bool success = division.MoveTo(provinceB);
+        bool success = division.TryMoveTo(provinceB);
 
         Assert.True(success);
-        Assert.Equal(provinceB, division.Position);
+        Assert.Equal(provinceA, division.Position);
         Assert.Equal(92, division.Fuel);
+        Assert.True(division.IsMoving);
+        Assert.Equal(provinceB, division.CurrentMovement!.Destination);
+        Assert.Equal(3, division.CurrentMovement.RemainingHours);
     }
 
     [Fact]
@@ -40,11 +43,12 @@ public class DivisionTests
             ammunition: 100
         );
 
-        bool success = division.MoveTo(provinceC);
+        bool success = division.TryMoveTo(provinceC);
 
         Assert.False(success);
         Assert.Equal(provinceA, division.Position);
         Assert.Equal(100, division.Fuel);
+        Assert.False(division.IsMoving);
     }
 
     [Fact]
@@ -62,10 +66,11 @@ public class DivisionTests
             ammunition: 100
         );
 
-        bool success = division.MoveTo(provinceB);
+        bool success = division.TryMoveTo(provinceB);
 
         Assert.False(success);
         Assert.Equal(provinceA, division.Position);
         Assert.Equal(5, division.Fuel);
+        Assert.False(division.IsMoving);
     }
 }
