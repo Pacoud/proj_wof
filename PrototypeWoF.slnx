@@ -1,2 +1,9 @@
 <Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WoF.Prototype/WoF.Prototype.csproj" />
+    <Project Path="src/WoF.Simulation/WoF.Simulation.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WoF.Simulation.Tests/WoF.Simulation.Tests.csproj" />
+  </Folder>
 </Solution>
