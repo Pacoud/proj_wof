@@ -5,6 +5,7 @@ namespace WoF.Simulation.Military;
 public sealed class Division
 {
     private const double MovementFuelCost = 8;
+    private const int MovementDurationHours = 3;
 
     public string Name { get; }
 
@@ -13,6 +14,10 @@ public sealed class Division
     public double Fuel { get; private set; }
 
     public double Ammunition { get; private set; }
+
+    public MovementOrder? CurrentMovement { get; private set; }
+
+    public bool IsMoving => CurrentMovement != null;
 
     public Division(
         string name,
@@ -26,8 +31,11 @@ public sealed class Division
         Ammunition = ammunition;
     }
 
-    public bool MoveTo(Province destination)
+    public bool TryMoveTo(Province destination)
     {
+        if (IsMoving)
+            return false;
+
         if (!Position.IsNeighbourOf(destination))
             return false;
 
@@ -35,8 +43,26 @@ public sealed class Division
             return false;
 
         Fuel -= MovementFuelCost;
-        Position = destination;
+
+        CurrentMovement = new MovementOrder(
+            destination,
+            MovementDurationHours
+        );
 
         return true;
+    }
+
+    public void AdvanceOneHour()
+    {
+        if (CurrentMovement == null)
+            return;
+
+        CurrentMovement.AdvanceOneHour();
+
+        if (CurrentMovement.IsCompleted)
+        {
+            Position = CurrentMovement.Destination;
+            CurrentMovement = null;
+        }
     }
 }

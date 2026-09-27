@@ -1,9 +1,11 @@
 using WoF.Simulation.Military;
+using WoF.Simulation.Time;
 using WoF.Simulation.World;
+
+var clock = new SimulationClock();
 
 var provinceA = new Province(1, "Province A");
 var provinceB = new Province(2, "Province B");
-var provinceC = new Province(3, "Province C");
 
 provinceA.ConnectTo(provinceB);
 
@@ -14,36 +16,49 @@ var division = new Division(
     ammunition: 100
 );
 
-Console.WriteLine("=== GRAND STRATEGY PROTOTYPE ===");
+Console.WriteLine("=== WoF SIMULATION ===");
 Console.WriteLine();
 
 Console.WriteLine(
-    $"{division.Name} se trouve dans {division.Position.Name}"
+    $"Heure {clock.CurrentHour} : " +
+    $"{division.Name} est dans {division.Position.Name}"
 );
 
-Console.WriteLine($"Carburant : {division.Fuel}");
-
-Console.WriteLine();
-Console.WriteLine("Ordre : déplacement vers Province B");
-
-bool success = division.MoveTo(provinceB);
+bool accepted = division.TryMoveTo(provinceB);
 
 Console.WriteLine(
-    success
-        ? "Déplacement réussi."
-        : "Déplacement impossible."
+    accepted
+        ? "Ordre de déplacement accepté."
+        : "Ordre refusé."
 );
 
-Console.WriteLine($"Position : {division.Position.Name}");
-Console.WriteLine($"Carburant : {division.Fuel}");
+for (int i = 0; i < 4; i++)
+{
+    clock.AdvanceOneHour();
+    division.AdvanceOneHour();
 
-Console.WriteLine();
-Console.WriteLine("Ordre : déplacement vers Province C");
+    Console.WriteLine();
 
-success = division.MoveTo(provinceC);
+    Console.WriteLine($"Heure {clock.CurrentHour}");
 
-Console.WriteLine(
-    success
-        ? "Déplacement réussi."
-        : "Déplacement impossible."
-);
+    if (division.IsMoving)
+    {
+        Console.WriteLine(
+            $"Division en déplacement vers " +
+            $"{division.CurrentMovement!.Destination.Name}"
+        );
+
+        Console.WriteLine(
+            $"Temps restant : " +
+            $"{division.CurrentMovement.RemainingHours} h"
+        );
+    }
+    else
+    {
+        Console.WriteLine(
+            $"Division présente dans {division.Position.Name}"
+        );
+    }
+
+    Console.WriteLine($"Carburant : {division.Fuel}");
+}
