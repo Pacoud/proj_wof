@@ -393,6 +393,16 @@
         "build": {
           "build/net8.0/xunit.runner.visualstudio.props": {}
         }
+      },
+      "WoF.Simulation/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "compile": {
+          "bin/placeholder/WoF.Simulation.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/WoF.Simulation.dll": {}
+        }
       }
     }
   },
@@ -903,11 +913,17 @@
         "xunit.runner.visualstudio.3.1.4.nupkg.sha512",
         "xunit.runner.visualstudio.nuspec"
       ]
+    },
+    "WoF.Simulation/1.0.0": {
+      "type": "project",
+      "path": "../../src/WoF.Simulation/WoF.Simulation.csproj",
+      "msbuildProject": "../../src/WoF.Simulation/WoF.Simulation.csproj"
     }
   },
   "projectFileDependencyGroups": {
     "net10.0": [
       "Microsoft.NET.Test.Sdk >= 17.14.1",
+      "WoF.Simulation >= 1.0.0",
       "coverlet.collector >= 6.0.4",
       "xunit >= 2.9.3",
       "xunit.runner.visualstudio >= 3.1.4"
@@ -938,7 +954,11 @@
         "net10.0": {
           "framework": "net10.0",
           "targetAlias": "net10.0",
-          "projectReferences": {}
+          "projectReferences": {
+            "/mnt/c/Users/carlo/Documents/Travaux_M2/Projets_perso/proj_wof/src/WoF.Simulation/WoF.Simulation.csproj": {
+              "projectPath": "/mnt/c/Users/carlo/Documents/Travaux_M2/Projets_perso/proj_wof/src/WoF.Simulation/WoF.Simulation.csproj"
+            }
+          }
         }
       },
       "warningProperties": {
