@@ -6,6 +6,7 @@ namespace WoF.Simulation.Core;
 
 public sealed class SimulationEngine
 {
+    public SupplyNetwork SupplyNetwork { get; } = new();
 
     private readonly List<Division> _divisions = new();
 
@@ -34,10 +35,10 @@ public sealed class SimulationEngine
             division.AdvanceOneHour();
         }
         
-        foreach (var depot in _supplyDepots)
-        {
-            depot.Supply(_divisions);
-        }
+        SupplyNetwork.ProcessFuelSupply(
+            _supplyDepots,
+            _divisions
+        );
     }
 
     public void AddSupplyDepot(SupplyDepot depot)
@@ -46,5 +47,10 @@ public sealed class SimulationEngine
     {
         _supplyDepots.Add(depot);
     }
+    }
+
+    public void AddSupplyRoute(SupplyRoute route)
+    {
+        SupplyNetwork.AddRoute(route);
     }
 }

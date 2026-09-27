@@ -13,7 +13,7 @@ public sealed class SupplyDepot
 
     public double FuelTransferPerHour { get; }
 
-    public SupplyDepot(
+    public  SupplyDepot(
         string name,
         Province position,
         double fuelStock,
@@ -25,38 +25,18 @@ public sealed class SupplyDepot
         FuelTransferPerHour = fuelTransferPerHour;
     }
 
-    public double Supply(IEnumerable<Division> divisions)
+    public double WithdrawFuel(double requestedAmount)
     {
-        double remainingTransferCapacity = FuelTransferPerHour;
-        double totalTransferred = 0;
+        if (requestedAmount <= 0)
+            return 0;
 
-        foreach (var division in divisions)
-        {
-            if (remainingTransferCapacity <= 0)
-                break;
+        double withdrawn = Math.Min(
+            requestedAmount,
+            FuelStock
+        );
 
-            if (FuelStock <= 0)
-                break;
+        FuelStock -= withdrawn;
 
-            if (division.IsMoving)
-                continue;
-
-            if (!ReferenceEquals(division.Position, Position))
-                continue;
-
-            double possibleTransfer = Math.Min(
-                remainingTransferCapacity,
-                FuelStock
-            );
-
-            double actuallyReceived =
-                division.ReceiveFuel(possibleTransfer);
-
-            FuelStock -= actuallyReceived;
-            remainingTransferCapacity -= actuallyReceived;
-            totalTransferred += actuallyReceived;
-        }
-
-        return totalTransferred;
+        return withdrawn;
     }
 }

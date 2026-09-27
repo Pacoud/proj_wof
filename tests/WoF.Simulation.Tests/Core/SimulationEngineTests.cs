@@ -111,6 +111,48 @@ public class SimulationEngineTests
         Assert.Equal(480, depot.FuelStock);
     }
 
+        [Fact]
+    public void TickSuppliesDivisionThroughRoute()
+    {
+        var provinceA = new Province(1, "Province A");
+        var provinceB = new Province(2, "Province B");
+
+        provinceA.ConnectTo(provinceB);
+
+        var depot = new SupplyDepot(
+            "Dépôt A",
+            provinceA,
+            fuelStock: 500,
+            fuelTransferPerHour: 20
+        );
+
+        var division = new Division(
+            "1re Division",
+            provinceB,
+            fuel: 20,
+            ammunition: 100
+        );
+
+        var route = new SupplyRoute(
+            provinceA,
+            provinceB,
+            fuelCapacityPerHour: 15
+        );
+
+        var simulation = new SimulationEngine();
+
+        simulation.AddDivision(division);
+        simulation.AddSupplyDepot(depot);
+        simulation.AddSupplyRoute(route);
+
+        simulation.Tick();
+
+        Assert.Equal(1, simulation.Clock.CurrentHour);
+
+        Assert.Equal(35, division.Fuel);
+        Assert.Equal(485, depot.FuelStock);
+    }
+
 
 
 }

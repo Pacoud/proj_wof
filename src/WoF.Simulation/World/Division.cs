@@ -21,6 +21,9 @@ public sealed class Division
 
     public bool IsMoving => CurrentMovement != null;
 
+    public double MissingFuel =>
+    Math.Max(0, FuelCapacity - Fuel);
+
     public Division(
         string name,
         Province position,
