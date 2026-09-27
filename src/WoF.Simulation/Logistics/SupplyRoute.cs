@@ -38,4 +38,16 @@ public sealed class SupplyRoute
             (ReferenceEquals(ProvinceA, second) &&
              ReferenceEquals(ProvinceB, first));
     }
+
+    public Province? GetOtherProvince(Province province)
+    {
+        if (ReferenceEquals(province, ProvinceA))
+            return ProvinceB;
+
+        if (ReferenceEquals(province, ProvinceB))
+            return ProvinceA;
+
+        return null;
+    }
+
 }

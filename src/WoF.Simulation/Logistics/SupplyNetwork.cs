@@ -1,4 +1,5 @@
 using WoF.Simulation.Military;
+using WoF.Simulation.World;
 
 namespace WoF.Simulation.Logistics;
 
@@ -103,5 +104,75 @@ public sealed class SupplyNetwork
                 }
             }
         }
+    }
+    
+
+    public SupplyPath? FindPath(
+        Province start,
+        Province destination)
+    {
+        if (ReferenceEquals(start, destination))
+        {
+            return new SupplyPath(
+                Array.Empty<SupplyRoute>()
+            );
+        }
+
+        var visited = new HashSet<Province>();
+
+        var queue = new Queue<(
+            Province Province,
+            List<SupplyRoute> Path
+        )>();
+
+        visited.Add(start);
+
+        queue.Enqueue((
+            start,
+            new List<SupplyRoute>()
+        ));
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+
+            foreach (var route in _routes)
+            {
+                var nextProvince =
+                    route.GetOtherProvince(
+                        current.Province
+                    );
+
+                if (nextProvince == null)
+                    continue;
+
+                if (visited.Contains(nextProvince))
+                    continue;
+
+                var newPath =
+                    new List<SupplyRoute>(
+                        current.Path
+                    )
+                    {
+                        route
+                    };
+
+                if (ReferenceEquals(
+                        nextProvince,
+                        destination))
+                {
+                    return new SupplyPath(newPath);
+                }
+
+                visited.Add(nextProvince);
+
+                queue.Enqueue((
+                    nextProvince,
+                    newPath
+                ));
+            }
+        }
+
+        return null;
     }
 }

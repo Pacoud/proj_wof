@@ -134,4 +134,70 @@ public class SupplyNetworkTests
         Assert.Equal(480, depot.FuelStock);
     }
 
+    [Fact]
+    public void NetworkFindsPathAcrossMultipleRoutes()
+    {
+        var provinceA = new Province(1, "A");
+        var provinceB = new Province(2, "B");
+        var provinceC = new Province(3, "C");
+
+        provinceA.ConnectTo(provinceB);
+        provinceB.ConnectTo(provinceC);
+
+        var routeAB = new SupplyRoute(
+            provinceA,
+            provinceB,
+            20
+        );
+
+        var routeBC = new SupplyRoute(
+            provinceB,
+            provinceC,
+            12
+        );
+
+        var network = new SupplyNetwork();
+
+        network.AddRoute(routeAB);
+        network.AddRoute(routeBC);
+
+        var path = network.FindPath(
+            provinceA,
+            provinceC
+        );
+
+        Assert.NotNull(path);
+
+        Assert.Equal(2, path!.Routes.Count);
+
+        Assert.Equal(12, path.Capacity);
+    }
+
+    [Fact]
+    public void NetworkReturnsNullWhenNoPathExists()
+    {
+        var provinceA = new Province(1, "A");
+        var provinceB = new Province(2, "B");
+        var provinceC = new Province(3, "C");
+
+        provinceA.ConnectTo(provinceB);
+
+        var routeAB = new SupplyRoute(
+            provinceA,
+            provinceB,
+            20
+        );
+
+        var network = new SupplyNetwork();
+
+        network.AddRoute(routeAB);
+
+        var path = network.FindPath(
+            provinceA,
+            provinceC
+        );
+
+        Assert.Null(path);
+    }
+
 }
