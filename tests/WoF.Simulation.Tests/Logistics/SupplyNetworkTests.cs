@@ -316,4 +316,146 @@ public class SupplyNetworkTests
         Assert.Equal(488, depot.FuelStock);
     }
 
+        [Fact]
+    public void WidestPathChoosesHighestCapacityRoute()
+    {
+        var provinceA = new Province(1, "A");
+        var provinceB = new Province(2, "B");
+        var provinceC = new Province(3, "C");
+        var provinceD = new Province(4, "D");
+
+        provinceA.ConnectTo(provinceB);
+        provinceB.ConnectTo(provinceD);
+
+        provinceA.ConnectTo(provinceC);
+        provinceC.ConnectTo(provinceD);
+
+        var routeAB =
+            new SupplyRoute(
+                provinceA,
+                provinceB,
+                5
+            );
+
+        var routeBD =
+            new SupplyRoute(
+                provinceB,
+                provinceD,
+                5
+            );
+
+        var routeAC =
+            new SupplyRoute(
+                provinceA,
+                provinceC,
+                30
+            );
+
+        var routeCD =
+            new SupplyRoute(
+                provinceC,
+                provinceD,
+                20
+            );
+
+        var network =
+            new SupplyNetwork();
+
+        network.AddRoute(routeAB);
+        network.AddRoute(routeBD);
+        network.AddRoute(routeAC);
+        network.AddRoute(routeCD);
+
+        var path =
+            network.FindWidestPath(
+                provinceA,
+                provinceD
+            );
+
+        Assert.NotNull(path);
+
+        Assert.Equal(
+            20,
+            path!.Capacity
+        );
+
+        Assert.Contains(routeAC, path.Routes);
+        Assert.Contains(routeCD, path.Routes);
+
+        Assert.DoesNotContain(
+            routeAB,
+            path.Routes
+        );
+    }
+
+        [Fact]  // vérif que lorsque le dépot est saturé, un autre chemin alternatif est utilisé
+    public void NetworkUsesAlternativePathWhenBestPathIsSaturated()
+    {
+        var a = new Province(1, "A");
+        var b = new Province(2, "B");
+        var c = new Province(3, "C");
+        var d = new Province(4, "D");
+
+        a.ConnectTo(b);
+        b.ConnectTo(d);
+
+        a.ConnectTo(c);
+        c.ConnectTo(d);
+
+        var ab = new SupplyRoute(a, b, 20);
+        var bd = new SupplyRoute(b, d, 20);
+
+        var ac = new SupplyRoute(a, c, 15);
+        var cd = new SupplyRoute(c, d, 15);
+
+        var depot =
+            new SupplyDepot(
+                "Dépôt",
+                a,
+                fuelStock: 500,
+                fuelTransferPerHour: 100
+            );
+
+        var division1 =
+            new Division(
+                "Division 1",
+                d,
+                fuel: 0,
+                ammunition: 100
+            );
+
+        var division2 =
+            new Division(
+                "Division 2",
+                d,
+                fuel: 0,
+                ammunition: 100
+            );
+
+        var network = new SupplyNetwork();
+
+        network.AddRoute(ab);
+        network.AddRoute(bd);
+        network.AddRoute(ac);
+        network.AddRoute(cd);
+
+        network.ProcessFuelSupply(
+            new[] { depot },
+            new[]
+            {
+                division1,
+                division2
+            }
+        );
+
+        double totalReceived =
+            division1.Fuel +
+            division2.Fuel;
+
+        Assert.Equal(
+            35,
+            totalReceived
+        );
+    }
+
 }

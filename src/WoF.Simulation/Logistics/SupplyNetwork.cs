@@ -20,97 +20,98 @@ public sealed class SupplyNetwork
     public void ProcessFuelSupply(
     IEnumerable<SupplyDepot> depots,
     IEnumerable<Division> divisions)
-{
-    // Capacité encore disponible sur chaque route pour ce tick.
-    var remainingRouteCapacity =
-        _routes.ToDictionary(
-            route => route,
-            route => route.FuelCapacityPerHour
-        );
-
-    foreach (var depot in depots)
     {
-        double remainingDepotCapacity =
-            depot.FuelTransferPerHour;
+        // Capacité encore disponible sur chaque route pour ce tick.
+        var remainingRouteCapacity =
+            _routes.ToDictionary(
+                route => route,
+                route => route.FuelCapacityPerHour
+            );
 
-        foreach (var division in divisions)
+        foreach (var depot in depots)
         {
-            if (remainingDepotCapacity <= 0)
-                break;
+            double remainingDepotCapacity =
+                depot.FuelTransferPerHour;
 
-            if (depot.FuelStock <= 0)
-                break;
-
-            if (division.IsMoving)
-                continue;
-
-            // Cherche maintenant un véritable chemin.
-            SupplyPath? path = FindPath(
-                depot.Position,
-                division.Position
-            );
-
-            if (path == null)
-                continue;
-
-            double pathCapacity;
-
-            // Même province :
-            // aucune route n'est utilisée.
-            if (path.Routes.Count == 0)
+            foreach (var division in divisions)
             {
-                pathCapacity =
-                    double.PositiveInfinity;
-            }
-            else
-            {
-                // Le débit possible est celui du maillon
-                // ayant le moins de capacité restante.
-                pathCapacity =
-                    path.Routes.Min(
-                        route =>
-                            remainingRouteCapacity[route]
-                    );
-            }
+                if (remainingDepotCapacity <= 0)
+                    break;
 
-            if (pathCapacity <= 0)
-                continue;
+                if (depot.FuelStock <= 0)
+                    break;
 
-            double requestedFuel = Math.Min(
-                division.MissingFuel,
-                remainingDepotCapacity
-            );
+                if (division.IsMoving)
+                    continue;
 
-            requestedFuel = Math.Min(
-                requestedFuel,
-                depot.FuelStock
-            );
+                // Cherche maintenant un véritable chemin.
+                SupplyPath? path = FindWidestPath(
+                    depot.Position,
+                    division.Position,
+                    remainingRouteCapacity
+                );
 
-            requestedFuel = Math.Min(
-                requestedFuel,
-                pathCapacity
-            );
+                if (path == null)
+                    continue;
 
-            if (requestedFuel <= 0)
-                continue;
+                double pathCapacity;
 
-            double withdrawn =
-                depot.WithdrawFuel(requestedFuel);
+                // Même province :
+                // aucune route n'est utilisée.
+                if (path.Routes.Count == 0)
+                {
+                    pathCapacity =
+                        double.PositiveInfinity;
+                }
+                else
+                {
+                    // Le débit possible est celui du maillon
+                    // ayant le moins de capacité restante.
+                    pathCapacity =
+                        path.Routes.Min(
+                            route =>
+                                remainingRouteCapacity[route]
+                        );
+                }
 
-            double received =
-                division.ReceiveFuel(withdrawn);
+                if (pathCapacity <= 0)
+                    continue;
 
-            remainingDepotCapacity -= received;
+                double requestedFuel = Math.Min(
+                    division.MissingFuel,
+                    remainingDepotCapacity
+                );
 
-            // Toute route traversée perd cette capacité.
-            foreach (var route in path.Routes)
-            {
-                remainingRouteCapacity[route]
-                    -= received;
+                requestedFuel = Math.Min(
+                    requestedFuel,
+                    depot.FuelStock
+                );
+
+                requestedFuel = Math.Min(
+                    requestedFuel,
+                    pathCapacity
+                );
+
+                if (requestedFuel <= 0)
+                    continue;
+
+                double withdrawn =
+                    depot.WithdrawFuel(requestedFuel);
+
+                double received =
+                    division.ReceiveFuel(withdrawn);
+
+                remainingDepotCapacity -= received;
+
+                // Toute route traversée perd cette capacité.
+                foreach (var route in path.Routes)
+                {
+                    remainingRouteCapacity[route]
+                        -= received;
+                }
             }
         }
     }
-}
     
 
     public SupplyPath? FindPath(
@@ -180,5 +181,139 @@ public sealed class SupplyNetwork
         }
 
         return null;
+    }
+
+    public SupplyPath? FindWidestPath(  //Nouvelle fonction de recherche du chemin optimisé
+    Province start,
+    Province destination)
+    {
+        var capacities = _routes.ToDictionary(
+            route => route,
+            route => route.FuelCapacityPerHour
+        );
+
+        return FindWidestPath(
+            start,
+            destination,
+            capacities
+        );
+    }
+
+
+    private SupplyPath? FindWidestPath(
+    Province start,
+    Province destination,
+    IReadOnlyDictionary<SupplyRoute, double> capacities)
+    {
+        if (ReferenceEquals(start, destination))
+        {
+            return new SupplyPath(
+                Array.Empty<SupplyRoute>()
+            );
+        }
+
+        var bestCapacity =
+            new Dictionary<Province, double>();
+
+        var previous =
+            new Dictionary<
+                Province,
+                (Province Previous, SupplyRoute Route)
+            >();
+
+        var queue =
+            new PriorityQueue<Province, double>();
+
+        bestCapacity[start] =
+            double.PositiveInfinity;
+
+        queue.Enqueue(
+            start,
+            double.NegativeInfinity
+        );
+
+        var visited =
+            new HashSet<Province>();
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+
+            if (!visited.Add(current))
+                continue;
+
+            if (ReferenceEquals(
+                    current,
+                    destination))
+            {
+                break;
+            }
+
+            foreach (var route in _routes)
+            {
+                var next =
+                    route.GetOtherProvince(current);
+
+                if (next == null)
+                    continue;
+
+                if (visited.Contains(next))
+                    continue;
+
+                double routeCapacity =
+                    capacities[route];
+
+                double candidateCapacity =
+                    Math.Min(
+                        bestCapacity[current],
+                        routeCapacity
+                    );
+
+                if (!bestCapacity.TryGetValue(
+                        next,
+                        out double knownCapacity)
+                    ||
+                    candidateCapacity > knownCapacity)
+                {
+                    bestCapacity[next] =
+                        candidateCapacity;
+
+                    previous[next] =
+                        (current, route);
+
+                    // PriorityQueue est un min-heap :
+                    // valeur négative = grande capacité prioritaire.
+                    queue.Enqueue(
+                        next,
+                        -candidateCapacity
+                    );
+                }
+            }
+        }
+
+        if (!bestCapacity.ContainsKey(destination))
+            return null;
+
+        var path =
+            new List<SupplyRoute>();
+
+        var currentProvince = destination;
+
+        while (!ReferenceEquals(
+                currentProvince,
+                start))
+        {
+            var step =
+                previous[currentProvince];
+
+            path.Add(step.Route);
+
+            currentProvince =
+                step.Previous;
+        }
+
+        path.Reverse();
+
+        return new SupplyPath(path);
     }
 }
