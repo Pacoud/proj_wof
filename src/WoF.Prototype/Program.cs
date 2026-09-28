@@ -12,6 +12,14 @@ var division = new Division(
     ammunition: 100
 );
 
+var panzerDivision = new Division(
+    name: "1re Division blindée",
+    position: provinceA,
+    fuel: 100,
+    ammunition: 100,
+    type: DivisionType.Armored
+);
+
 var depot = new SupplyDepot(
     "Dépôt principal",
     provinceA,

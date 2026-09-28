@@ -1,6 +1,7 @@
 using WoF.Simulation.Military;
 using WoF.Simulation.World;
 using WoF.Simulation.World.Infrastructure;
+using WoF.Simulation.Core;
 
 namespace WoF.Simulation.Tests.Military;
 
@@ -227,6 +228,187 @@ public class MovementSystemTests
             );
 
         Assert.Equal(10, duration);
+    }
+
+    [Fact]
+    public void MotorizedDivisionMovesFasterThanInfantryOnPlains()
+    {
+        var a = new Province(
+            1,
+            "A",
+            TerrainType.Plains
+        );
+
+        var b = new Province(
+            2,
+            "B",
+            TerrainType.Plains
+        );
+
+        a.ConnectTo(b);
+
+        var road =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                level: 2
+            );
+
+        int infantryDuration =
+            MovementSystem.CalculateMovementDuration(
+                a,
+                b,
+                new[] { road },
+                DivisionType.Infantry
+            );
+
+        int motorizedDuration =
+            MovementSystem.CalculateMovementDuration(
+                a,
+                b,
+                new[] { road },
+                DivisionType.Motorized
+            );
+
+        Assert.Equal(4, infantryDuration);
+        Assert.Equal(3, motorizedDuration);
+
+        Assert.True(
+            motorizedDuration < infantryDuration
+        );
+    }
+
+    [Fact]
+    public void ArmoredDivisionIsStronglySlowedByMountainTerrain()
+    {
+        var a = new Province(
+            1,
+            "A",
+            TerrainType.Plains
+        );
+
+        var mountain = new Province(
+            2,
+            "Mountain",
+            TerrainType.Mountain
+        );
+
+        a.ConnectTo(mountain);
+
+        var road =
+            new InfrastructureLink(
+                a,
+                mountain,
+                InfrastructureType.Road,
+                level: 2
+            );
+
+        int infantryDuration =
+            MovementSystem.CalculateMovementDuration(
+                a,
+                mountain,
+                new[] { road },
+                DivisionType.Infantry
+            );
+
+        int armoredDuration =
+            MovementSystem.CalculateMovementDuration(
+                a,
+                mountain,
+                new[] { road },
+                DivisionType.Armored
+            );
+
+        Assert.Equal(8, infantryDuration);
+        Assert.Equal(9, armoredDuration);
+
+        Assert.True(
+            armoredDuration > infantryDuration
+        );
+    }
+
+    [Fact]
+    public void DivisionDefaultsToInfantry()
+    {
+        var province =
+            new Province(1, "A");
+
+        var division =
+            new Division(
+                "1re Division",
+                province,
+                fuel: 100,
+                ammunition: 100
+            );
+
+        Assert.Equal(
+            DivisionType.Infantry,
+            division.Type
+        );
+    }
+
+    [Fact]
+    public void SimulationEngineUsesDivisionTypeForMovement()
+    {
+        var a = new Province(
+            1,
+            "A",
+            TerrainType.Plains
+        );
+
+        var b = new Province(
+            2,
+            "B",
+            TerrainType.Plains
+        );
+
+        a.ConnectTo(b);
+
+        var road =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                level: 2
+            );
+
+        var division =
+            new Division(
+                name: "Division motorisée",
+                position: a,
+                fuel: 100,
+                ammunition: 100,
+                type: DivisionType.Motorized
+            );
+
+        var simulation =
+            new SimulationEngine();
+
+        simulation.AddDivision(division);
+        simulation.AddInfrastructureLink(road);
+
+        bool accepted =
+            simulation.TryMoveDivision(
+                division,
+                b
+            );
+
+        Assert.True(accepted);
+
+        Assert.Equal(
+            3,
+            division.CurrentMovement!.TotalHours
+        );
+
+        simulation.Tick();
+        simulation.Tick();
+
+        Assert.Equal(a, division.Position);
+
+        simulation.Tick();
+
+        Assert.Equal(b, division.Position);
     }
 
 }

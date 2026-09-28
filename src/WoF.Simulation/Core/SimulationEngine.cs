@@ -28,7 +28,8 @@ public sealed class SimulationEngine
             MovementSystem.CalculateMovementDuration(
                 division.Position,
                 destination,
-                SupplyNetwork.Links
+                SupplyNetwork.Links,
+                division.Type
             );
 
         return division.TryMoveTo(

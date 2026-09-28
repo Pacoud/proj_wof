@@ -22,7 +22,7 @@ pathfinding (arbres de graphes), le ravitaillement traverse plusieurs provinces
 -ajout de tests validant le choix du meilleur trajet et l’utilisation d’itinéraires alternatifs.
 
 
-# COMMIT # 
+# COMMIT 2c3930d3553cd4600083ad2f3e8b4c0d079ee734 # 
 
 -Le réseau logistique ne repose plus uniquement sur des liaisons abstraites définies par une capacité arbitraire.
 Les SupplyRoute possèdent désormais un type d’infrastructure et un niveau, à partir desquels leur capacité de transport est calculée automatiquement.
@@ -36,7 +36,7 @@ ajout de tests vérifiant qu’une voie ferrée transporte davantage qu’une ro
 ajout de tests vérifiant qu’une infrastructure de niveau supérieur possède une capacité plus élevée.
 
 
-# COMMIT #
+# COMMIT 3e4775dc26bb00d8a0533110e712325739d21adc #
 
 L'infrastructure a été refactorisée afin de ne plus appartenir exclusivement au système logistique.
 
@@ -124,6 +124,67 @@ Marsh    : x1.60
 Mountain : x2.00
 
 ## Fin COMMIT ##
+
+# COMMIT # 
+## Itération — Types de divisions et profils de mobilité
+
+Les divisions disposent désormais d'un type influençant leur vitesse de déplacement et leur sensibilité aux différents terrains.
+
+### Types actuellement implémentés
+
+- `Infantry`
+- `Motorized`
+- `Armored`
+
+Le type `Infantry` est utilisé par défaut afin de conserver la compatibilité avec les scénarios et tests précédents.
+
+### Mobilité
+
+Chaque type de division possède désormais un multiplicateur de mobilité de base.
+
+Valeurs provisoires :
+
+Infantry  : x1.00
+Motorized : x0.60
+Armored   : x0.70
+
+Un coefficient inférieur permet de réduire la durée du déplacement.
+
+Les unités motorisées et blindées bénéficient donc d'une mobilité supérieure sur les terrains favorables.
+
+### Interaction avec le terrain
+
+Les pénalités de terrain dépendent maintenant du type de division.
+
+Les formations motorisées et blindées sont particulièrement pénalisées par les terrains difficiles tels que :
+
+- les forêts ;
+- les collines ;
+- les marais ;
+- les montagnes.
+
+Une formation blindée peut ainsi être plus rapide qu'une division d'infanterie en plaine mais devenir plus lente dans un environnement montagneux.
+
+### Architecture
+
+Le calcul de déplacement prend désormais en compte :
+
+- l'infrastructure ;
+- le terrain ;
+- le type de division.
+
+Le `SimulationEngine` transmet le type de la division au `MovementSystem`, qui reste responsable du calcul de la durée.
+
+### Tests ajoutés
+
+- vérification qu'une division motorisée se déplace plus rapidement qu'une division d'infanterie sur terrain favorable ;
+- vérification de la forte pénalité des formations blindées en montagne ;
+- vérification que les divisions sans type explicitement indiqué sont considérées comme de l'infanterie ;
+- test d'intégration vérifiant que le `SimulationEngine` utilise correctement le type de division.
+
+
+## FIN COMMIT ##
+
 
 
 

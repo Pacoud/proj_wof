@@ -20,6 +20,9 @@ public sealed class Division
 
     public bool IsMoving => CurrentMovement != null;
 
+    public DivisionType Type {get; }
+
+
     public double MissingFuel =>
     Math.Max(0, FuelCapacity - Fuel);
 
@@ -28,13 +31,15 @@ public sealed class Division
         Province position,
         double fuel,
         double ammunition,
-        double fuelCapacity = 100)
+        double fuelCapacity = 100,
+        DivisionType type = DivisionType.Infantry)
     {
         Name = name;
         Position = position;
         Fuel = fuel;
         Ammunition = ammunition;
         FuelCapacity = fuelCapacity;
+        Type = type;
     }
 
     public bool TryMoveTo(
@@ -92,6 +97,7 @@ public sealed class Division
     Fuel += received;
 
     return received;
-}
+    }
+
 
 }
