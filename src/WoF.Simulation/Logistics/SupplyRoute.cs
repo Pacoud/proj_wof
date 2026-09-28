@@ -8,12 +8,17 @@ public sealed class SupplyRoute
 
     public Province ProvinceB { get; }
 
-    public double FuelCapacityPerHour { get; }
+    public InfrastructureType Type {get;}
+
+    public int Level {get;}
+
+    public double FuelCapacityPerHour =>  CalculateCapacity();
 
     public SupplyRoute(
         Province provinceA,
         Province provinceB,
-        double fuelCapacityPerHour)
+        InfrastructureType type,
+        int level)
     {
         if (!provinceA.IsNeighbourOf(provinceB))
         {
@@ -24,19 +29,22 @@ public sealed class SupplyRoute
 
         ProvinceA = provinceA;
         ProvinceB = provinceB;
-        FuelCapacityPerHour = fuelCapacityPerHour;
+        Type = type;
+        Level = level;
     }
 
-    public bool Connects(
-        Province first,
-        Province second)
+    private double CalculateCapacity()
     {
-        return
-            (ReferenceEquals(ProvinceA, first) &&
-             ReferenceEquals(ProvinceB, second))
-            ||
-            (ReferenceEquals(ProvinceA, second) &&
-             ReferenceEquals(ProvinceB, first));
+        return Type switch 
+        {
+            InfrastructureType.Road =>
+                Level * 10,
+
+            InfrastructureType.Railway =>
+                Level * 40, 
+
+            _=> 0
+        };
     }
 
     public Province? GetOtherProvince(Province province)

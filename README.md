@@ -20,3 +20,17 @@ pathfinding (arbres de graphes), le ravitaillement traverse plusieurs provinces
 -possibilité d’utiliser automatiquement un chemin alternatif lorsqu’une branche du réseau est saturée ;
 -partage des capacités du réseau entre plusieurs divisions ;
 -ajout de tests validant le choix du meilleur trajet et l’utilisation d’itinéraires alternatifs.
+
+
+# COMMIT # 
+
+-Le réseau logistique ne repose plus uniquement sur des liaisons abstraites définies par une capacité arbitraire.
+Les SupplyRoute possèdent désormais un type d’infrastructure et un niveau, à partir desquels leur capacité de transport est calculée automatiquement.
+
+ajout de InfrastructureType ;
+distinction entre route et voie ferrée ;
+ajout d’un niveau d’infrastructure ;
+calcul automatique de la capacité à partir du type et du niveau ;
+conservation de la compatibilité avec l’algorithme de recherche du meilleur chemin ;
+ajout de tests vérifiant qu’une voie ferrée transporte davantage qu’une route de même niveau ;
+ajout de tests vérifiant qu’une infrastructure de niveau supérieur possède une capacité plus élevée.

@@ -136,7 +136,8 @@ public class SimulationEngineTests
         var route = new SupplyRoute(
             provinceA,
             provinceB,
-            fuelCapacityPerHour: 15
+            InfrastructureType.Road,
+            level: 2
         );
 
         var simulation = new SimulationEngine();
@@ -149,8 +150,8 @@ public class SimulationEngineTests
 
         Assert.Equal(1, simulation.Clock.CurrentHour);
 
-        Assert.Equal(35, division.Fuel);
-        Assert.Equal(485, depot.FuelStock);
+        Assert.Equal(40, division.Fuel);
+        Assert.Equal(480, depot.FuelStock);
     }
 
 
