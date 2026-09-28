@@ -20,7 +20,12 @@ public class DivisionTests
             ammunition: 100
         );
 
-        bool success = division.TryMoveTo(provinceB, durationHours: 3);
+        var movementPlan = new MovementPlan(
+            DurationHours: 3,
+            FuelCost: 8
+        );
+
+        bool success = division.TryMoveTo(provinceB, movementPlan);
 
         Assert.True(success);
         Assert.Equal(provinceA, division.Position);
@@ -43,7 +48,12 @@ public class DivisionTests
             ammunition: 100
         );
 
-        bool success = division.TryMoveTo(provinceC, durationHours: 3);
+        var movementPlan = new MovementPlan(
+            DurationHours: 3,
+            FuelCost: 8
+        );
+
+        bool success = division.TryMoveTo(provinceC, movementPlan);
 
         Assert.False(success);
         Assert.Equal(provinceA, division.Position);
@@ -66,7 +76,12 @@ public class DivisionTests
             ammunition: 100
         );
 
-        bool success = division.TryMoveTo(provinceB, durationHours: 3);
+        var movementPlan = new MovementPlan(
+            DurationHours: 3,
+            FuelCost: 8
+        );
+
+        bool success = division.TryMoveTo(provinceB, movementPlan);
 
         Assert.False(success);
         Assert.Equal(provinceA, division.Position);

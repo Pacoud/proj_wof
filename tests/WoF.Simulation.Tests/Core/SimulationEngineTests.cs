@@ -38,7 +38,12 @@ public class SimulationEngineTests
 
         simulation.AddDivision(division);
 
-        division.TryMoveTo(ProvinceB, durationHours: 3);
+        var movementPlan = new MovementPlan(
+            DurationHours: 3,
+            FuelCost: 8
+        );
+
+        division.TryMoveTo(ProvinceB, movementPlan);
 
         simulation.Tick();
 
@@ -66,7 +71,12 @@ public class SimulationEngineTests
 
     simulation.AddDivision(division);
 
-    division.TryMoveTo(provinceB, durationHours: 3);
+    var movementPlan = new MovementPlan(
+        DurationHours: 3,
+        FuelCost: 8
+    );
+
+    division.TryMoveTo(provinceB, movementPlan);
 
     simulation.Tick();
     simulation.Tick();

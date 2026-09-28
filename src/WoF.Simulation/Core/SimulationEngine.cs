@@ -24,8 +24,8 @@ public sealed class SimulationEngine
         Division division,
         Province destination)
     {
-        int duration =
-            MovementSystem.CalculateMovementDuration(
+        MovementPlan plan =
+            MovementSystem.CreateMovementPlan(
                 division.Position,
                 destination,
                 SupplyNetwork.Links,
@@ -34,7 +34,7 @@ public sealed class SimulationEngine
 
         return division.TryMoveTo(
             destination,
-            duration
+            plan
         );
     }
 

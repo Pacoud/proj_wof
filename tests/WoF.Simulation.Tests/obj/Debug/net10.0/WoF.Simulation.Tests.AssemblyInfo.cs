@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("WoF.Simulation.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c251e709cf6b4be718d7a9e249d4a873682fc774")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a542ebd7712a61e343e9f466b790d23d10bd217a")]
 [assembly: System.Reflection.AssemblyProductAttribute("WoF.Simulation.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("WoF.Simulation.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

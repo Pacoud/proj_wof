@@ -411,4 +411,231 @@ public class MovementSystemTests
         Assert.Equal(b, division.Position);
     }
 
+
+
+    [Fact]
+    public void HeavierDivisionTypesConsumeMoreFuel()
+    {
+        var a = new Province(
+            1,
+            "A",
+            TerrainType.Plains
+        );
+
+        var b = new Province(
+            2,
+            "B",
+            TerrainType.Plains
+        );
+
+        a.ConnectTo(b);
+
+        var road =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                level: 2
+            );
+
+        var links = new[] { road };
+
+        var infantry =
+            MovementSystem.CreateMovementPlan(
+                a,
+                b,
+                links,
+                DivisionType.Infantry
+            );
+
+        var motorized =
+            MovementSystem.CreateMovementPlan(
+                a,
+                b,
+                links,
+                DivisionType.Motorized
+            );
+
+        var armored =
+            MovementSystem.CreateMovementPlan(
+                a,
+                b,
+                links,
+                DivisionType.Armored
+            );
+
+        Assert.True(
+            infantry.FuelCost
+            < motorized.FuelCost
+        );
+
+        Assert.True(
+            motorized.FuelCost
+            < armored.FuelCost
+        );
+    }
+
+    [Fact]
+    public void MountainMovementConsumesMoreFuelThanPlains()
+    {
+        var origin =
+            new Province(
+                1,
+                "A",
+                TerrainType.Plains
+            );
+
+        var plains =
+            new Province(
+                2,
+                "Plains",
+                TerrainType.Plains
+            );
+
+        var mountain =
+            new Province(
+                3,
+                "Mountain",
+                TerrainType.Mountain
+            );
+
+        origin.ConnectTo(plains);
+        origin.ConnectTo(mountain);
+
+        var plainsRoad =
+            new InfrastructureLink(
+                origin,
+                plains,
+                InfrastructureType.Road,
+                2
+            );
+
+        var mountainRoad =
+            new InfrastructureLink(
+                origin,
+                mountain,
+                InfrastructureType.Road,
+                2
+            );
+
+        var plainsPlan =
+            MovementSystem.CreateMovementPlan(
+                origin,
+                plains,
+                new[] { plainsRoad },
+                DivisionType.Armored
+            );
+
+        var mountainPlan =
+            MovementSystem.CreateMovementPlan(
+                origin,
+                mountain,
+                new[] { mountainRoad },
+                DivisionType.Armored
+            );
+
+        Assert.True(
+            mountainPlan.FuelCost
+            > plainsPlan.FuelCost
+        );
+    }
+
+
+    [Fact]
+    public void BetterRoadReducesFuelConsumption()
+    {
+        var a =
+            new Province(1, "A");
+
+        var b =
+            new Province(2, "B");
+
+        a.ConnectTo(b);
+
+        var roadL1 =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                1
+            );
+
+        var roadL3 =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                3
+            );
+
+        var badRoadPlan =
+            MovementSystem.CreateMovementPlan(
+                a,
+                b,
+                new[] { roadL1 },
+                DivisionType.Armored
+            );
+
+        var goodRoadPlan =
+            MovementSystem.CreateMovementPlan(
+                a,
+                b,
+                new[] { roadL3 },
+                DivisionType.Armored
+            );
+
+        Assert.True(
+            goodRoadPlan.FuelCost
+            < badRoadPlan.FuelCost
+        );
+    }
+
+
+    [Fact]
+    public void DivisionCannotStartMovementWithoutEnoughFuel()
+    {
+        var a =
+            new Province(1, "A");
+
+        var b =
+            new Province(2, "B");
+
+        a.ConnectTo(b);
+
+        var road =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                2
+            );
+
+        var division =
+            new Division(
+                name: "Division blindée",
+                position: a,
+                fuel: 5,
+                ammunition: 100,
+                type: DivisionType.Armored
+            );
+
+        var simulation =
+            new SimulationEngine();
+
+        simulation.AddDivision(division);
+        simulation.AddInfrastructureLink(road);
+
+        bool accepted =
+            simulation.TryMoveDivision(
+                division,
+                b
+            );
+
+        Assert.False(accepted);
+        Assert.Equal(a, division.Position);
+        Assert.False(division.IsMoving);
+
+        Assert.Equal(5, division.Fuel);
+    }
+
 }

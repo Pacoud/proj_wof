@@ -22,7 +22,7 @@ pathfinding (arbres de graphes), le ravitaillement traverse plusieurs provinces
 -ajout de tests validant le choix du meilleur trajet et l’utilisation d’itinéraires alternatifs.
 
 
-# COMMIT 2c3930d3553cd4600083ad2f3e8b4c0d079ee734 # 
+# COMMIT e5a4805fba5bcf83d65ab0a474b49c0cebcab0de # 
 
 -Le réseau logistique ne repose plus uniquement sur des liaisons abstraites définies par une capacité arbitraire.
 Les SupplyRoute possèdent désormais un type d’infrastructure et un niveau, à partir desquels leur capacité de transport est calculée automatiquement.
@@ -36,7 +36,7 @@ ajout de tests vérifiant qu’une voie ferrée transporte davantage qu’une ro
 ajout de tests vérifiant qu’une infrastructure de niveau supérieur possède une capacité plus élevée.
 
 
-# COMMIT 3e4775dc26bb00d8a0533110e712325739d21adc #
+# COMMIT 2c3930d3553cd4600083ad2f3e8b4c0d079ee734  #
 
 L'infrastructure a été refactorisée afin de ne plus appartenir exclusivement au système logistique.
 
@@ -85,7 +85,7 @@ Cette évolution permet d'éviter de maintenir des représentations différentes
 
 ## FIN COMMIT ##
 
-# COMMIT # 
+# COMMIT 3e4775dc26bb00d8a0533110e712325739d21adc # 
 ## Itération — Prise en compte du terrain dans les déplacements
 
 Les provinces possèdent désormais un type de terrain influençant la durée des déplacements militaires.
@@ -125,7 +125,7 @@ Mountain : x2.00
 
 ## Fin COMMIT ##
 
-# COMMIT # 
+# COMMIT a542ebd7712a61e343e9f466b790d23d10bd217a  # 
 ## Itération — Types de divisions et profils de mobilité
 
 Les divisions disposent désormais d'un type influençant leur vitesse de déplacement et leur sensibilité aux différents terrains.
@@ -189,3 +189,94 @@ Le `SimulationEngine` transmet le type de la division au `MovementSystem`, qui r
 
 
 
+
+
+# COMMIT #
+## Itération — Calcul dynamique de la consommation de carburant
+
+Le coût en carburant des déplacements militaires n'est désormais plus représenté par une valeur fixe.
+
+Un déplacement génère maintenant un `MovementPlan` contenant :
+
+- sa durée estimée ;
+- son coût total en carburant.
+
+### Facteurs pris en compte
+
+La consommation dépend actuellement de :
+
+- la durée du déplacement ;
+- le type de division ;
+- le terrain de destination ;
+- la qualité de l'infrastructure routière.
+
+Le calcul utilisé par le prototype est :
+
+FuelCost =
+BaseFuelConsumptionPerHour
+× MovementDuration
+× TerrainFuelMultiplier
+× InfrastructureFuelMultiplier
+
+### Types de divisions
+
+Les consommations horaires provisoires sont :
+
+Infantry  : 1.0 unité/h
+Motorized : 2.5 unités/h
+Armored   : 4.0 unités/h
+
+Les formations motorisées et blindées nécessitent donc davantage de carburant pour leurs déplacements.
+
+### Effet du terrain
+
+Les terrains difficiles augmentent également la consommation.
+
+Valeurs provisoires :
+
+Plains   : x1.00
+Urban    : x1.10
+Desert   : x1.15
+Forest   : x1.20
+Hills    : x1.25
+Marsh    : x1.40
+Mountain : x1.50
+
+Le terrain influence à la fois la durée du trajet et son coût énergétique.
+
+### Effet des routes
+
+La qualité des routes influence désormais également l'efficacité énergétique :
+
+aucune route : x1.25
+Road L1      : x1.10
+Road L2      : x0.95
+Road L3      : x0.85
+
+Une infrastructure routière de meilleure qualité réduit donc le temps de déplacement ainsi que la consommation de carburant.
+
+### MovementPlan
+
+Une nouvelle structure `MovementPlan` rassemble les informations nécessaires à l'exécution d'un mouvement :
+
+MovementPlan
+├── DurationHours
+└── FuelCost
+
+Le `MovementSystem` est responsable de la création du plan tandis que la division vérifie uniquement qu'elle dispose des ressources nécessaires pour l'exécuter.
+
+### Intégration avec la logistique
+
+Le carburant transporté par le réseau logistique alimente directement les réserves utilisées par les divisions lors de leurs mouvements.
+
+Une division ne disposant pas de suffisamment de carburant ne peut plus commencer son déplacement.
+
+Cette évolution relie donc directement le système logistique au système de mouvement militaire.
+
+### Tests ajoutés
+
+- comparaison de la consommation entre infanterie, motorisée et blindée ;
+- vérification de l'augmentation de consommation en terrain difficile ;
+- vérification de la réduction de consommation offerte par une meilleure route ;
+- vérification qu'une division ne peut pas commencer un mouvement sans suffisamment de carburant ;
+- maintien des règles précédentes de durée de déplacement.

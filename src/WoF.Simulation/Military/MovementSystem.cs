@@ -22,14 +22,12 @@ public static class MovementSystem
             );
         }
 
-        var bestRoad = links
-            .Where(link =>
-                link.Type == InfrastructureType.Road
-                &&
-                link.Connects(origin, destination))
-            .OrderByDescending(link => link.Level)
-            .FirstOrDefault();
-        
+        var bestRoad = FindBestRoad( 
+            origin,
+            destination,
+            links
+        );
+
         int infrastructureDuration;
 
         // Aucune route :
@@ -130,5 +128,137 @@ public static class MovementSystem
 
         _ => 1.00
     };
+    }
+
+
+    private static double GetBaseFuelConsumptionPerHour(
+    DivisionType divisionType)
+    {
+    return divisionType switch
+    {
+        DivisionType.Infantry => 1.0,
+        DivisionType.Motorized => 2.5,
+        DivisionType.Armored => 4.0,
+
+        _ => 1.0
+    };
+    }
+
+    private static double GetTerrainFuelMultiplier( //le terrain change non seulement la vitesse mais aussi la conso de carbu comme ici
+    TerrainType terrain)
+    {
+    return terrain switch
+    {
+        TerrainType.Plains => 1.00,
+        TerrainType.Urban => 1.10,
+        TerrainType.Desert => 1.15,
+        TerrainType.Forest => 1.20,
+        TerrainType.Hills => 1.25,
+        TerrainType.Marsh => 1.40,
+        TerrainType.Mountain => 1.50,
+
+        _ => 1.00
+    };
+    }
+
+    private static double GetInfrastructureFuelMultiplier(
+        InfrastructureLink? road)
+    {
+        if(road == null)
+            return 1.25;
+
+        return road.Level switch
+        {
+            1 => 1.10,
+            2 => 0.95,
+            3 => 0.85,
+
+            _ => 1.00
+        };
+    }
+
+        private static InfrastructureLink? FindBestRoad(
+    Province origin,
+    Province destination,
+    IEnumerable<InfrastructureLink> links)
+    {
+    return links
+        .Where(link =>
+            link.Type == InfrastructureType.Road
+            &&
+            link.Connects(origin, destination))
+        .OrderByDescending(link => link.Level)
+        .FirstOrDefault();
+    }
+
+
+    public static double CalculateFuelCost(
+    Province origin,
+    Province destination,
+    IEnumerable<InfrastructureLink> links,
+    DivisionType divisionType,
+    int durationHours)
+    {
+    var bestRoad = FindBestRoad(
+        origin,
+        destination,
+        links
+    );
+
+    double baseConsumption =
+        GetBaseFuelConsumptionPerHour(
+            divisionType
+        );
+
+    double terrainMultiplier =
+        GetTerrainFuelMultiplier(
+            destination.Terrain
+        );
+
+    double infrastructureMultiplier =
+        GetInfrastructureFuelMultiplier(
+            bestRoad
+        );
+
+    double fuelCost =
+        baseConsumption
+        * durationHours
+        * terrainMultiplier
+        * infrastructureMultiplier;
+
+    return Math.Round(
+        fuelCost,
+        2
+    );
+    }
+
+
+    public static MovementPlan CreateMovementPlan(
+    Province origin,
+    Province destination,
+    IEnumerable<InfrastructureLink> links,
+    DivisionType divisionType)
+    {
+    int duration =
+        CalculateMovementDuration(
+            origin,
+            destination,
+            links,
+            divisionType
+        );
+
+    double fuelCost =
+        CalculateFuelCost(
+            origin,
+            destination,
+            links,
+            divisionType,
+            duration
+        );
+
+    return new MovementPlan(
+        duration,
+        fuelCost
+    );
     }
  }
