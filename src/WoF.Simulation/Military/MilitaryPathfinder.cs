@@ -1,6 +1,6 @@
 using WoF.Simulation.World;
 using WoF.Simulation.World.Infrastructure;
-
+using WoF.Simulation.Diplomacy;
 //Ici on utilise l'algorithme de Dijkstra pour dessiner un chemin automatique vers une province éloignée
 
 namespace WoF.Simulation.Military;
@@ -11,7 +11,9 @@ public static class MilitaryPathfinder
         Province start,
         Province destination,
         IEnumerable<InfrastructureLink> links,
-        DivisionType divisionType)
+        DivisionType divisionType,
+        Country? movingCountry = null,
+        DiplomacySystem? diplomacy = null)
     {
         if (ReferenceEquals(start, destination))
         {
@@ -51,6 +53,34 @@ public static class MilitaryPathfinder
             foreach (var neighbour
                      in current.Neighbours)
             {
+
+                bool isFinalDestination =
+                    ReferenceEquals(
+                        neighbour,
+                        destination
+                    );
+
+                if (movingCountry != null
+                    && diplomacy != null)
+                {
+                    bool accessAllowed =
+                        isFinalDestination
+                            ? MilitaryAccessRules
+                                .CanEnterAsDestination(
+                                    movingCountry,
+                                    neighbour,
+                                    diplomacy
+                                )
+                            : MilitaryAccessRules
+                                .CanTraverse(
+                                    movingCountry,
+                                    neighbour,
+                                    diplomacy
+                                );
+
+                    if (!accessAllowed)
+                        continue;
+                }
                 int movementCost =
                     MovementSystem
                         .CalculateMovementDuration(

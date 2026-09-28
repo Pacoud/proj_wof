@@ -3,6 +3,7 @@ using WoF.Simulation.Time;
 using WoF.Simulation.Logistics;
 using WoF.Simulation.World;
 using WoF.Simulation.World.Infrastructure;
+using WoF.Simulation.Diplomacy;
 
 namespace WoF.Simulation.Core;
 
@@ -13,6 +14,8 @@ public sealed class SimulationEngine
     private readonly List<Division> _divisions = new();
 
     public SimulationClock Clock { get; } = new();
+
+    public DiplomacySystem Diplomacy { get; } = new();
 
     private readonly List<SupplyDepot> _supplyDepots = new();
 
@@ -117,7 +120,9 @@ public sealed class SimulationEngine
                 routingStart,
                 destination,
                 SupplyNetwork.Links,
-                division.Type
+                division.Type,
+                division.Country,
+                Diplomacy
             );
 
         if (path == null)
@@ -203,12 +208,30 @@ public sealed class SimulationEngine
 
         // On valide tout avant de modifier
         // l'ordre existant.
-        foreach (var waypoint in waypoints)
+        for (int i = 0; i < waypoints.Count; i++)
         {
+            Province waypoint = waypoints[i];
+
             if (!current.IsNeighbourOf(waypoint))
-            {
                 return false;
-            }
+
+            bool isFinal = i == waypoints.Count - 1;
+
+            bool accessAllowed =
+                isFinal? MilitaryAccessRules.CanEnterAsDestination(
+                    division.Country,
+                    waypoint,
+                    Diplomacy
+                )
+            
+            : MilitaryAccessRules.CanTraverse(
+                division.Country,
+                waypoint,
+                Diplomacy
+            );
+
+            if(!accessAllowed)
+                return false;
 
             current = waypoint;
         }
@@ -237,14 +260,57 @@ public sealed class SimulationEngine
         Province province =
             division.CurrentProvince;
 
-        if (!ReferenceEquals(
-                province.Controller,
-                division.Country))
+        Country? controller =
+            province.Controller;
+
+        if (controller == null)
         {
             province.ChangeController(
                 division.Country
             );
+
+            return;
         }
+
+        if (ReferenceEquals(
+                controller,
+                division.Country))
+        {
+          return;
+            
+        }
+
+        if(!Diplomacy.AreAtWar(
+            division.Country,
+            controller
+        ))
+        {
+            return;
+        }
+
+        province.ChangeController(
+            division.Country
+        );
+    }
+
+    public bool DeclareWar(
+        Country first,
+        Country second)
+    {
+        return Diplomacy.DeclareWar(
+            first,
+            second
+        );
+    }
+
+    public bool MakePeace(
+        Country first,
+        Country second)
+    {
+        return Diplomacy.MakePeace(
+            first,
+            second
+        );
     }
 
 

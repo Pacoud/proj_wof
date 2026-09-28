@@ -118,6 +118,11 @@ public class ProvinceControlTests
             road
         );
 
+        simulation.DeclareWar(
+            france,
+            germany
+        );
+
         simulation.TryOrderMoveTo(
             division,
             provinceB

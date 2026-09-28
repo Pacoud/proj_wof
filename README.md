@@ -484,7 +484,7 @@ Aucun système de combat n'est encore implémenté.
 - vérification de l'enregistrement d'une destination future ;
 - vérification de l'enchaînement automatique de deux déplacements successifs.
 
-# COMMIT #
+# COMMIT 6755774d2781e54e8a01ad2ebbdc6a2cc7f81ebf #
 
 ## Itération — Pathfinding militaire et itinéraires explicites
 
@@ -561,7 +561,7 @@ Chaque paire de provinces successives doit être adjacente.
 Cette fonctionnalité est conçue pour permettre ultérieurement à l'interface graphique de laisser le joueur tracer manuellement le trajet d'une division sur la carte.
 
 
-# COMMIT #
+# COMMIT 3fdf17480ebbdf0b9501cb1382a4e8e07c22e16b #
 ## Itération — Appartenance et contrôle territorial des provinces
 
 Les provinces disposent désormais d'une identité territoriale distinguant leur propriétaire de la puissance qui les contrôle militairement.
@@ -639,4 +639,107 @@ La capture n'a lieu qu'à l'arrivée effective dans la province et non au début
 - vérification qu'un déplacement entre provinces déjà contrôlées par le même pays ne modifie pas leur appartenance.
 
 
+# COMMIT #
+
+## Itération — États de guerre et restrictions territoriales
+
+Le système territorial prend désormais en compte les relations de guerre entre pays.
+
+Les provinces ne sont plus considérées comme librement accessibles par toutes les divisions.
+
+### DiplomacySystem
+
+Un premier système diplomatique a été introduit.
+
+Il permet actuellement de gérer :
+
+- la déclaration de guerre ;
+- la fin d'une guerre ;
+- la vérification de l'état de guerre entre deux pays.
+
+Les guerres sont symétriques :
+
+si France est en guerre avec Germany, Germany est également en guerre avec France.
+
+### Définition d'un territoire ennemi
+
+L'hostilité d'une province dépend de son `Controller`.
+
+Une province est considérée comme ennemie lorsqu'elle est contrôlée par un pays actuellement en guerre avec le pays auquel appartient la division.
+
+Le `Owner` n'est donc pas utilisé pour déterminer l'accès militaire immédiat.
+
+### Accès territorial
+
+Les premières règles d'accès militaire sont :
+
+- territoire contrôlé par son propre pays : accessible ;
+- territoire non contrôlé : accessible ;
+- territoire contrôlé par un pays neutre : interdit ;
+- territoire ennemi : accessible uniquement comme objectif final d'une offensive.
+
+### Restriction du pathfinding
+
+Le pathfinding militaire ne peut pas utiliser une province ennemie comme simple province intermédiaire.
+
+Exemple :
+
+France       Germany       Germany
+
+A ---------- B ----------- C
+
+Même en état de guerre, un ordre direct de A vers C n'est pas encore autorisé car B est une province ennemie non contrôlée.
+
+Le joueur doit d'abord capturer B :
+
+A -> B
+
+puis, une fois :
+
+Controller(B) = France
+
+un nouvel ordre vers C devient possible.
+
+Cette règle empêche le pathfinding de planifier des déplacements profonds à travers un territoire ennemi comme s'il était déjà sécurisé.
+
+### Territoires neutres
+
+Une division ne peut pas entrer dans une province contrôlée par un pays avec lequel elle n'est pas en guerre.
+
+Cela empêche notamment le pathfinding automatique et les itinéraires explicites de traverser un pays neutre.
+
+Les alliances et droits de passage ne sont pas encore implémentés.
+
+### Itinéraires explicites
+
+Les itinéraires tracés manuellement par le joueur utilisent désormais les mêmes règles d'accès territorial que le pathfinding automatique.
+
+Un itinéraire manuel ne peut donc pas être utilisé pour contourner les restrictions politiques ou militaires du moteur.
+
+### Capture territoriale
+
+Une division ne prend désormais le contrôle d'une province étrangère que si son pays est en guerre avec le pays qui la contrôle.
+
+La distinction entre `Owner` et `Controller` reste conservée.
+
+Exemple :
+
+avant :
+
+Owner      = Germany
+Controller = Germany
+
+après occupation française :
+
+Owner      = Germany
+Controller = France
+
+### Tests ajoutés
+
+- vérification de la symétrie d'un état de guerre ;
+- vérification qu'un territoire neutre est inaccessible ;
+- vérification qu'une province ennemie peut être ciblée pendant une guerre ;
+- vérification qu'une province ennemie ne peut pas être utilisée comme étape intermédiaire ;
+- vérification que la capture territoriale nécessite un état de guerre ;
+- vérification que les itinéraires explicites respectent les restrictions territoriales.
 
