@@ -85,6 +85,46 @@ Cette évolution permet d'éviter de maintenir des représentations différentes
 
 ## FIN COMMIT ##
 
+# COMMIT # 
+## Itération — Prise en compte du terrain dans les déplacements
+
+Les provinces possèdent désormais un type de terrain influençant la durée des déplacements militaires.
+
+### Terrains implémentés
+
+Les premiers types de terrain disponibles sont :
+
+- Plains
+- Forest
+- Hills
+- Mountain
+- Marsh
+- Desert
+- Urban
+
+Une province est considérée comme `Plains` par défaut afin de conserver la compatibilité avec les scénarios et tests précédents.
+
+### Calcul du déplacement
+
+La durée d'un déplacement dépend désormais de deux facteurs :
+
+1. la qualité de l'infrastructure routière ;
+2. le terrain de la province de destination.
+
+La durée obtenue grâce à l'infrastructure est multipliée par un coefficient propre au terrain.
+
+Valeurs provisoires :
+
+Plains   : x1.00
+Urban    : x1.15
+Desert   : x1.20
+Forest   : x1.30
+Hills    : x1.40
+Marsh    : x1.60
+Mountain : x2.00
+
+## Fin COMMIT ##
+
 
 
 

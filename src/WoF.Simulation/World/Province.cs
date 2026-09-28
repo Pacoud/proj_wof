@@ -4,16 +4,19 @@ public sealed class Province
 {
     public int Id { get; }
 
+    public TerrainType Terrain {get; }
+
     public string Name { get; }
 
     private readonly List<Province> _neighbours = new();
 
     public IReadOnlyList<Province> Neighbours => _neighbours;
 
-    public Province(int id, string name)
+    public Province(int id, string name, TerrainType terrain = TerrainType.Plains)
     {
         Id = id;
         Name = name;
+        Terrain = terrain;
     }
 
     public void ConnectTo(Province province)

@@ -26,19 +26,53 @@ public static class MovementSystem
                 link.Connects(origin, destination))
             .OrderByDescending(link => link.Level)
             .FirstOrDefault();
+        
+        int infrastructureDuration;
 
         // Aucune route :
         // déplacement possible mais lent.
         if (bestRoad == null)
-            return BaseMovementDurationHours;
-
-        return bestRoad.Level switch
         {
-            1 => 5,
-            2 => 4,
-            3 => 3,
+            infrastructureDuration = BaseMovementDurationHours;
+        }
+        else
+        {
+            infrastructureDuration = BestRoad.level switch
+            {
+                1 => 5,
+                2 => 4,
+                3 => 3,
 
-            _ => BaseMovementDurationHours
-        };
+                _ => BaseMovementDurationHours
+            };
+        }
+
+        double terrainMultiplier = 
+            GetTerrainMovementMultiplier(
+                destination.Terrain
+            );
+        
+        return (int)Math.Ceiling(
+            infrastructureDuration
+            * terrainMultiplier
+        );
+
     }
-}
+    private static double GetTerrainMovementMultiplier(
+        TerrainType terrain)
+        {
+            return terrain switch
+            {
+                TerrainType.Plains => 1.00,
+                TerrainType.Urban => 1.15,
+                TerrainType.Desert => 1.20,
+                TerrainType.Forest => 1.30,
+                TerrainType.Hills => 1.40,
+                TerrainType.Marsh => 1.60,
+                TerrainType.Mountain => 2.00,
+
+                _ => 1.00
+
+            };
+        }
+ }
