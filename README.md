@@ -283,7 +283,7 @@ Cette évolution relie donc directement le système logistique au système de mo
 
 
 
-# COMMIT # 
+# COMMIT 950d5d522955b739760fa020abcdf76527e6bd88 # 
 
 ## Itération — Consommation progressive et contrôle du déplacement
 
@@ -373,3 +373,115 @@ Le ravitaillement des unités en transit fera l'objet d'une évolution ultérieu
 - vérification qu'une division stoppée ne progresse plus ;
 - vérification de la reprise d'un déplacement interrompu ;
 - vérification de l'arrêt automatique lorsqu'une division manque de carburant pendant son trajet.
+
+# COMMIT # 
+## Itération — Représentation explicite des divisions en transit
+
+Le système de mouvement a été refactorisé afin qu'une division en déplacement ne soit plus considérée comme étant toujours présente dans sa province d'origine.
+
+Une division possède désormais deux états géographiques mutuellement exclusifs :
+
+- stationnée dans une province ;
+- en transit sur une liaison entre deux provinces.
+
+### TransitState
+
+L'ancien `MovementOrder` est remplacé par un `TransitState` représentant la position physique de la division pendant son déplacement.
+
+Un état de transit contient notamment :
+
+- la province d'origine ;
+- la province de destination ;
+- la durée totale ;
+- le temps écoulé ;
+- le temps restant ;
+- la progression entre 0 et 1 ;
+- la consommation horaire de carburant ;
+- l'état de pause.
+
+Exemple :
+
+Origin = A
+Destination = B
+Progress = 0.40
+
+représente une division ayant parcouru 40 % de la liaison entre A et B.
+
+### Position des divisions
+
+Une division stationnée possède :
+
+CurrentProvince != null
+Transit = null
+
+Une division en déplacement possède :
+
+CurrentProvince = null
+Transit != null
+
+Une division n'est donc jamais simultanément considérée comme étant dans une province et sur une liaison.
+
+### Progression
+
+La progression est calculée à partir du temps déjà parcouru :
+
+Progress = ElapsedHours / TotalHours
+
+Une division arrêtée conserve sa progression exacte et peut reprendre son déplacement au même endroit.
+
+### Arrivée
+
+Lorsque la progression atteint 100 % :
+
+- l'état de transit est supprimé ;
+- la province de destination devient `CurrentProvince`.
+
+La division redevient alors une unité stationnée.
+
+### Ordres donnés pendant un transit
+
+Une division déjà en transit ne peut pas bifurquer directement vers une troisième province.
+
+Si elle se déplace de A vers B et reçoit un ordre vers C :
+
+A -> B -> C
+
+l'ordre vers C est enregistré comme destination en attente.
+
+La division :
+
+1. termine la liaison A -> B ;
+2. atteint B ;
+3. commence automatiquement le trajet B -> C.
+
+Pour cette version du prototype, C doit être directement voisine de B. Le calcul d'itinéraires sur plusieurs provinces sera implémenté ultérieurement.
+
+### Intégration avec la logistique
+
+Une division en transit n'est plus considérée comme présente dans sa province d'origine.
+
+Elle ne peut donc pas utiliser le ravitaillement local d'une province tant que son déplacement n'est pas terminé.
+
+### Préparation des futurs combats
+
+La représentation explicite de la progression permet désormais de connaître la position relative de plusieurs divisions présentes sur une même liaison.
+
+Cette architecture permettra ultérieurement de détecter :
+
+- les rencontres entre deux forces se déplaçant en sens opposé ;
+- les unités arrêtées sur une liaison ;
+- les combats de rencontre ;
+- les interceptions pendant un déplacement.
+
+Aucun système de combat n'est encore implémenté.
+
+### Tests ajoutés
+
+- vérification qu'une division quitte réellement sa province au début du mouvement ;
+- vérification de la progression à chaque tick ;
+- vérification de l'arrivée correcte dans la province de destination ;
+- vérification de la conservation de la progression lors d'un arrêt ;
+- vérification de l'enregistrement d'une destination future ;
+- vérification de l'enchaînement automatique de deux déplacements successifs.
+
+

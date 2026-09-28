@@ -25,14 +25,15 @@ public class DivisionTests
             FuelPerHour: 8
         );
 
-        bool success = division.TryMoveTo(provinceB, movementPlan);
+        bool success = division.TryStartMovement(provinceB, movementPlan);
 
         Assert.True(success);
-        Assert.Equal(provinceA, division.Position);
+        Assert.Null(division.CurrentProvince);
         Assert.Equal(100, division.Fuel);
         Assert.True(division.IsMoving);
-        Assert.Equal(provinceB, division.CurrentMovement!.Destination);
-        Assert.Equal(3, division.CurrentMovement.RemainingHours);
+        Assert.Equal(provinceA, division.Transit!.Origin);
+        Assert.Equal(provinceB, division.Transit.Destination);
+        Assert.Equal(3, division.Transit.RemainingHours);
     }
 
     [Fact]
@@ -53,10 +54,10 @@ public class DivisionTests
             FuelPerHour: 8
         );
 
-        bool success = division.TryMoveTo(provinceC, movementPlan);
+        bool success = division.TryStartMovement(provinceC, movementPlan);
 
         Assert.False(success);
-        Assert.Equal(provinceA, division.Position);
+        Assert.Equal(provinceA, division.CurrentProvince);
         Assert.Equal(100, division.Fuel);
         Assert.False(division.IsMoving);
     }
@@ -81,10 +82,10 @@ public class DivisionTests
             FuelPerHour: 8
         );
 
-        bool success = division.TryMoveTo(provinceB, movementPlan);
+        bool success = division.TryStartMovement(provinceB, movementPlan);
 
         Assert.False(success);
-        Assert.Equal(provinceA, division.Position);
+        Assert.Equal(provinceA, division.CurrentProvince);
         Assert.Equal(5, division.Fuel);
         Assert.False(division.IsMoving);
     }

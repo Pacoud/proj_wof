@@ -45,10 +45,13 @@ public sealed class SupplyNetwork
                 if (division.IsInTransit)
                     continue;
 
+                if (division.CurrentProvince == null)
+                    continue;
+
                 // Cherche maintenant un véritable chemin.
                 SupplyPath? path = FindWidestPath(
                     depot.Position,
-                    division.Position,
+                    division.CurrentProvince,
                     remainingLinkCapacity
                 );
 

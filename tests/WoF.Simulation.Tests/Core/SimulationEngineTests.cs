@@ -43,12 +43,12 @@ public class SimulationEngineTests
             FuelPerHour: 8
         );
 
-        division.TryMoveTo(ProvinceB, movementPlan);
+        division.TryStartMovement(ProvinceB, movementPlan);
 
         simulation.Tick();
 
         Assert.True(division.IsMoving);
-        Assert.Equal(2, division.CurrentMovement!.RemainingHours);
+        Assert.Equal(2, division.Transit!.RemainingHours);
 
     }
 
@@ -76,7 +76,7 @@ public class SimulationEngineTests
         FuelPerHour: 8
     );
 
-    division.TryMoveTo(provinceB, movementPlan);
+    division.TryStartMovement(provinceB, movementPlan);
 
     simulation.Tick();
     simulation.Tick();
@@ -84,7 +84,7 @@ public class SimulationEngineTests
 
     Assert.Equal(3, simulation.Clock.CurrentHour);
 
-    Assert.Equal(provinceB, division.Position);
+    Assert.Equal(provinceB, division.CurrentProvince);
 
     Assert.False(division.IsMoving);
     }
@@ -199,17 +199,17 @@ public class SimulationEngineTests
 
         Assert.True(accepted);
         Assert.True(division.IsMoving);
-        Assert.Equal(4, division.CurrentMovement!.TotalHours);
+        Assert.Equal(4, division.Transit!.TotalHours);
 
         simulation.Tick();
         simulation.Tick();
         simulation.Tick();
 
-        Assert.Equal(provinceA, division.Position);
+        Assert.Null(division.CurrentProvince);
 
         simulation.Tick();
 
-        Assert.Equal(provinceB, division.Position);
+        Assert.Equal(provinceB, division.CurrentProvince);
         Assert.False(division.IsMoving);
     }
 

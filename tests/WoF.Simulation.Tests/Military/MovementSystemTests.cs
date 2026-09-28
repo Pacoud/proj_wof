@@ -398,17 +398,17 @@ public class MovementSystemTests
 
         Assert.Equal(
             3,
-            division.CurrentMovement!.TotalHours
+            division.Transit!.TotalHours
         );
 
         simulation.Tick();
         simulation.Tick();
 
-        Assert.Equal(a, division.Position);
+        Assert.Null(division.CurrentProvince);
 
         simulation.Tick();
 
-        Assert.Equal(b, division.Position);
+        Assert.Equal(b, division.CurrentProvince);
     }
 
 
@@ -744,7 +744,7 @@ public class MovementSystemTests
             division.Fuel;
 
         int remainingHours =
-            division.CurrentMovement!
+            division.Transit!
                 .RemainingHours;
 
         bool stopped = division.StopMovement();
@@ -762,7 +762,7 @@ public class MovementSystemTests
 
         Assert.Equal(
             remainingHours,
-            division.CurrentMovement!
+            division.Transit!
                 .RemainingHours
         );
 
@@ -818,14 +818,14 @@ public class MovementSystemTests
         division.StopMovement();
 
         int remainingBeforePause =
-            division.CurrentMovement!
+            division.Transit!
                 .RemainingHours;
 
         simulation.Tick();
 
         Assert.Equal(
             remainingBeforePause,
-            division.CurrentMovement!
+            division.Transit!
                 .RemainingHours
         );
 
@@ -837,7 +837,7 @@ public class MovementSystemTests
 
         Assert.Equal(
             remainingBeforePause - 1,
-            division.CurrentMovement!
+            division.Transit!
                 .RemainingHours
         );
     }
@@ -889,7 +889,7 @@ public class MovementSystemTests
         );
 
         int remaining =
-            division.CurrentMovement!
+            division.Transit!
                 .RemainingHours;
 
         simulation.Tick();
@@ -904,13 +904,334 @@ public class MovementSystemTests
 
         Assert.Equal(
             remaining,
-            division.CurrentMovement!
+            division.Transit!
                 .RemainingHours
         );
 
         Assert.Equal(
             1.2,
             division.Fuel
+        );
+    }
+
+
+    [Fact]
+    public void StartingMovementRemovesDivisionFromOriginProvince()
+    {
+        var a = new Province(1, "A");
+        var b = new Province(2, "B");
+
+        a.ConnectTo(b);
+
+        var road =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                2
+            );
+
+        var division =
+            new Division(
+                "1re Division",
+                a,
+                100,
+                100
+            );
+
+        var simulation =
+            new SimulationEngine();
+
+        simulation.AddDivision(division);
+        simulation.AddInfrastructureLink(road);
+
+        bool accepted =
+            simulation.TryMoveDivision(
+                division,
+                b
+            );
+
+        Assert.True(accepted);
+
+        Assert.Null(
+            division.CurrentProvince
+        );
+
+        Assert.NotNull(
+            division.Transit
+        );
+
+        Assert.Equal(
+            a,
+            division.Transit!.Origin
+        );
+
+        Assert.Equal(
+            b,
+            division.Transit.Destination
+        );
+
+        Assert.Equal(
+            0,
+            division.Transit.Progress
+        );
+    }
+
+
+    [Fact]
+    public void TransitProgressIncreasesEachTick()
+    {
+        var a = new Province(1, "A");
+        var b = new Province(2, "B");
+
+        a.ConnectTo(b);
+
+        var road =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                2
+            );
+
+        var division =
+            new Division(
+                "1re Division",
+                a,
+                100,
+                100
+            );
+
+        var simulation =
+            new SimulationEngine();
+
+        simulation.AddDivision(division);
+        simulation.AddInfrastructureLink(road);
+
+        simulation.TryMoveDivision(
+            division,
+            b
+        );
+
+        simulation.Tick();
+
+        Assert.Equal(
+            0.25,
+            division.Transit!.Progress
+        );
+
+        simulation.Tick();
+
+        Assert.Equal(
+            0.50,
+            division.Transit.Progress
+        );
+    }
+
+    [Fact]
+    public void CompletedTransitPlacesDivisionInDestination()
+    {
+        var a = new Province(1, "A");
+        var b = new Province(2, "B");
+
+        a.ConnectTo(b);
+
+        var road =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                2
+            );
+
+        var division =
+            new Division(
+                "1re Division",
+                a,
+                100,
+                100
+            );
+
+        var simulation =
+            new SimulationEngine();
+
+        simulation.AddDivision(division);
+        simulation.AddInfrastructureLink(road);
+
+        simulation.TryMoveDivision(
+            division,
+            b
+        );
+
+        simulation.Tick();
+        simulation.Tick();
+        simulation.Tick();
+        simulation.Tick();
+
+        Assert.False(
+            division.IsInTransit
+        );
+
+        Assert.Null(
+            division.Transit
+        );
+
+        Assert.Equal(
+            b,
+            division.CurrentProvince
+        );
+    }
+
+    [Fact]
+    public void DestinationCanBeQueuedWhileDivisionIsInTransit()
+    {
+        var a = new Province(1, "A");
+        var b = new Province(2, "B");
+        var c = new Province(3, "C");
+
+        a.ConnectTo(b);
+        b.ConnectTo(c);
+
+        var roadAB =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                2
+            );
+
+        var roadBC =
+            new InfrastructureLink(
+                b,
+                c,
+                InfrastructureType.Road,
+                2
+            );
+
+        var division =
+            new Division(
+                "1re Division",
+                a,
+                100,
+                100
+            );
+
+        var simulation =
+            new SimulationEngine();
+
+        simulation.AddDivision(division);
+
+        simulation.AddInfrastructureLink(
+            roadAB
+        );
+
+        simulation.AddInfrastructureLink(
+            roadBC
+        );
+
+        simulation.TryMoveDivision(
+            division,
+            b
+        );
+
+        simulation.Tick();
+
+        bool queued =
+            simulation.TryMoveDivision(
+                division,
+                c
+            );
+
+        Assert.True(queued);
+
+        Assert.Equal(
+            c,
+            division.PendingDestination
+        );
+    }
+
+    [Fact]
+    public void QueuedDestinationStartsAfterCurrentTransitCompletes()
+    {
+        var a = new Province(1, "A");
+        var b = new Province(2, "B");
+        var c = new Province(3, "C");
+
+        a.ConnectTo(b);
+        b.ConnectTo(c);
+
+        var roadAB =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                2
+            );
+
+        var roadBC =
+            new InfrastructureLink(
+                b,
+                c,
+                InfrastructureType.Road,
+                2
+            );
+
+        var division =
+            new Division(
+                "1re Division",
+                a,
+                100,
+                100
+            );
+
+        var simulation =
+            new SimulationEngine();
+
+        simulation.AddDivision(division);
+
+        simulation.AddInfrastructureLink(roadAB);
+        simulation.AddInfrastructureLink(roadBC);
+
+        simulation.TryMoveDivision(
+            division,
+            b
+        );
+
+        simulation.Tick();
+
+        simulation.TryMoveDivision(
+            division,
+            c
+        );
+
+        // Fin du trajet A -> B
+        simulation.Tick();
+        simulation.Tick();
+        simulation.Tick();
+
+        // Dès l'arrivée en B,
+        // le trajet B -> C a été créé.
+        Assert.True(
+            division.IsInTransit
+        );
+
+        Assert.Equal(
+            b,
+            division.Transit!.Origin
+        );
+
+        Assert.Equal(
+            c,
+            division.Transit.Destination
+        );
+
+        Assert.Equal(
+            0,
+            division.Transit.Progress
+        );
+
+        Assert.Null(
+            division.PendingDestination
         );
     }
 }

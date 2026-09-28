@@ -23,19 +23,20 @@ public sealed class SimulationEngine
     public bool TryMoveDivision(
         Division division,
         Province destination)
+   {
+    // Division déjà sur une liaison :
+    // l'ordre devient un ordre futur.
+    if (division.IsInTransit)
     {
-        MovementPlan plan =
-            MovementSystem.CreateMovementPlan(
-                division.Position,
-                destination,
-                SupplyNetwork.Links,
-                division.Type
-            );
-
-        return division.TryMoveTo(
-            destination,
-            plan
+        return division.QueueDestination(
+            destination
         );
+    }
+
+    return TryStartDivisionMovement(
+        division,
+        destination
+    );
     }
 
     public void AddDivision(Division division)
@@ -54,13 +55,14 @@ public sealed class SimulationEngine
         {
             division.AdvanceOneHour();
         }
-        
+
+        StartPendingMovements();
+
         SupplyNetwork.ProcessFuelSupply(
             _supplyDepots,
             _divisions
-        );
-    }
-
+    );
+}
     public void AddSupplyDepot(SupplyDepot depot)
     {
     if (!_supplyDepots.Contains(depot))
@@ -73,4 +75,57 @@ public sealed class SimulationEngine
     {
         SupplyNetwork.AddLink(link);
     }
+
+    //Helper 
+    private bool TryStartDivisionMovement(
+    Division division,
+    Province destination)
+    {
+        if (division.CurrentProvince == null)
+            return false;
+
+        MovementPlan plan =
+            MovementSystem.CreateMovementPlan(
+                division.CurrentProvince,
+                destination,
+                SupplyNetwork.Links,
+                division.Type
+            );
+
+        return division.TryStartMovement(
+            destination,
+            plan
+        );
+    }
+
+    private void StartPendingMovements()
+    {
+        foreach (var division in _divisions)
+        {
+            if (division.IsInTransit)
+                continue;
+
+            if (division.CurrentProvince == null)
+                continue;
+
+            if (division.PendingDestination == null)
+                continue;
+
+            Province destination =
+                division.PendingDestination;
+
+            bool started =
+                TryStartDivisionMovement(
+                    division,
+                    destination
+                );
+
+            if (started)
+            {
+                division.ClearPendingDestination();
+            }
+        }
+    }
+
+
 }

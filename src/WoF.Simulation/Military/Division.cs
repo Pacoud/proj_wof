@@ -6,21 +6,23 @@ public sealed class Division
 {
     public string Name { get; }
 
-    public Province Position { get; private set; }
-
     public double Fuel { get; private set; }
     
     public double FuelCapacity {get;}
 
     public double Ammunition { get; private set; }
 
-    public MovementOrder? CurrentMovement { get; private set; }
+    public Province? PendingDestination { get; private set; }
+
+    public Province? CurrentProvince { get; private set; }
+
+    public TransitState? Transit { get; private set; }
 
     public bool IsInTransit =>
-    CurrentMovement != null;
+        Transit != null;
 
 
-    public bool IsMoving => CurrentMovement != null && !CurrentMovement.IsPaused;
+    public bool IsMoving => Transit != null && !Transit.IsPaused;
 
     public DivisionType Type {get; }
 
@@ -37,54 +39,63 @@ public sealed class Division
         DivisionType type = DivisionType.Infantry)
     {
         Name = name;
-        Position = position;
+        CurrentProvince = position;
         Fuel = fuel;
         Ammunition = ammunition;
         FuelCapacity = fuelCapacity;
         Type = type;
     }
 
-    public bool TryMoveTo(
+    public bool TryStartMovement(
         Province destination,
         MovementPlan plan)
     {
         if (IsInTransit)
             return false;
+        
+        if(CurrentProvince == null)
+            return false;
+        
 
-        if (!Position.IsNeighbourOf(destination))
+        if (!CurrentProvince.IsNeighbourOf(destination))
             return false;
 
         if (plan.DurationHours <= 0)
             return false;
-        
+
         if (plan.FuelPerHour < 0)
             return false;
-        
+
         if (Fuel < plan.FuelPerHour)
             return false;
 
-        CurrentMovement = new MovementOrder(
+        Province origin = CurrentProvince;
+
+        Transit = new TransitState(
+            origin,
             destination,
             plan
         );
+        
+        CurrentProvince = null;
 
         return true;
     }
 
     public void AdvanceOneHour()
     {
-        if (CurrentMovement == null)
+        if (Transit == null)
             return;
 
-        if (CurrentMovement.IsPaused)
+        if (Transit.IsPaused)
             return;
-        
-        double fuelNeeded = 
-            CurrentMovement.FuelPerHour;
-        
+
+        double fuelNeeded =
+            Transit.FuelPerHour;
+
         if (Fuel < fuelNeeded)
         {
-            CurrentMovement.Pause();
+            Transit.Pause();
             return;
         }
 
@@ -93,12 +104,14 @@ public sealed class Division
             2
         );
 
-        CurrentMovement.AdvanceOneHour();
+        Transit.AdvanceOneHour();
 
-        if (CurrentMovement.IsCompleted)
+        if (Transit.IsCompleted)
         {
-            Position = CurrentMovement.Destination;
-            CurrentMovement = null;
+            CurrentProvince =
+                Transit.Destination;
+
+            Transit = null;
         }
     }
 
@@ -121,31 +134,55 @@ public sealed class Division
 
     public bool StopMovement()
     {
-    if (CurrentMovement == null)
-        return false;
+        if (Transit == null)
+            return false;
 
-    if (CurrentMovement.IsPaused)
-        return false;
+        if (Transit.IsPaused)
+            return false;
 
-    CurrentMovement.Pause();
+        Transit.Pause();
 
-    return true;
+        return true;
     }
 
     public bool ResumeMovement()
     {
-    if (CurrentMovement == null)
-        return false;
+        if (Transit == null)
+            return false;
 
-    if (!CurrentMovement.IsPaused)
-        return false;
+        if (!Transit.IsPaused)
+            return false;
 
-    if (Fuel < CurrentMovement.FuelPerHour)
-        return false;
+        if (Fuel < Transit.FuelPerHour)
+            return false;
 
-    CurrentMovement.Resume();
+        Transit.Resume();
 
-    return true;
+        return true;
+    }
+
+
+    public bool QueueDestination(  // Ordre en attente si donné en cours de déplacement
+    Province destination)
+    {
+        if (Transit == null)
+            return false;
+
+        if (!Transit.Destination
+                .IsNeighbourOf(destination))
+        {
+            return false;
+        }
+
+        PendingDestination = destination;
+
+        return true;
+    }
+
+    // Possibilité d'annuler la destination en attente/queue
+    public void ClearPendingDestination() 
+    {
+        PendingDestination = null;
     }
 
 

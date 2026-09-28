@@ -2,30 +2,42 @@ using WoF.Simulation.World;
 
 namespace WoF.Simulation.Military;
 
-public sealed class MovementOrder
+public sealed class TransitState
 {
+    public Province Origin { get; }
+
     public Province Destination { get; }
 
     public int TotalHours { get; }
 
     public int RemainingHours { get; private set; }
 
-    public double FuelPerHour {get; }
+    public int ElapsedHours =>
+        TotalHours - RemainingHours;
 
-    public bool IsPaused {get; private set; }
+    public double Progress =>
+        TotalHours == 0
+            ? 1.0
+            : (double)ElapsedHours / TotalHours;
 
-    public int ElapsedHours => TotalHours - RemainingHours;
+    public double FuelPerHour { get; }
 
-    public bool IsCompleted => RemainingHours == 0;
+    public bool IsPaused { get; private set; }
 
+    public bool IsCompleted =>
+        RemainingHours == 0;
 
-    public MovementOrder(
+    public TransitState(
+        Province origin,
         Province destination,
         MovementPlan plan)
     {
+        Origin = origin;
         Destination = destination;
+
         TotalHours = plan.DurationHours;
         RemainingHours = plan.DurationHours;
+
         FuelPerHour = plan.FuelPerHour;
     }
 
@@ -49,5 +61,4 @@ public sealed class MovementOrder
     {
         IsPaused = false;
     }
-
 }
