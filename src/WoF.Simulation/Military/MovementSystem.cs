@@ -37,7 +37,7 @@ public static class MovementSystem
         }
         else
         {
-            infrastructureDuration = BestRoad.level switch
+            infrastructureDuration = bestRoad.Level switch
             {
                 1 => 5,
                 2 => 4,
