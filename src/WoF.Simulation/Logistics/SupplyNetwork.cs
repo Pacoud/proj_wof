@@ -1,19 +1,20 @@
 using WoF.Simulation.Military;
 using WoF.Simulation.World;
+using WoF.Simulation.World.Infrastructure;
 
 namespace WoF.Simulation.Logistics;
 
 public sealed class SupplyNetwork
 {
-    private readonly List<SupplyRoute> _routes = new();
+    private readonly List<InfrastructureLink> _links = new();
 
-    public IReadOnlyList<SupplyRoute> Routes => _routes;
+    public IReadOnlyList<InfrastructureLink> Links => _links;
 
-    public void AddRoute(SupplyRoute route)
+    public void AddLink(InfrastructureLink link)
     {
-        if (!_routes.Contains(route))
+        if (!_links.Contains(link))
         {
-            _routes.Add(route);
+            _links.Add(link);
         }
     }
 
@@ -21,11 +22,11 @@ public sealed class SupplyNetwork
     IEnumerable<SupplyDepot> depots,
     IEnumerable<Division> divisions)
     {
-        // Capacité encore disponible sur chaque route pour ce tick.
-        var remainingRouteCapacity =
-            _routes.ToDictionary(
-                route => route,
-                route => route.FuelCapacityPerHour
+        // Capacité encore disponible sur chaque liaison pour ce tick.
+        var remainingLinkCapacity =
+            _links.ToDictionary(
+                link => link,
+                link => link.TransportCapacityPerHour
             );
 
         foreach (var depot in depots)
@@ -48,7 +49,7 @@ public sealed class SupplyNetwork
                 SupplyPath? path = FindWidestPath(
                     depot.Position,
                     division.Position,
-                    remainingRouteCapacity
+                    remainingLinkCapacity
                 );
 
                 if (path == null)
@@ -58,7 +59,7 @@ public sealed class SupplyNetwork
 
                 // Même province :
                 // aucune route n'est utilisée.
-                if (path.Routes.Count == 0)
+                if (path.Links.Count == 0)
                 {
                     pathCapacity =
                         double.PositiveInfinity;
@@ -68,9 +69,9 @@ public sealed class SupplyNetwork
                     // Le débit possible est celui du maillon
                     // ayant le moins de capacité restante.
                     pathCapacity =
-                        path.Routes.Min(
-                            route =>
-                                remainingRouteCapacity[route]
+                        path.Links.Min(
+                            link =>
+                                remainingLinkCapacity[link]
                         );
                 }
 
@@ -103,10 +104,10 @@ public sealed class SupplyNetwork
 
                 remainingDepotCapacity -= received;
 
-                // Toute route traversée perd cette capacité.
-                foreach (var route in path.Routes)
+                // Toute liaison traversée perd cette capacité.
+                foreach (var link in path.Links)
                 {
-                    remainingRouteCapacity[route]
+                    remainingLinkCapacity[link]
                         -= received;
                 }
             }
@@ -121,7 +122,7 @@ public sealed class SupplyNetwork
         if (ReferenceEquals(start, destination))
         {
             return new SupplyPath(
-                Array.Empty<SupplyRoute>()
+                Array.Empty<InfrastructureLink>()
             );
         }
 
@@ -129,24 +130,24 @@ public sealed class SupplyNetwork
 
         var queue = new Queue<(
             Province Province,
-            List<SupplyRoute> Path
+            List<InfrastructureLink> Path
         )>();
 
         visited.Add(start);
 
         queue.Enqueue((
             start,
-            new List<SupplyRoute>()
+            new List<InfrastructureLink>()
         ));
 
         while (queue.Count > 0)
         {
             var current = queue.Dequeue();
 
-            foreach (var route in _routes)
+            foreach (var link in _links)
             {
                 var nextProvince =
-                    route.GetOtherProvince(
+                    link.GetOtherProvince(
                         current.Province
                     );
 
@@ -157,11 +158,11 @@ public sealed class SupplyNetwork
                     continue;
 
                 var newPath =
-                    new List<SupplyRoute>(
+                    new List<InfrastructureLink>(
                         current.Path
                     )
                     {
-                        route
+                        link
                     };
 
                 if (ReferenceEquals(
@@ -187,9 +188,9 @@ public sealed class SupplyNetwork
     Province start,
     Province destination)
     {
-        var capacities = _routes.ToDictionary(
-            route => route,
-            route => route.FuelCapacityPerHour
+        var capacities = _links.ToDictionary(
+            link => link,
+            link => link.TransportCapacityPerHour
         );
 
         return FindWidestPath(
@@ -203,12 +204,12 @@ public sealed class SupplyNetwork
     private SupplyPath? FindWidestPath(
     Province start,
     Province destination,
-    IReadOnlyDictionary<SupplyRoute, double> capacities)
+    IReadOnlyDictionary<InfrastructureLink, double> capacities)
     {
         if (ReferenceEquals(start, destination))
         {
             return new SupplyPath(
-                Array.Empty<SupplyRoute>()
+                Array.Empty<InfrastructureLink>()
             );
         }
 
@@ -218,7 +219,7 @@ public sealed class SupplyNetwork
         var previous =
             new Dictionary<
                 Province,
-                (Province Previous, SupplyRoute Route)
+                (Province Previous, InfrastructureLink Link)
             >();
 
         var queue =
@@ -249,10 +250,10 @@ public sealed class SupplyNetwork
                 break;
             }
 
-            foreach (var route in _routes)
+            foreach (var link in _links)
             {
                 var next =
-                    route.GetOtherProvince(current);
+                    link.GetOtherProvince(current);
 
                 if (next == null)
                     continue;
@@ -260,13 +261,13 @@ public sealed class SupplyNetwork
                 if (visited.Contains(next))
                     continue;
 
-                double routeCapacity =
-                    capacities[route];
+                double linkCapacity =
+                    capacities[link];
 
                 double candidateCapacity =
                     Math.Min(
                         bestCapacity[current],
-                        routeCapacity
+                        linkCapacity
                     );
 
                 if (!bestCapacity.TryGetValue(
@@ -279,7 +280,7 @@ public sealed class SupplyNetwork
                         candidateCapacity;
 
                     previous[next] =
-                        (current, route);
+                        (current, link);
 
                     // PriorityQueue est un min-heap :
                     // valeur négative = grande capacité prioritaire.
@@ -295,7 +296,7 @@ public sealed class SupplyNetwork
             return null;
 
         var path =
-            new List<SupplyRoute>();
+            new List<InfrastructureLink>();
 
         var currentProvince = destination;
 
@@ -306,7 +307,7 @@ public sealed class SupplyNetwork
             var step =
                 previous[currentProvince];
 
-            path.Add(step.Route);
+            path.Add(step.Link);
 
             currentProvince =
                 step.Previous;

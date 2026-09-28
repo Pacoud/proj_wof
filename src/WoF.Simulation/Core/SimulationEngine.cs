@@ -1,6 +1,8 @@
 using WoF.Simulation.Military;
 using WoF.Simulation.Time;
 using WoF.Simulation.Logistics;
+using WoF.Simulation.World;
+using WoF.Simulation.World.Infrastructure;
 
 namespace WoF.Simulation.Core;
 
@@ -17,6 +19,23 @@ public sealed class SimulationEngine
     public IReadOnlyList<SupplyDepot> SupplyDepots => _supplyDepots;
 
     public IReadOnlyList<Division> Divisions => _divisions;
+
+    public bool TryMoveDivision(
+        Division division,
+        Province destination)
+    {
+        int duration =
+            MovementSystem.CalculateMovementDuration(
+                division.Position,
+                destination,
+                SupplyNetwork.Links
+            );
+
+        return division.TryMoveTo(
+            destination,
+            duration
+        );
+    }
 
     public void AddDivision(Division division)
     {
@@ -49,8 +68,8 @@ public sealed class SimulationEngine
     }
     }
 
-    public void AddSupplyRoute(SupplyRoute route)
+    public void AddInfrastructureLink(InfrastructureLink link)
     {
-        SupplyNetwork.AddRoute(route);
+        SupplyNetwork.AddLink(link);
     }
 }

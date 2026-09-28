@@ -1,4 +1,4 @@
-namespace WoF.Simulation.Logistics;
+namespace WoF.Simulation.World.Infrastructure;
 
 public enum InfrastructureType
 {

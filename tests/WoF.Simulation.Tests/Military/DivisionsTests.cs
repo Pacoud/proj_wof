@@ -20,7 +20,7 @@ public class DivisionTests
             ammunition: 100
         );
 
-        bool success = division.TryMoveTo(provinceB);
+        bool success = division.TryMoveTo(provinceB, durationHours: 3);
 
         Assert.True(success);
         Assert.Equal(provinceA, division.Position);
@@ -43,7 +43,7 @@ public class DivisionTests
             ammunition: 100
         );
 
-        bool success = division.TryMoveTo(provinceC);
+        bool success = division.TryMoveTo(provinceC, durationHours: 3);
 
         Assert.False(success);
         Assert.Equal(provinceA, division.Position);
@@ -66,7 +66,7 @@ public class DivisionTests
             ammunition: 100
         );
 
-        bool success = division.TryMoveTo(provinceB);
+        bool success = division.TryMoveTo(provinceB, durationHours: 3);
 
         Assert.False(success);
         Assert.Equal(provinceA, division.Position);

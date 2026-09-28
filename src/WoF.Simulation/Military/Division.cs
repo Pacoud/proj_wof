@@ -5,7 +5,6 @@ namespace WoF.Simulation.Military;
 public sealed class Division
 {
     private const double MovementFuelCost = 8;
-    private const int MovementDurationHours = 3;
 
     public string Name { get; }
 
@@ -38,7 +37,9 @@ public sealed class Division
         FuelCapacity = fuelCapacity;
     }
 
-    public bool TryMoveTo(Province destination)
+    public bool TryMoveTo(
+        Province destination,
+        int durationHours)
     {
         if (IsMoving)
             return false;
@@ -48,12 +49,15 @@ public sealed class Division
 
         if (Fuel < MovementFuelCost)
             return false;
+        
+        if (durationHours <= 0)
+            return false;
 
         Fuel -= MovementFuelCost;
 
         CurrentMovement = new MovementOrder(
             destination,
-            MovementDurationHours
+            durationHours
         );
 
         return true;

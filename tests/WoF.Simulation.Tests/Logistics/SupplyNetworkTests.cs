@@ -1,6 +1,7 @@
 using WoF.Simulation.Logistics;
 using WoF.Simulation.Military;
 using WoF.Simulation.World;
+using WoF.Simulation.World.Infrastructure;
 
 namespace WoF.Simulation.Tests.Logistics;
 
@@ -28,7 +29,7 @@ public class SupplyNetworkTests
             ammunition: 100
         );
 
-        var route = new SupplyRoute(
+        var route = new InfrastructureLink(
             provinceA,
             provinceB,
             InfrastructureType.Road,
@@ -37,7 +38,7 @@ public class SupplyNetworkTests
 
         var network = new SupplyNetwork();
 
-        network.AddRoute(route);
+        network.AddLink(route);
 
         network.ProcessFuelSupply(
             new[] { depot },
@@ -110,7 +111,7 @@ public class SupplyNetworkTests
             ammunition: 100
         );
 
-        var route = new SupplyRoute(
+        var route = new InfrastructureLink(
             provinceA,
             provinceB,
             InfrastructureType.Road,
@@ -119,7 +120,7 @@ public class SupplyNetworkTests
 
         var network = new SupplyNetwork();
 
-        network.AddRoute(route);
+        network.AddLink(route);
 
         network.ProcessFuelSupply(
             new[] { depot },
@@ -146,14 +147,14 @@ public class SupplyNetworkTests
         provinceA.ConnectTo(provinceB);
         provinceB.ConnectTo(provinceC);
 
-        var routeAB = new SupplyRoute(
+        var routeAB = new InfrastructureLink(
             provinceA,
             provinceB,
             InfrastructureType.Road,
             level: 2
         );
 
-        var routeBC = new SupplyRoute(
+        var routeBC = new InfrastructureLink(
             provinceB,
             provinceC,
             InfrastructureType.Road,
@@ -162,8 +163,8 @@ public class SupplyNetworkTests
 
         var network = new SupplyNetwork();
 
-        network.AddRoute(routeAB);
-        network.AddRoute(routeBC);
+        network.AddLink(routeAB);
+        network.AddLink(routeBC);
 
         var path = network.FindPath(
             provinceA,
@@ -172,7 +173,7 @@ public class SupplyNetworkTests
 
         Assert.NotNull(path);
 
-        Assert.Equal(2, path!.Routes.Count);
+        Assert.Equal(2, path!.Links.Count);
 
         Assert.Equal(10, path.Capacity);
     }
@@ -186,7 +187,7 @@ public class SupplyNetworkTests
 
         provinceA.ConnectTo(provinceB);
 
-        var routeAB = new SupplyRoute(
+        var routeAB = new InfrastructureLink(
             provinceA,
             provinceB,
             InfrastructureType.Road,
@@ -195,7 +196,7 @@ public class SupplyNetworkTests
 
         var network = new SupplyNetwork();
 
-        network.AddRoute(routeAB);
+        network.AddLink(routeAB);
 
         var path = network.FindPath(
             provinceA,
@@ -215,14 +216,14 @@ public class SupplyNetworkTests
         provinceA.ConnectTo(provinceB);
         provinceB.ConnectTo(provinceC);
 
-        var routeAB = new SupplyRoute(
+        var routeAB = new InfrastructureLink(
             provinceA,
             provinceB,
             InfrastructureType.Road,
             level: 2
         );
 
-        var routeBC = new SupplyRoute(
+        var routeBC = new InfrastructureLink(
             provinceB,
             provinceC,
             InfrastructureType.Road,
@@ -245,8 +246,8 @@ public class SupplyNetworkTests
 
         var network = new SupplyNetwork();
 
-        network.AddRoute(routeAB);
-        network.AddRoute(routeBC);
+        network.AddLink(routeAB);
+        network.AddLink(routeBC);
 
         network.ProcessFuelSupply(
             new[] { depot },
@@ -267,14 +268,14 @@ public class SupplyNetworkTests
         provinceA.ConnectTo(provinceB);
         provinceB.ConnectTo(provinceC);
 
-        var routeAB = new SupplyRoute(
+        var routeAB = new InfrastructureLink(
             provinceA,
             provinceB,
             InfrastructureType.Road,
             level: 2
         );
 
-        var routeBC = new SupplyRoute(
+        var routeBC = new InfrastructureLink(
             provinceB,
             provinceC,
             InfrastructureType.Road,
@@ -304,8 +305,8 @@ public class SupplyNetworkTests
 
         var network = new SupplyNetwork();
 
-        network.AddRoute(routeAB);
-        network.AddRoute(routeBC);
+        network.AddLink(routeAB);
+        network.AddLink(routeBC);
 
         network.ProcessFuelSupply(
             new[] { depot },
@@ -340,7 +341,7 @@ public class SupplyNetworkTests
         provinceC.ConnectTo(provinceD);
 
         var routeAB =
-            new SupplyRoute(
+            new InfrastructureLink(
                 provinceA,
                 provinceB,
                 InfrastructureType.Road,
@@ -348,7 +349,7 @@ public class SupplyNetworkTests
             );
 
         var routeBD =
-            new SupplyRoute(
+            new InfrastructureLink(
                 provinceB,
                 provinceD,
                 InfrastructureType.Road,
@@ -356,7 +357,7 @@ public class SupplyNetworkTests
             );
 
         var routeAC =
-            new SupplyRoute(
+            new InfrastructureLink(
                 provinceA,
                 provinceC,
                 InfrastructureType.Road,
@@ -364,7 +365,7 @@ public class SupplyNetworkTests
             );
 
         var routeCD =
-            new SupplyRoute(
+            new InfrastructureLink(
                 provinceC,
                 provinceD,
                 InfrastructureType.Road,
@@ -374,10 +375,10 @@ public class SupplyNetworkTests
         var network =
             new SupplyNetwork();
 
-        network.AddRoute(routeAB);
-        network.AddRoute(routeBD);
-        network.AddRoute(routeAC);
-        network.AddRoute(routeCD);
+        network.AddLink(routeAB);
+        network.AddLink(routeBD);
+        network.AddLink(routeAC);
+        network.AddLink(routeCD);
 
         var path =
             network.FindWidestPath(
@@ -392,12 +393,12 @@ public class SupplyNetworkTests
             path!.Capacity
         );
 
-        Assert.Contains(routeAC, path.Routes);
-        Assert.Contains(routeCD, path.Routes);
+        Assert.Contains(routeAC, path.Links);
+        Assert.Contains(routeCD, path.Links);
 
         Assert.DoesNotContain(
             routeAB,
-            path.Routes
+            path.Links
         );
     }
 
@@ -415,26 +416,26 @@ public class SupplyNetworkTests
         a.ConnectTo(c);
         c.ConnectTo(d);
 
-        var ab = new SupplyRoute(
+        var ab = new InfrastructureLink(
             a,
             b,
             InfrastructureType.Road,
             level: 2
         );
-        var bd = new SupplyRoute(
+        var bd = new InfrastructureLink(
             b,
             d,
             InfrastructureType.Road,
             level: 2
         );
 
-        var ac = new SupplyRoute(
+        var ac = new InfrastructureLink(
             a,
             c,
             InfrastructureType.Road,
             level: 1
         );
-        var cd = new SupplyRoute(
+        var cd = new InfrastructureLink(
             c,
             d,
             InfrastructureType.Road,
@@ -467,10 +468,10 @@ public class SupplyNetworkTests
 
         var network = new SupplyNetwork();
 
-        network.AddRoute(ab);
-        network.AddRoute(bd);
-        network.AddRoute(ac);
-        network.AddRoute(cd);
+        network.AddLink(ab);
+        network.AddLink(bd);
+        network.AddLink(ac);
+        network.AddLink(cd);
 
         network.ProcessFuelSupply(
             new[] { depot },
@@ -499,14 +500,14 @@ public class SupplyNetworkTests
 
         a.ConnectTo(b);
 
-        var road = new SupplyRoute(
+        var road = new InfrastructureLink(
             a,
             b,
             InfrastructureType.Road,
             level: 2
         );
 
-        var railway = new SupplyRoute(
+        var railway = new InfrastructureLink(
             a,
             b,
             InfrastructureType.Railway,
@@ -514,8 +515,8 @@ public class SupplyNetworkTests
         );
 
         Assert.True(
-            railway.FuelCapacityPerHour >
-            road.FuelCapacityPerHour
+            railway.TransportCapacityPerHour >
+            road.TransportCapacityPerHour
         );
     }
 
@@ -527,14 +528,14 @@ public class SupplyNetworkTests
 
         a.ConnectTo(b);
 
-        var roadLevel1 = new SupplyRoute(
+        var roadLevel1 = new InfrastructureLink(
             a,
             b,
             InfrastructureType.Road,
             1
         );
 
-        var roadLevel3 = new SupplyRoute(
+        var roadLevel3 = new InfrastructureLink(
             a,
             b,
             InfrastructureType.Road,
@@ -542,8 +543,8 @@ public class SupplyNetworkTests
         );
 
         Assert.True(
-            roadLevel3.FuelCapacityPerHour >
-            roadLevel1.FuelCapacityPerHour
+            roadLevel3.TransportCapacityPerHour >
+            roadLevel1.TransportCapacityPerHour
         );
     }
 

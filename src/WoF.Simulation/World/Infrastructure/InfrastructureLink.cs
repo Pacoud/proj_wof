@@ -1,8 +1,8 @@
 using WoF.Simulation.World;
 
-namespace WoF.Simulation.Logistics;
+namespace WoF.Simulation.World.Infrastructure;
 
-public sealed class SupplyRoute
+public sealed class InfrastructureLink
 {
     public Province ProvinceA { get; }
 
@@ -12,9 +12,9 @@ public sealed class SupplyRoute
 
     public int Level {get;}
 
-    public double FuelCapacityPerHour =>  CalculateCapacity();
+    public double TransportCapacityPerHour =>  CalculateTransportCapacity();
 
-    public SupplyRoute(
+    public InfrastructureLink(
         Province provinceA,
         Province provinceB,
         InfrastructureType type,
@@ -23,7 +23,15 @@ public sealed class SupplyRoute
         if (!provinceA.IsNeighbourOf(provinceB))
         {
             throw new ArgumentException(
-                "A supply route can only connect neighbouring provinces."
+                "Infrastructure can only connect neighbouring provinces."
+            );
+        }
+
+        if(level  < 1 || level > 3)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(level),
+                "Infrastructure level must be between 1 and 3"
             );
         }
 
@@ -33,7 +41,7 @@ public sealed class SupplyRoute
         Level = level;
     }
 
-    private double CalculateCapacity()
+    private double CalculateTransportCapacity()
     {
         return Type switch 
         {
@@ -45,6 +53,19 @@ public sealed class SupplyRoute
 
             _=> 0
         };
+    }
+
+    public bool Connects(
+        Province first,
+        Province second
+    )
+    {
+        return
+        (ReferenceEquals(ProvinceA, first)
+        && ReferenceEquals(ProvinceB, second))
+        ||
+        (ReferenceEquals(ProvinceA, second)
+        && ReferenceEquals(ProvinceB, first));
     }
 
     public Province? GetOtherProvince(Province province)

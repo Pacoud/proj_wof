@@ -1,22 +1,22 @@
-using WoF.Simulation.World;
+using WoF.Simulation.World.Infrastructure;
 
 namespace WoF.Simulation.Logistics;
 
 public sealed class SupplyPath
 {
-    public IReadOnlyList<SupplyRoute> Routes { get; }
+    public IReadOnlyList<InfrastructureLink> Links { get; }
 
     public double Capacity { get; }
 
     public SupplyPath(
-        IReadOnlyList<SupplyRoute> routes)
+        IReadOnlyList<InfrastructureLink> links)
     {
-        Routes = routes;
+        Links = links;
 
-        Capacity = routes.Count == 0
+        Capacity = links.Count == 0
             ? double.PositiveInfinity
-            : routes.Min(
-                route => route.FuelCapacityPerHour
+            : links.Min(
+                link => link.TransportCapacityPerHour
             );
     }
 }

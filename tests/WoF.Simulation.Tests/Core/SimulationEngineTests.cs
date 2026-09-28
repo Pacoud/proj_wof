@@ -2,6 +2,7 @@ using WoF.Simulation.Core;
 using WoF.Simulation.World;
 using WoF.Simulation.Military;
 using WoF.Simulation.Logistics;
+using WoF.Simulation.World.Infrastructure;
 
 namespace WoF.Simulation.Tests.Core;
 
@@ -37,7 +38,7 @@ public class SimulationEngineTests
 
         simulation.AddDivision(division);
 
-        division.TryMoveTo(ProvinceB);
+        division.TryMoveTo(ProvinceB, durationHours: 3);
 
         simulation.Tick();
 
@@ -65,7 +66,7 @@ public class SimulationEngineTests
 
     simulation.AddDivision(division);
 
-    division.TryMoveTo(provinceB);
+    division.TryMoveTo(provinceB, durationHours: 3);
 
     simulation.Tick();
     simulation.Tick();
@@ -133,7 +134,7 @@ public class SimulationEngineTests
             ammunition: 100
         );
 
-        var route = new SupplyRoute(
+        var route = new InfrastructureLink(
             provinceA,
             provinceB,
             InfrastructureType.Road,
@@ -144,7 +145,7 @@ public class SimulationEngineTests
 
         simulation.AddDivision(division);
         simulation.AddSupplyDepot(depot);
-        simulation.AddSupplyRoute(route);
+        simulation.AddInfrastructureLink(route);
 
         simulation.Tick();
 
@@ -154,7 +155,53 @@ public class SimulationEngineTests
         Assert.Equal(480, depot.FuelStock);
     }
 
+    [Fact]
+    public void RoadLevelDeterminesDivisionMovementDuration()
+    {
+        var provinceA = new Province(1, "A");
+        var provinceB = new Province(2, "B");
 
+        provinceA.ConnectTo(provinceB);
+
+        var road = new InfrastructureLink(
+            provinceA,
+            provinceB,
+            InfrastructureType.Road,
+            level: 2
+        );
+
+        var division = new Division(
+            "1re Division",
+            provinceA,
+            fuel: 100,
+            ammunition: 100
+        );
+
+        var simulation = new SimulationEngine();
+
+        simulation.AddDivision(division);
+        simulation.AddInfrastructureLink(road);
+
+        bool accepted = simulation.TryMoveDivision(
+            division,
+            provinceB
+        );
+
+        Assert.True(accepted);
+        Assert.True(division.IsMoving);
+        Assert.Equal(4, division.CurrentMovement!.TotalHours);
+
+        simulation.Tick();
+        simulation.Tick();
+        simulation.Tick();
+
+        Assert.Equal(provinceA, division.Position);
+
+        simulation.Tick();
+
+        Assert.Equal(provinceB, division.Position);
+        Assert.False(division.IsMoving);
+    }
 
 }
 
