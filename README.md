@@ -12,3 +12,11 @@ pathfinding (arbres de graphes), le ravitaillement traverse plusieurs provinces
 - Partage de la capacité d’un même chemin entre plusieurs divisions.
 - Gestion du cas où aucun chemin logistique n’existe.
 
+
+# COMMIT # 47da8f214851e333d5e22797109ae7498c3f69b0 
+-recherche du chemin offrant la meilleure capacité logistique ;
+-prise en compte du maillon le plus faible de chaque trajet ;
+-utilisation des capacités restantes pendant le tick, et non uniquement des capacités nominales ;
+-possibilité d’utiliser automatiquement un chemin alternatif lorsqu’une branche du réseau est saturée ;
+-partage des capacités du réseau entre plusieurs divisions ;
+-ajout de tests validant le choix du meilleur trajet et l’utilisation d’itinéraires alternatifs.
