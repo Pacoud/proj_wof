@@ -10,6 +10,8 @@ public sealed class Division
     
     public double FuelCapacity {get;}
 
+    public Country? Country { get; }
+
     public double Ammunition { get; private set; }
 
     public Province? CurrentProvince { get; private set; }
@@ -43,7 +45,8 @@ public sealed class Division
         double fuel,
         double ammunition,
         double fuelCapacity = 100,
-        DivisionType type = DivisionType.Infantry)
+        DivisionType type = DivisionType.Infantry,
+        Country? country = null)
     {
         Name = name;
         CurrentProvince = position;
@@ -51,6 +54,7 @@ public sealed class Division
         Ammunition = ammunition;
         FuelCapacity = fuelCapacity;
         Type = type;
+        Country = country;
     }
 
     public bool TryStartMovement(

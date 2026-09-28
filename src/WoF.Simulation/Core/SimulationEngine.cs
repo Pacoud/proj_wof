@@ -34,19 +34,33 @@ public sealed class SimulationEngine
 
         foreach (var division in _divisions)
         {
+            bool wasInTransit =
+                division.IsInTransit;
+
             division.AdvanceOneHour();
+
+            bool hasArrived =
+                wasInTransit
+                && !division.IsInTransit
+                && division.CurrentProvince != null;
+
+            if (hasArrived)
+            {
+                ResolveProvinceControl(
+                    division
+                );
+            }
         }
 
-    // Une division venant d'arriver dans une province
-    // peut être ravitaillée.
-    SupplyNetwork.ProcessFuelSupply(
-        _supplyDepots,
-        _divisions
-    );
+        // Une division venant d'arriver dans une province
+        // peut être ravitaillée.
+        SupplyNetwork.ProcessFuelSupply(
+            _supplyDepots,
+            _divisions
+        );
 
-    // Puis elle peut commencer son segment suivant.
-    StartQueuedMovements();
-    
+        // Puis elle peut commencer son segment suivant.
+        StartQueuedMovements();
     }
 
     private void StartQueuedMovements()
@@ -74,6 +88,18 @@ public sealed class SimulationEngine
     public void AddInfrastructureLink(InfrastructureLink link)
     {
         SupplyNetwork.AddLink(link);
+    }
+
+    public bool StopDivisionMovement(
+        Division division)
+    {
+        return division.StopMovement();
+    }
+
+    public bool ResumeDivisionMovement(
+        Division division)
+    {
+        return division.ResumeMovement();
     }
 
     public bool TryOrderMoveTo(
@@ -197,6 +223,28 @@ public sealed class SimulationEngine
         }
 
         return true;
+    }
+
+    private void ResolveProvinceControl(
+    Division division)
+    {
+        if (division.CurrentProvince == null)
+            return;
+
+        if (division.Country == null)
+            return;
+
+        Province province =
+            division.CurrentProvince;
+
+        if (!ReferenceEquals(
+                province.Controller,
+                division.Country))
+        {
+            province.ChangeController(
+                division.Country
+            );
+        }
     }
 
 

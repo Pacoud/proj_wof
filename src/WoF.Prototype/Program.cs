@@ -3,6 +3,7 @@ using WoF.Simulation.Logistics;
 using WoF.Simulation.Military;
 using WoF.Simulation.World;
 
+
 var provinceA = new Province(1, "Province A");
 
 var division = new Division(
@@ -27,6 +28,21 @@ var depot = new SupplyDepot(
     fuelTransferPerHour: 20
 );
 
+
+var france =
+    new Country(1, "France");
+
+var germany =
+    new Country(2, "Germany");
+
+var province =
+    new Province(
+        id: 1,
+        name: "Province A",
+        terrain: TerrainType.Plains,
+        owner: france
+    );
+
 var simulation = new SimulationEngine();
 
 simulation.AddDivision(division);
@@ -43,14 +59,3 @@ for (int i = 0; i < 5; i++)
     simulation.Tick();
 }
 
-public bool StopDivisionMovement(
-    Division division)
-{
-    return division.StopMovement();
-}
-
-public bool ResumeDivisionMovement(
-    Division division)
-{
-    return division.ResumeMovement();
-}

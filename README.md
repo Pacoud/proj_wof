@@ -484,4 +484,159 @@ Aucun système de combat n'est encore implémenté.
 - vérification de l'enregistrement d'une destination future ;
 - vérification de l'enchaînement automatique de deux déplacements successifs.
 
+# COMMIT #
+
+## Itération — Pathfinding militaire et itinéraires explicites
+
+Le système de mouvement permet désormais de donner des ordres vers des provinces non directement adjacentes.
+
+Le moteur construit automatiquement une succession de déplacements entre provinces voisines.
+
+### Pathfinding automatique
+
+Un `MilitaryPathfinder` a été ajouté afin de rechercher l'itinéraire le plus rapide entre deux provinces.
+
+L'algorithme utilisé est actuellement Dijkstra.
+
+Contrairement à une recherche basée uniquement sur le nombre de provinces traversées, le coût de chaque liaison correspond au temps réel de déplacement calculé par le `MovementSystem`.
+
+Le pathfinding prend donc indirectement en compte :
+
+- le type de division ;
+- le terrain ;
+- la qualité des infrastructures routières.
+
+Un trajet contenant davantage de provinces peut être sélectionné s'il est plus rapide qu'un itinéraire plus direct traversant un terrain difficile.
+
+### Exemple
+
+Deux itinéraires sont disponibles :
+
+A -> B -> D
+15 heures
+
+A -> C -> E -> D
+9 heures
+
+Le moteur sélectionne automatiquement :
+
+A -> C -> E -> D
+
+même si ce trajet traverse davantage de provinces.
+
+### MovementRoute
+
+Une division peut désormais conserver une file de provinces à traverser.
+
+Exemple :
+
+A -> B -> C -> D
+
+Pendant le transit A -> B, les destinations restantes sont :
+
+C -> D
+
+À l'arrivée en B, le moteur peut automatiquement commencer le segment suivant.
+
+### Ordres reçus pendant un transit
+
+Lorsqu'une division reçoit une nouvelle destination pendant qu'elle se trouve sur une liaison, son trajet actuel n'est pas interrompu.
+
+Le calcul du nouvel itinéraire commence depuis la province qu'elle est actuellement en train de rejoindre.
+
+Une division située à 40 % de A -> B doit donc atteindre B avant de pouvoir emprunter une nouvelle branche du réseau.
+
+### Itinéraires explicites
+
+Le moteur accepte également un itinéraire entièrement défini par le joueur.
+
+Exemple :
+
+A -> C -> F -> G -> D
+
+Dans ce mode, aucun pathfinding automatique n'est effectué : le moteur respecte la succession de provinces fournie.
+
+Chaque paire de provinces successives doit être adjacente.
+
+Cette fonctionnalité est conçue pour permettre ultérieurement à l'interface graphique de laisser le joueur tracer manuellement le trajet d'une division sur la carte.
+
+
+# COMMIT #
+## Itération — Appartenance et contrôle territorial des provinces
+
+Les provinces disposent désormais d'une identité territoriale distinguant leur propriétaire de la puissance qui les contrôle militairement.
+
+### Country
+
+Une première entité `Country` a été introduite.
+
+Elle contient actuellement uniquement :
+
+- un identifiant ;
+- un nom.
+
+Les systèmes politiques, économiques et diplomatiques seront ajoutés ultérieurement.
+
+### Propriétaire d'une province
+
+Chaque province peut posséder un `Owner`.
+
+Le propriétaire représente l'appartenance politique ou historique du territoire.
+
+Cette valeur n'est pas automatiquement modifiée lors d'une occupation militaire.
+
+### Contrôleur d'une province
+
+Chaque province possède également un `Controller`.
+
+Le contrôleur représente la puissance exerçant actuellement le contrôle militaire du territoire.
+
+Lors de la création d'une province, le contrôleur est par défaut identique au propriétaire.
+
+### Occupation
+
+Lorsqu'une division appartenant à un autre pays termine son déplacement dans une province, le contrôle de celle-ci est transféré au pays de la division.
+
+Exemple :
+
+Avant :
+
+Owner      = Germany
+Controller = Germany
+
+Après l'arrivée d'une division française :
+
+Owner      = Germany
+Controller = France
+
+Le territoire est donc considéré comme occupé sans modifier son propriétaire politique.
+
+### Nationalité des divisions
+
+Les divisions peuvent désormais appartenir à un `Country`.
+
+Cette information permettra progressivement de déterminer :
+
+- les territoires amis ;
+- les territoires ennemis ;
+- les droits de passage ;
+- les engagements militaires ;
+- les changements de contrôle territorial.
+
+### Intégration avec le mouvement
+
+Le `SimulationEngine` détecte désormais lorsqu'une division termine un transit.
+
+À son arrivée, le moteur vérifie le contrôleur actuel de la province et met à jour le contrôle territorial si nécessaire.
+
+La capture n'a lieu qu'à l'arrivée effective dans la province et non au début du déplacement.
+
+### Tests ajoutés
+
+- vérification que le contrôleur initial correspond au propriétaire ;
+- vérification qu'un changement de contrôle ne modifie pas le propriétaire ;
+- vérification qu'une division arrivant dans une province ennemie en prend le contrôle ;
+- vérification qu'un déplacement entre provinces déjà contrôlées par le même pays ne modifie pas leur appartenance.
+
+
 
