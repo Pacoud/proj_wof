@@ -192,12 +192,11 @@ public static class MovementSystem
     }
 
 
-    public static double CalculateFuelCost(
+    public static double CalculateFuelConsumptionPerHour(
     Province origin,
     Province destination,
     IEnumerable<InfrastructureLink> links,
-    DivisionType divisionType,
-    int durationHours)
+    DivisionType divisionType)
     {
     var bestRoad = FindBestRoad(
         origin,
@@ -220,14 +219,10 @@ public static class MovementSystem
             bestRoad
         );
 
-    double fuelCost =
-        baseConsumption
-        * durationHours
-        * terrainMultiplier
-        * infrastructureMultiplier;
-
     return Math.Round(
-        fuelCost,
+        baseConsumption
+        * terrainMultiplier
+        * infrastructureMultiplier,
         2
     );
     }
@@ -247,18 +242,17 @@ public static class MovementSystem
             divisionType
         );
 
-    double fuelCost =
-        CalculateFuelCost(
+    double fuelPerHour =
+        CalculateFuelConsumptionPerHour(
             origin,
             destination,
             links,
-            divisionType,
-            duration
+            divisionType
         );
 
     return new MovementPlan(
         duration,
-        fuelCost
+        fuelPerHour
     );
     }
  }

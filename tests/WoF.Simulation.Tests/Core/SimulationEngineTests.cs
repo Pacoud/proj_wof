@@ -40,7 +40,7 @@ public class SimulationEngineTests
 
         var movementPlan = new MovementPlan(
             DurationHours: 3,
-            FuelCost: 8
+            FuelPerHour: 8
         );
 
         division.TryMoveTo(ProvinceB, movementPlan);
@@ -73,7 +73,7 @@ public class SimulationEngineTests
 
     var movementPlan = new MovementPlan(
         DurationHours: 3,
-        FuelCost: 8
+        FuelPerHour: 8
     );
 
     division.TryMoveTo(provinceB, movementPlan);

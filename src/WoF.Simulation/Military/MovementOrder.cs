@@ -10,22 +10,44 @@ public sealed class MovementOrder
 
     public int RemainingHours { get; private set; }
 
+    public double FuelPerHour {get; }
+
+    public bool IsPaused {get; private set; }
+
+    public int ElapsedHours => TotalHours - RemainingHours;
+
+    public bool IsCompleted => RemainingHours == 0;
+
+
     public MovementOrder(
         Province destination,
-        int totalHours)
+        MovementPlan plan)
     {
         Destination = destination;
-        TotalHours = totalHours;
-        RemainingHours = totalHours;
+        TotalHours = plan.DurationHours;
+        RemainingHours = plan.DurationHours;
+        FuelPerHour = plan.FuelPerHour;
     }
 
     public void AdvanceOneHour()
     {
+        if (IsPaused)
+            return;
+
         if (RemainingHours > 0)
         {
             RemainingHours--;
         }
     }
 
-    public bool IsCompleted => RemainingHours == 0;
+    public void Pause()
+    {
+        IsPaused = true;
+    }
+
+    public void Resume()
+    {
+        IsPaused = false;
+    }
+
 }

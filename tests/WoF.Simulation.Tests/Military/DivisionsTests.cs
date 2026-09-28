@@ -22,14 +22,14 @@ public class DivisionTests
 
         var movementPlan = new MovementPlan(
             DurationHours: 3,
-            FuelCost: 8
+            FuelPerHour: 8
         );
 
         bool success = division.TryMoveTo(provinceB, movementPlan);
 
         Assert.True(success);
         Assert.Equal(provinceA, division.Position);
-        Assert.Equal(92, division.Fuel);
+        Assert.Equal(100, division.Fuel);
         Assert.True(division.IsMoving);
         Assert.Equal(provinceB, division.CurrentMovement!.Destination);
         Assert.Equal(3, division.CurrentMovement.RemainingHours);
@@ -50,7 +50,7 @@ public class DivisionTests
 
         var movementPlan = new MovementPlan(
             DurationHours: 3,
-            FuelCost: 8
+            FuelPerHour: 8
         );
 
         bool success = division.TryMoveTo(provinceC, movementPlan);
@@ -78,7 +78,7 @@ public class DivisionTests
 
         var movementPlan = new MovementPlan(
             DurationHours: 3,
-            FuelCost: 8
+            FuelPerHour: 8
         );
 
         bool success = division.TryMoveTo(provinceB, movementPlan);

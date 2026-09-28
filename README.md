@@ -191,7 +191,7 @@ Le `SimulationEngine` transmet le type de la division au `MovementSystem`, qui r
 
 
 
-# COMMIT #
+# COMMIT a5eef014051efbcabce385f4e88b8666ad6979c8 #
 ## Itération — Calcul dynamique de la consommation de carburant
 
 Le coût en carburant des déplacements militaires n'est désormais plus représenté par une valeur fixe.
@@ -280,3 +280,96 @@ Cette évolution relie donc directement le système logistique au système de mo
 - vérification de la réduction de consommation offerte par une meilleure route ;
 - vérification qu'une division ne peut pas commencer un mouvement sans suffisamment de carburant ;
 - maintien des règles précédentes de durée de déplacement.
+
+
+
+# COMMIT # 
+
+## Itération — Consommation progressive et contrôle du déplacement
+
+Le système de mouvement a été modifié afin que le carburant ne soit plus consommé intégralement au moment où un ordre est donné.
+
+La consommation est désormais appliquée progressivement à chaque tick de simulation.
+
+### MovementPlan
+
+Le `MovementPlan` contient maintenant :
+
+- la durée totale du déplacement ;
+- la consommation de carburant par heure.
+
+Il expose également une estimation du coût total du trajet.
+
+MovementPlan
+├── DurationHours
+├── FuelPerHour
+└── EstimatedFuelCost
+
+Le coût estimé n'est plus retiré au départ du mouvement.
+
+### Consommation par tick
+
+Lorsqu'une division est en déplacement, chaque tick :
+
+1. vérifie que la division dispose de suffisamment de carburant ;
+2. retire la consommation correspondant à une heure de déplacement ;
+3. réduit le temps restant du trajet d'une heure.
+
+Le carburant n'est donc consommé que lorsque la division progresse réellement.
+
+### Arrêt manuel
+
+Une division en mouvement peut désormais recevoir un ordre d'arrêt.
+
+Lorsqu'elle est stoppée :
+
+- sa progression est conservée ;
+- son temps restant ne diminue plus ;
+- elle ne consomme plus de carburant ;
+- son ordre de déplacement reste actif mais en pause.
+
+Une commande de reprise permet ensuite de continuer le même trajet sans perdre la progression déjà effectuée.
+
+### Panne de carburant
+
+Une division n'a plus besoin de posséder au départ la totalité du carburant nécessaire au trajet.
+
+Elle doit uniquement disposer de suffisamment de carburant pour commencer le premier tick.
+
+Si son carburant devient insuffisant pendant le déplacement :
+
+- la progression s'arrête automatiquement ;
+- le carburant restant n'est pas consommé ;
+- l'ordre est placé en pause ;
+- la division reste considérée comme étant en transit.
+
+Cette évolution permet désormais à un problème logistique de provoquer directement l'arrêt d'une opération militaire.
+
+### États de déplacement
+
+Deux états sont maintenant distingués :
+
+`IsMoving`
+: la division progresse actuellement et consomme du carburant.
+
+`IsInTransit`
+: la division possède encore un ordre de déplacement en cours, qu'elle soit en mouvement ou en pause.
+
+Cette distinction empêche notamment une division arrêtée en transit d'être considérée comme stationnée normalement dans sa province d'origine.
+
+### Intégration avec le ravitaillement
+
+Le réseau logistique ignore désormais toutes les divisions dont `IsInTransit` est vrai.
+
+Une division arrêtée au milieu d'un trajet ne peut donc pas être ravitaillée comme si elle était toujours stationnée dans sa province d'origine.
+
+Le ravitaillement des unités en transit fera l'objet d'une évolution ultérieure.
+
+### Tests ajoutés
+
+- vérification qu'aucun carburant n'est consommé au moment où l'ordre de déplacement est donné ;
+- vérification de la consommation à chaque tick ;
+- vérification qu'une division stoppée ne consomme plus de carburant ;
+- vérification qu'une division stoppée ne progresse plus ;
+- vérification de la reprise d'un déplacement interrompu ;
+- vérification de l'arrêt automatique lorsqu'une division manque de carburant pendant son trajet.

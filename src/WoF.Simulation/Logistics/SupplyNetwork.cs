@@ -42,7 +42,7 @@ public sealed class SupplyNetwork
                 if (depot.FuelStock <= 0)
                     break;
 
-                if (division.IsMoving)
+                if (division.IsInTransit)
                     continue;
 
                 // Cherche maintenant un véritable chemin.

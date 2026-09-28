@@ -465,13 +465,13 @@ public class MovementSystemTests
             );
 
         Assert.True(
-            infantry.FuelCost
-            < motorized.FuelCost
+            infantry.EstimatedFuelCost
+            < motorized.EstimatedFuelCost
         );
 
         Assert.True(
-            motorized.FuelCost
-            < armored.FuelCost
+            motorized.EstimatedFuelCost
+            < armored.EstimatedFuelCost
         );
     }
 
@@ -535,8 +535,8 @@ public class MovementSystemTests
             );
 
         Assert.True(
-            mountainPlan.FuelCost
-            > plainsPlan.FuelCost
+            mountainPlan.EstimatedFuelCost
+            > plainsPlan.EstimatedFuelCost
         );
     }
 
@@ -585,14 +585,122 @@ public class MovementSystemTests
             );
 
         Assert.True(
-            goodRoadPlan.FuelCost
-            < badRoadPlan.FuelCost
+            goodRoadPlan.EstimatedFuelCost
+            < badRoadPlan.EstimatedFuelCost
         );
     }
 
 
     [Fact]
-    public void DivisionCannotStartMovementWithoutEnoughFuel()
+    public void StartingMovementDoesNotConsumeFuelImmediately()
+    {
+        var a = new Province(1, "A");
+        var b = new Province(2, "B");
+
+        a.ConnectTo(b);
+
+        var road =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                2
+            );
+
+        var division =
+            new Division(
+                "Division blindée",
+                a,
+                fuel: 100,
+                ammunition: 100,
+                type: DivisionType.Armored
+            );
+
+        var simulation =
+            new SimulationEngine();
+
+        simulation.AddDivision(division);
+        simulation.AddInfrastructureLink(road);
+
+        bool accepted =
+            simulation.TryMoveDivision(
+                division,
+                b
+            );
+
+        Assert.True(accepted);
+
+        Assert.Equal(
+            100,
+            division.Fuel
+        );
+    }
+
+    [Fact]
+    public void MovingDivisionConsumesFuelEachTick()
+    {
+        var a =
+            new Province(
+                1,
+                "A",
+                TerrainType.Plains
+            );
+
+        var b =
+            new Province(
+                2,
+                "B",
+                TerrainType.Plains
+            );
+
+        a.ConnectTo(b);
+
+        var road =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                2
+            );
+
+        var division =
+            new Division(
+                "Division blindée",
+                a,
+                fuel: 100,
+                ammunition: 100,
+                type: DivisionType.Armored
+            );
+
+        var simulation =
+            new SimulationEngine();
+
+        simulation.AddDivision(division);
+        simulation.AddInfrastructureLink(road);
+
+        simulation.TryMoveDivision(
+            division,
+            b
+        );
+
+        simulation.Tick();
+
+        Assert.Equal(
+            96.2,
+            division.Fuel
+        );
+
+        simulation.Tick();
+
+        Assert.Equal(
+            92.4,
+            division.Fuel
+        );
+    }
+
+
+    [Fact]
+    public void StoppedDivisionDoesNotConsumeFuelOrProgress()
     {
         var a =
             new Province(1, "A");
@@ -612,8 +720,148 @@ public class MovementSystemTests
 
         var division =
             new Division(
-                name: "Division blindée",
-                position: a,
+                "Division blindée",
+                a,
+                fuel: 100,
+                ammunition: 100,
+                type: DivisionType.Armored
+            );
+
+        var simulation =
+            new SimulationEngine();
+
+        simulation.AddDivision(division);
+        simulation.AddInfrastructureLink(road);
+
+        simulation.TryMoveDivision(
+            division,
+            b
+        );
+
+        simulation.Tick();
+
+        double fuelAfterFirstHour =
+            division.Fuel;
+
+        int remainingHours =
+            division.CurrentMovement!
+                .RemainingHours;
+
+        bool stopped = division.StopMovement();
+
+        Assert.True(stopped);
+
+        simulation.Tick();
+        simulation.Tick();
+        simulation.Tick();
+
+        Assert.Equal(
+            fuelAfterFirstHour,
+            division.Fuel
+        );
+
+        Assert.Equal(
+            remainingHours,
+            division.CurrentMovement!
+                .RemainingHours
+        );
+
+        Assert.False(
+            division.IsMoving
+        );
+
+        Assert.True(
+            division.IsInTransit
+        );
+    }
+
+
+
+    [Fact]
+    public void DivisionCanResumePausedMovement()
+    {
+        var a = new Province(1, "A");
+        var b = new Province(2, "B");
+
+        a.ConnectTo(b);
+
+        var road =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                2
+            );
+
+        var division =
+            new Division(
+                "Division blindée",
+                a,
+                100,
+                100,
+                type: DivisionType.Armored
+            );
+
+        var simulation =
+            new SimulationEngine();
+
+        simulation.AddDivision(division);
+        simulation.AddInfrastructureLink(road);
+
+        simulation.TryMoveDivision(
+            division,
+            b
+        );
+
+        simulation.Tick();
+
+        division.StopMovement();
+
+        int remainingBeforePause =
+            division.CurrentMovement!
+                .RemainingHours;
+
+        simulation.Tick();
+
+        Assert.Equal(
+            remainingBeforePause,
+            division.CurrentMovement!
+                .RemainingHours
+        );
+
+        bool resumed = division.ResumeMovement();
+
+        Assert.True(resumed);
+
+        simulation.Tick();
+
+        Assert.Equal(
+            remainingBeforePause - 1,
+            division.CurrentMovement!
+                .RemainingHours
+        );
+    }
+
+    [Fact]
+    public void DivisionStopsWhenItRunsOutOfFuelDuringMovement()
+    {
+        var a = new Province(1, "A");
+        var b = new Province(2, "B");
+
+        a.ConnectTo(b);
+
+        var road =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                2
+            );
+
+        var division =
+            new Division(
+                "Division blindée",
+                a,
                 fuel: 5,
                 ammunition: 100,
                 type: DivisionType.Armored
@@ -631,11 +879,38 @@ public class MovementSystemTests
                 b
             );
 
-        Assert.False(accepted);
-        Assert.Equal(a, division.Position);
-        Assert.False(division.IsMoving);
+        Assert.True(accepted);
 
-        Assert.Equal(5, division.Fuel);
+        simulation.Tick();
+
+        Assert.Equal(
+            1.2,
+            division.Fuel
+        );
+
+        int remaining =
+            division.CurrentMovement!
+                .RemainingHours;
+
+        simulation.Tick();
+
+        Assert.False(
+            division.IsMoving
+        );
+
+        Assert.True(
+            division.IsInTransit
+        );
+
+        Assert.Equal(
+            remaining,
+            division.CurrentMovement!
+                .RemainingHours
+        );
+
+        Assert.Equal(
+            1.2,
+            division.Fuel
+        );
     }
-
 }

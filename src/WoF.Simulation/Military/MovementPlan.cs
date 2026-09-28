@@ -2,5 +2,12 @@ namespace WoF.Simulation.Military;
 
 public sealed record MovementPlan(
     int DurationHours,
-    double FuelCost
-);
+    double FuelPerHour
+)
+{
+    public double EstimatedFuelCost  =>
+        Math.Round(
+            DurationHours * FuelPerHour,
+            2
+        );
+}

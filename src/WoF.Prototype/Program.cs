@@ -42,3 +42,15 @@ for (int i = 0; i < 5; i++)
 
     simulation.Tick();
 }
+
+public bool StopDivisionMovement(
+    Division division)
+{
+    return division.StopMovement();
+}
+
+public bool ResumeDivisionMovement(
+    Division division)
+{
+    return division.ResumeMovement();
+}
