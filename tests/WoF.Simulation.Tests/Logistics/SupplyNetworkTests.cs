@@ -200,4 +200,120 @@ public class SupplyNetworkTests
         Assert.Null(path);
     }
 
+    [Fact] //Supply qui se réparti sur plusieurs provinces 
+    public void FuelCanTravelAcrossMultipleRoutes()
+    {
+        var provinceA = new Province(1, "A");
+        var provinceB = new Province(2, "B");
+        var provinceC = new Province(3, "C");
+
+        provinceA.ConnectTo(provinceB);
+        provinceB.ConnectTo(provinceC);
+
+        var routeAB = new SupplyRoute(
+            provinceA,
+            provinceB,
+            fuelCapacityPerHour: 20
+        );
+
+        var routeBC = new SupplyRoute(
+            provinceB,
+            provinceC,
+            fuelCapacityPerHour: 12
+        );
+
+        var depot = new SupplyDepot(
+            "Dépôt A",
+            provinceA,
+            fuelStock: 500,
+            fuelTransferPerHour: 100
+        );
+
+        var division = new Division(
+            "1re Division",
+            provinceC,
+            fuel: 20,
+            ammunition: 100
+        );
+
+        var network = new SupplyNetwork();
+
+        network.AddRoute(routeAB);
+        network.AddRoute(routeBC);
+
+        network.ProcessFuelSupply(
+            new[] { depot },
+            new[] { division }
+        );
+
+        Assert.Equal(32, division.Fuel);
+        Assert.Equal(488, depot.FuelStock);
+    }
+
+    [Fact]  //pathfinding, deux divisions empruntent le meme chemin/route
+    public void PathCapacityIsSharedBetweenDivisions()
+    {
+        var provinceA = new Province(1, "A");
+        var provinceB = new Province(2, "B");
+        var provinceC = new Province(3, "C");
+
+        provinceA.ConnectTo(provinceB);
+        provinceB.ConnectTo(provinceC);
+
+        var routeAB = new SupplyRoute(
+            provinceA,
+            provinceB,
+            20
+        );
+
+        var routeBC = new SupplyRoute(
+            provinceB,
+            provinceC,
+            12
+        );
+
+        var depot = new SupplyDepot(
+            "Dépôt A",
+            provinceA,
+            fuelStock: 500,
+            fuelTransferPerHour: 100
+        );
+
+        var division1 = new Division(
+            "1re Division",
+            provinceC,
+            fuel: 20,
+            ammunition: 100
+        );
+
+        var division2 = new Division(
+            "2e Division",
+            provinceC,
+            fuel: 20,
+            ammunition: 100
+        );
+
+        var network = new SupplyNetwork();
+
+        network.AddRoute(routeAB);
+        network.AddRoute(routeBC);
+
+        network.ProcessFuelSupply(
+            new[] { depot },
+            new[]
+            {
+                division1,
+                division2
+            }
+        );
+
+        double totalReceived =
+            (division1.Fuel - 20)
+            +
+            (division2.Fuel - 20);
+
+        Assert.Equal(12, totalReceived);
+        Assert.Equal(488, depot.FuelStock);
+    }
+
 }

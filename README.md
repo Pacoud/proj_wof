@@ -1,1 +1,13 @@
 Ce projet est une ambition de création de zero d'un jeu de simultation avancé 
+
+
+--commit pathfinding (arbres de graphes), le ravitaillement traverse 
+plusieurs provinces 
+
+- Recherche automatique d’un chemin logistique entre un dépôt et une division.
+- Parcours du réseau de provinces à l’aide d’un algorithme de type BFS.
+- Représentation d’un chemin logistique complet avec plusieurs `SupplyRoute`.
+- Calcul de la capacité maximale d’un chemin selon son maillon le plus faible.
+- Consommation de la capacité de chaque route traversée lors du transfert de carburant.
+- Partage de la capacité d’un même chemin entre plusieurs divisions.
+- Gestion du cas où aucun chemin logistique n’existe.

@@ -18,93 +18,99 @@ public sealed class SupplyNetwork
     }
 
     public void ProcessFuelSupply(
-        IEnumerable<SupplyDepot> depots,
-        IEnumerable<Division> divisions)
+    IEnumerable<SupplyDepot> depots,
+    IEnumerable<Division> divisions)
+{
+    // Capacité encore disponible sur chaque route pour ce tick.
+    var remainingRouteCapacity =
+        _routes.ToDictionary(
+            route => route,
+            route => route.FuelCapacityPerHour
+        );
+
+    foreach (var depot in depots)
     {
-        var remainingRouteCapacity =
-            _routes.ToDictionary(
-                route => route,
-                route => route.FuelCapacityPerHour
+        double remainingDepotCapacity =
+            depot.FuelTransferPerHour;
+
+        foreach (var division in divisions)
+        {
+            if (remainingDepotCapacity <= 0)
+                break;
+
+            if (depot.FuelStock <= 0)
+                break;
+
+            if (division.IsMoving)
+                continue;
+
+            // Cherche maintenant un véritable chemin.
+            SupplyPath? path = FindPath(
+                depot.Position,
+                division.Position
             );
 
-        foreach (var depot in depots)
-        {
-            double remainingDepotCapacity =
-                depot.FuelTransferPerHour;
+            if (path == null)
+                continue;
 
-            foreach (var division in divisions)
+            double pathCapacity;
+
+            // Même province :
+            // aucune route n'est utilisée.
+            if (path.Routes.Count == 0)
             {
-                if (remainingDepotCapacity <= 0)
-                    break;
-
-                if (depot.FuelStock <= 0)
-                    break;
-
-                if (division.IsMoving)
-                    continue;
-
-                SupplyRoute? usedRoute = null;
-
-                double routeCapacity =
+                pathCapacity =
                     double.PositiveInfinity;
-
-                // Même province : aucune route nécessaire.
-                if (!ReferenceEquals(
-                        division.Position,
-                        depot.Position))
-                {
-                    usedRoute = _routes.FirstOrDefault(
-                        route => route.Connects(
-                            depot.Position,
-                            division.Position
-                        )
+            }
+            else
+            {
+                // Le débit possible est celui du maillon
+                // ayant le moins de capacité restante.
+                pathCapacity =
+                    path.Routes.Min(
+                        route =>
+                            remainingRouteCapacity[route]
                     );
+            }
 
-                    // Aucun chemin direct.
-                    if (usedRoute == null)
-                        continue;
+            if (pathCapacity <= 0)
+                continue;
 
-                    routeCapacity =
-                        remainingRouteCapacity[usedRoute];
+            double requestedFuel = Math.Min(
+                division.MissingFuel,
+                remainingDepotCapacity
+            );
 
-                    if (routeCapacity <= 0)
-                        continue;
-                }
+            requestedFuel = Math.Min(
+                requestedFuel,
+                depot.FuelStock
+            );
 
-                double requestedFuel = Math.Min(
-                    division.MissingFuel,
-                    remainingDepotCapacity
-                );
+            requestedFuel = Math.Min(
+                requestedFuel,
+                pathCapacity
+            );
 
-                requestedFuel = Math.Min(
-                    requestedFuel,
-                    depot.FuelStock
-                );
+            if (requestedFuel <= 0)
+                continue;
 
-                requestedFuel = Math.Min(
-                    requestedFuel,
-                    routeCapacity
-                );
+            double withdrawn =
+                depot.WithdrawFuel(requestedFuel);
 
-                if (requestedFuel <= 0)
-                    continue;
+            double received =
+                division.ReceiveFuel(withdrawn);
 
-                double withdrawn =
-                    depot.WithdrawFuel(requestedFuel);
+            remainingDepotCapacity -= received;
 
-                double received =
-                    division.ReceiveFuel(withdrawn);
-
-                remainingDepotCapacity -= received;
-
-                if (usedRoute != null)
-                {
-                    remainingRouteCapacity[usedRoute]
-                        -= received;
-                }
+            // Toute route traversée perd cette capacité.
+            foreach (var route in path.Routes)
+            {
+                remainingRouteCapacity[route]
+                    -= received;
             }
         }
     }
+}
     
 
     public SupplyPath? FindPath(
