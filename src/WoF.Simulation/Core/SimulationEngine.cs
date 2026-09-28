@@ -20,25 +20,6 @@ public sealed class SimulationEngine
 
     public IReadOnlyList<Division> Divisions => _divisions;
 
-    public bool TryMoveDivision(
-        Division division,
-        Province destination)
-   {
-    // Division déjà sur une liaison :
-    // l'ordre devient un ordre futur.
-    if (division.IsInTransit)
-    {
-        return division.QueueDestination(
-            destination
-        );
-    }
-
-    return TryStartDivisionMovement(
-        division,
-        destination
-    );
-    }
-
     public void AddDivision(Division division)
     {
         if (!_divisions.Contains(division))
@@ -56,13 +37,32 @@ public sealed class SimulationEngine
             division.AdvanceOneHour();
         }
 
-        StartPendingMovements();
-
-        SupplyNetwork.ProcessFuelSupply(
-            _supplyDepots,
-            _divisions
+    // Une division venant d'arriver dans une province
+    // peut être ravitaillée.
+    SupplyNetwork.ProcessFuelSupply(
+        _supplyDepots,
+        _divisions
     );
-}
+
+    // Puis elle peut commencer son segment suivant.
+    StartQueuedMovements();
+    
+    }
+
+    private void StartQueuedMovements()
+    {
+        foreach (var division in _divisions)
+        {
+            if (division.IsInTransit)
+                continue;
+
+            if (division.NextQueuedDestination == null)
+                continue;
+
+            TryStartNextSegment(division);
+        }
+    }
+
     public void AddSupplyDepot(SupplyDepot depot)
     {
     if (!_supplyDepots.Contains(depot))
@@ -76,12 +76,66 @@ public sealed class SimulationEngine
         SupplyNetwork.AddLink(link);
     }
 
-    //Helper 
-    private bool TryStartDivisionMovement(
+    public bool TryOrderMoveTo(
     Division division,
     Province destination)
     {
+        Province? routingStart =
+            GetRoutingStart(division);
+
+        if (routingStart == null)
+            return false;
+
+        var path =
+            MilitaryPathfinder.FindFastestPath(
+                routingStart,
+                destination,
+                SupplyNetwork.Links,
+                division.Type
+            );
+
+        if (path == null)
+            return false;
+
+        // Le premier élément est routingStart,
+        // donc on ne le met pas dans la file.
+        division.ReplacePlannedRoute(
+            path.Skip(1)
+        );
+
+        if (!division.IsInTransit)
+        {
+            TryStartNextSegment(division);
+        }
+
+        return true;
+    }
+
+    private Province? GetRoutingStart(
+    Division division)
+    {
+        if (division.IsInTransit)
+        {
+            return division.Transit!.Destination;
+        }
+
+        return division.CurrentProvince;
+    }
+
+
+    private bool TryStartNextSegment(
+    Division division)
+    {
+        if (division.IsInTransit)
+            return false;
+
         if (division.CurrentProvince == null)
+            return false;
+
+        Province? destination =
+            division.NextQueuedDestination;
+
+        if (destination == null)
             return false;
 
         MovementPlan plan =
@@ -92,39 +146,57 @@ public sealed class SimulationEngine
                 division.Type
             );
 
-        return division.TryStartMovement(
-            destination,
-            plan
-        );
+        bool started =
+            division.TryStartMovement(
+                destination,
+                plan
+            );
+
+        if (started)
+        {
+            division.ConfirmNextSegmentStarted();
+        }
+
+        return started;
     }
 
-    private void StartPendingMovements()
+    public bool TryOrderExplicitPath(
+    Division division,
+    IReadOnlyList<Province> waypoints)
     {
-        foreach (var division in _divisions)
+        if (waypoints.Count == 0)
+            return false;
+
+        Province? start =
+            GetRoutingStart(division);
+
+        if (start == null)
+            return false;
+
+        Province current = start;
+
+        // On valide tout avant de modifier
+        // l'ordre existant.
+        foreach (var waypoint in waypoints)
         {
-            if (division.IsInTransit)
-                continue;
-
-            if (division.CurrentProvince == null)
-                continue;
-
-            if (division.PendingDestination == null)
-                continue;
-
-            Province destination =
-                division.PendingDestination;
-
-            bool started =
-                TryStartDivisionMovement(
-                    division,
-                    destination
-                );
-
-            if (started)
+            if (!current.IsNeighbourOf(waypoint))
             {
-                division.ClearPendingDestination();
+                return false;
             }
+
+            current = waypoint;
         }
+
+        division.ReplacePlannedRoute(
+            waypoints
+        );
+
+        if (!division.IsInTransit)
+        {
+            TryStartNextSegment(division);
+        }
+
+        return true;
     }
 
 

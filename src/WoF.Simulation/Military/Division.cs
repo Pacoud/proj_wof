@@ -12,17 +12,24 @@ public sealed class Division
 
     public double Ammunition { get; private set; }
 
-    public Province? PendingDestination { get; private set; }
-
     public Province? CurrentProvince { get; private set; }
 
     public TransitState? Transit { get; private set; }
+
+    public MovementRoute? PlannedRoute { get; private set; }
+
+    public Province? NextQueuedDestination =>
+    PlannedRoute?.NextWaypoint;
 
     public bool IsInTransit =>
         Transit != null;
 
 
     public bool IsMoving => Transit != null && !Transit.IsPaused;
+
+    public IReadOnlyList<Province> QueuedDestinations =>
+    PlannedRoute?.RemainingWaypoints
+    ?? Array.Empty<Province>();
 
     public DivisionType Type {get; }
 
@@ -161,29 +168,33 @@ public sealed class Division
         return true;
     }
 
-
-    public bool QueueDestination(  // Ordre en attente si donné en cours de déplacement
-    Province destination)
+    public void ReplacePlannedRoute(
+    IEnumerable<Province> destinations)
     {
-        if (Transit == null)
-            return false;
+        var route = destinations.ToList();
 
-        if (!Transit.Destination
-                .IsNeighbourOf(destination))
+        PlannedRoute =
+            route.Count == 0
+                ? null
+                : new MovementRoute(route);
+    }
+
+    public void ConfirmNextSegmentStarted()
+    {
+        if (PlannedRoute == null)
+            return;
+
+        PlannedRoute.ConsumeNextWaypoint();
+
+        if (PlannedRoute.IsEmpty)
         {
-            return false;
+            PlannedRoute = null;
         }
-
-        PendingDestination = destination;
-
-        return true;
     }
 
-    // Possibilité d'annuler la destination en attente/queue
-    public void ClearPendingDestination() 
+    public void ClearPlannedRoute()
     {
-        PendingDestination = null;
+        PlannedRoute = null;
     }
-
 
 }

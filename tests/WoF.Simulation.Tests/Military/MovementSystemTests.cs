@@ -389,7 +389,7 @@ public class MovementSystemTests
         simulation.AddInfrastructureLink(road);
 
         bool accepted =
-            simulation.TryMoveDivision(
+            simulation.TryOrderMoveTo(
                 division,
                 b
             );
@@ -623,7 +623,7 @@ public class MovementSystemTests
         simulation.AddInfrastructureLink(road);
 
         bool accepted =
-            simulation.TryMoveDivision(
+            simulation.TryOrderMoveTo(
                 division,
                 b
             );
@@ -678,7 +678,7 @@ public class MovementSystemTests
         simulation.AddDivision(division);
         simulation.AddInfrastructureLink(road);
 
-        simulation.TryMoveDivision(
+        simulation.TryOrderMoveTo(
             division,
             b
         );
@@ -733,7 +733,7 @@ public class MovementSystemTests
         simulation.AddDivision(division);
         simulation.AddInfrastructureLink(road);
 
-        simulation.TryMoveDivision(
+        simulation.TryOrderMoveTo(
             division,
             b
         );
@@ -808,7 +808,7 @@ public class MovementSystemTests
         simulation.AddDivision(division);
         simulation.AddInfrastructureLink(road);
 
-        simulation.TryMoveDivision(
+        simulation.TryOrderMoveTo(
             division,
             b
         );
@@ -874,7 +874,7 @@ public class MovementSystemTests
         simulation.AddInfrastructureLink(road);
 
         bool accepted =
-            simulation.TryMoveDivision(
+            simulation.TryOrderMoveTo(
                 division,
                 b
             );
@@ -946,7 +946,7 @@ public class MovementSystemTests
         simulation.AddInfrastructureLink(road);
 
         bool accepted =
-            simulation.TryMoveDivision(
+            simulation.TryOrderMoveTo(
                 division,
                 b
             );
@@ -1008,7 +1008,7 @@ public class MovementSystemTests
         simulation.AddDivision(division);
         simulation.AddInfrastructureLink(road);
 
-        simulation.TryMoveDivision(
+        simulation.TryOrderMoveTo(
             division,
             b
         );
@@ -1058,7 +1058,7 @@ public class MovementSystemTests
         simulation.AddDivision(division);
         simulation.AddInfrastructureLink(road);
 
-        simulation.TryMoveDivision(
+        simulation.TryOrderMoveTo(
             division,
             b
         );
@@ -1129,7 +1129,7 @@ public class MovementSystemTests
             roadBC
         );
 
-        simulation.TryMoveDivision(
+        simulation.TryOrderMoveTo(
             division,
             b
         );
@@ -1137,7 +1137,7 @@ public class MovementSystemTests
         simulation.Tick();
 
         bool queued =
-            simulation.TryMoveDivision(
+            simulation.TryOrderMoveTo(
                 division,
                 c
             );
@@ -1146,7 +1146,7 @@ public class MovementSystemTests
 
         Assert.Equal(
             c,
-            division.PendingDestination
+            division.NextQueuedDestination
         );
     }
 
@@ -1192,14 +1192,14 @@ public class MovementSystemTests
         simulation.AddInfrastructureLink(roadAB);
         simulation.AddInfrastructureLink(roadBC);
 
-        simulation.TryMoveDivision(
+        simulation.TryOrderMoveTo(
             division,
             b
         );
 
         simulation.Tick();
 
-        simulation.TryMoveDivision(
+        simulation.TryOrderMoveTo(
             division,
             c
         );
@@ -1231,7 +1231,7 @@ public class MovementSystemTests
         );
 
         Assert.Null(
-            division.PendingDestination
+            division.NextQueuedDestination
         );
     }
 }

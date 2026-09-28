@@ -192,7 +192,7 @@ public class SimulationEngineTests
         simulation.AddDivision(division);
         simulation.AddInfrastructureLink(road);
 
-        bool accepted = simulation.TryMoveDivision(
+        bool accepted = simulation.TryOrderMoveTo(
             division,
             provinceB
         );
