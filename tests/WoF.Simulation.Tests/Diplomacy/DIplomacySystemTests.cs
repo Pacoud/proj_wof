@@ -1,5 +1,7 @@
 using WoF.Simulation.Diplomacy;
+using WoF.Simulation.Military;
 using WoF.Simulation.World;
+using WoF.Simulation.World.Infrastructure;
 
 namespace WoF.Simulation.Tests.Diplomacy;
 

@@ -10,6 +10,8 @@ public sealed class SupplyNetwork
 
     public IReadOnlyList<InfrastructureLink> Links => _links;
 
+    
+
     public void AddLink(InfrastructureLink link)
     {
         if (!_links.Contains(link))
@@ -22,6 +24,7 @@ public sealed class SupplyNetwork
     IEnumerable<SupplyDepot> depots,
     IEnumerable<Division> divisions)
     {   
+
         // Capacité encore disponible sur chaque liaison pour ce tick.
         var remainingLinkCapacity =
             _links.ToDictionary(
@@ -36,6 +39,9 @@ public sealed class SupplyNetwork
 
             foreach (var division in divisions)
             {
+                
+                if (division.IsRetreating)
+                    continue;
 
                 if (division.IsEngaged)
                     continue;

@@ -5,11 +5,15 @@ using WoF.Simulation.World;
 using WoF.Simulation.World.Infrastructure;
 using WoF.Simulation.Diplomacy;
 using WoF.Simulation.Military.Combat;
+using WoF.Simulation.Military.Retreat;
 
 namespace WoF.Simulation.Core;
 
 public sealed class SimulationEngine
 {
+
+    public RetreatSystem Retreats { get; }
+
     public SupplyNetwork SupplyNetwork { get; } = new();
 
     private readonly List<Division> _divisions = new();
@@ -86,6 +90,17 @@ public sealed class SimulationEngine
                 );
             }
         }
+            Engagements.DetectTransitEngagements(
+                _divisions,
+                Clock.CurrentHour
+            );
+
+            Engagements.DetectProvinceEngagements(
+                _divisions,
+                Clock.CurrentHour
+            );
+
+            ProcessEndedEngagements();
 
         // Une division venant d'arriver dans une province
         // peut être ravitaillée.
@@ -99,9 +114,18 @@ public sealed class SimulationEngine
     }
 
     private void StartQueuedMovements()
-    {
+    {   
         foreach (var division in _divisions)
         {
+
+            if (division.IsRetreating)
+            {
+            TryStartNextRetreatSegment(
+            division
+            );
+
+            continue;
+            }
             if (division.IsInTransit)
                 continue;
 
@@ -357,11 +381,94 @@ public sealed class SimulationEngine
 
     public SimulationEngine()
     {
+        Retreats =
+        new RetreatSystem(
+            Diplomacy
+            );
         Engagements =
             new EngagementSystem(
                 Diplomacy
             );
     }
+
+
+    private void ProcessEndedEngagements()
+    {
+        foreach (var engagement
+                in Engagements.EndedThisTick)
+        {
+            // Une bataille de province remportée
+            // transfère maintenant réellement le contrôle.
+            if (engagement.LocationType
+                    == EngagementLocationType.Province
+                &&
+                engagement.Province != null
+                &&
+                engagement.WinnerCountry != null)
+            {
+                engagement.Province.ChangeController(
+                    engagement.WinnerCountry
+                );
+            }
+
+            foreach (var division
+                    in engagement.Participants)
+            {
+                if (!division.IsBroken)
+                    continue;
+
+                Retreats.TryPlanRetreat(
+                    division,
+                    engagement,
+                    _divisions
+                );
+            }
+        }
+    }
+
+    private bool TryStartNextRetreatSegment(
+    Division division)
+    {
+        if (!division.IsRetreating)
+            return false;
+
+        if (division.IsInTransit)
+            return false;
+
+        if (division.CurrentProvince == null)
+            return false;
+
+        Province? destination =
+            division.NextQueuedDestination;
+
+        if (destination == null)
+        {
+            division.CompleteRetreat();
+            return false;
+        }
+
+        MovementPlan plan =
+            MovementSystem.CreateMovementPlan(
+                division.CurrentProvince,
+                destination,
+                SupplyNetwork.Links,
+                division.Type
+            );
+
+        bool started =
+            division.TryStartRetreatMovement(
+                destination,
+                plan
+            );
+
+        if (started)
+        {
+            division.ConfirmNextSegmentStarted();
+        }
+
+        return started;
+    }
+
 
 
 }

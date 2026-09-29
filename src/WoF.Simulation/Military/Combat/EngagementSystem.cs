@@ -9,7 +9,13 @@ public sealed class EngagementSystem
 
     private readonly List<Engagement> _engagements = new();
 
+    private readonly List<Engagement> _endedThisTick = new();
+
+    public IReadOnlyList<Engagement> EndedThisTick =>
+            _endedThisTick;
+
     private int _nextEngagementId = 1;
+
 
     public IReadOnlyList<Engagement> Engagements =>
         _engagements;
@@ -303,6 +309,7 @@ public sealed class EngagementSystem
 
     public void ProcessEngagements()
     {
+        _endedThisTick.Clear();
         foreach (var engagement in
                 ActiveEngagements.ToList())
         {
@@ -556,6 +563,10 @@ public sealed class EngagementSystem
 
         engagement.End(
             winner
+        );
+        
+        _endedThisTick.Add(
+            engagement
         );
 
         foreach (var division

@@ -41,6 +41,8 @@ public sealed class Division
     public bool IsEngaged =>
     CurrentEngagement != null;
 
+    public bool IsRetreating { get; private set; }
+
     public IReadOnlyList<Province> QueuedDestinations =>
     PlannedRoute?.RemainingWaypoints
     ?? Array.Empty<Province>();
@@ -86,16 +88,41 @@ public sealed class Division
         Province destination,
         MovementPlan plan)
     {   
+        return TryStartMovementInternal(
+            destination,
+            plan,
+            allowBroken: false
+        );
+    }
 
-        if (IsBroken)
+    internal bool TryStartRetreatMovement(
+        Province destination,
+        MovementPlan plan)
+
+    {
+        if (!IsRetreating)
             return false;
 
+        return TryStartMovementInternal(
+            destination,
+            plan,
+            allowBroken: true
+        );
+    }
+
+    private bool TryStartMovementInternal(
+        Province destination,
+        MovementPlan plan,
+        bool allowBroken)
+    { 
         if (IsInTransit)
+        return false;
+
+        if (CurrentProvince == null)
             return false;
-        
-        if(CurrentProvince == null)
+
+        if (IsBroken && !allowBroken)
             return false;
-        
 
         if (!CurrentProvince.IsNeighbourOf(destination))
             return false;
@@ -106,9 +133,9 @@ public sealed class Division
         if (plan.FuelPerHour < 0)
             return false;
 
-        if (Fuel < plan.FuelPerHour)
+        if (!allowBroken && Fuel < plan.FuelPerHour)
             return false;
-
+        
         Province origin = CurrentProvince;
 
         Transit = new TransitState(
@@ -138,15 +165,23 @@ public sealed class Division
         double fuelNeeded =
             Transit.FuelPerHour;
 
-        if (Fuel < fuelNeeded)
+        if (IsRetreating)
         {
-            Transit.Pause();
-            return;
+            ConsumeFuel(fuelNeeded);
         }
+        else 
+        {
+            if (Fuel < fuelNeeded)
+            {
+                Transit.Pause();
+                return;
+            }
 
         ConsumeFuel(fuelNeeded);
+        }
 
         Transit.AdvanceOneHour();
+        
 
         if (Transit.IsCompleted)
         {
@@ -172,38 +207,6 @@ public sealed class Division
     Fuel += received;
 
     return received;
-    }
-
-    public bool StopMovement()
-    {
-        if (Transit == null)
-            return false;
-
-        if (Transit.IsPaused)
-            return false;
-
-        Transit.Pause();
-
-        return true;
-    }
-
-    public bool ResumeMovement()
-    {   
-        if (IsBroken)
-            return false;   
-
-        if (Transit == null)
-            return false;
-
-        if (!Transit.IsPaused)
-            return false;
-
-        if (Fuel < Transit.FuelPerHour)
-            return false;
-
-        Transit.Resume();
-
-        return true;
     }
 
     public void ReplacePlannedRoute(
@@ -242,6 +245,9 @@ public sealed class Division
         {
             if (IsEngaged)
                 return DivisionOperationalState.Engaged;
+            
+            if (IsRetreating)
+                return DivisionOperationalState.Retreating;
 
             if (IsBroken)
                 return DivisionOperationalState.Broken;
@@ -319,5 +325,62 @@ public sealed class Division
 
         CurrentEngagement = null;
     }
+
+    internal void BeginRetreat(
+    IEnumerable<Province> route)
+    {
+        ClearPlannedRoute();
+
+        ReplacePlannedRoute(route);
+
+        IsRetreating = true;
+    }
+
+    internal void CompleteRetreat()
+    {
+        if (IsInTransit)
+            return;
+
+        if (NextQueuedDestination != null)
+            return;
+
+        IsRetreating = false;
+    }
+
+    public bool StopMovement()
+    {
+        if (IsRetreating)
+            return false;
+
+        if (Transit == null)
+            return false;
+
+        if (Transit.IsPaused)
+            return false;
+
+        Transit.Pause();
+
+        return true;
+    }
+
+        public bool ResumeMovement()
+    {   
+        if (IsBroken)
+            return false;   
+
+        if (Transit == null)
+            return false;
+
+        if (!Transit.IsPaused)
+            return false;
+
+        if (Fuel < Transit.FuelPerHour)
+            return false;
+
+        Transit.Resume();
+
+        return true;
+    }
+
 
 }

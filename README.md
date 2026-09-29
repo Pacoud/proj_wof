@@ -879,7 +879,7 @@ Chaque tick traite maintenant notamment :
 - vérification qu'une division reste engagée même lorsque son carburant atteint zéro.
 
 
-# COMMIT # 
+# COMMIT bd02cf1e0dd5d92027807c9a2a4c11fdcf9f1964 # 
 ## Itération — Organisation et première résolution des engagements
 
 Les engagements militaires peuvent désormais évoluer et se terminer grâce à l'introduction d'une valeur d'organisation pour chaque division.
@@ -1005,3 +1005,101 @@ Un tick d'engagement traite maintenant :
 
 
 
+# COMMIT # 
+## Itération — Retraite automatique des divisions brisées
+
+Les divisions dont l'organisation atteint zéro ne restent désormais plus indéfiniment sur le champ de bataille.
+
+Une formation brisée tente automatiquement de se replier vers une province amie située à l'arrière du front.
+
+### État Retreating
+
+Un nouvel état opérationnel `Retreating` a été introduit.
+
+Une division en retraite :
+
+- reste considérée comme `Broken` ;
+- ne peut pas recevoir d'ordres de mouvement normaux ;
+- suit automatiquement un itinéraire calculé par le moteur ;
+- ne peut pas interrompre volontairement sa retraite.
+
+Une fois arrivée à destination, elle quitte l'état `Retreating` mais reste `Broken` tant que son organisation n'a pas récupéré.
+
+### Recherche d'une province de retraite
+
+Un `RetreatPathfinder` recherche automatiquement une destination valide.
+
+Une province de retraite doit actuellement :
+
+- être contrôlée par le pays de la division ;
+- ne pas contenir de division ennemie capable de combattre.
+
+Le moteur préfère ensuite une province qui n'est adjacente à aucune province contenant une force ennemie capable de combattre.
+
+Parmi les destinations répondant à ce critère, la province accessible la plus proche est sélectionnée.
+
+### Fallback
+
+Si aucune province réellement sûre n'existe, le moteur sélectionne la province amie valide la plus proche.
+
+Une division ne reste donc pas sur le champ de bataille simplement parce qu'aucune destination parfaite n'est disponible.
+
+### Exemple
+
+Front :
+
+Enemy
+  |
+Battlefield -- Rear 1 -- Rear 2
+
+`Rear 1` est contrôlée par le pays vaincu mais reste adjacente à la force ennemie présente sur le champ de bataille.
+
+`Rear 2` n'est plus adjacente à l'ennemi.
+
+Le chemin sélectionné est donc :
+
+Battlefield -> Rear 1 -> Rear 2
+
+### Mouvement forcé
+
+Une retraite utilise le système de déplacement existant mais constitue un mouvement forcé.
+
+Une division brisée peut donc effectuer une retraite alors qu'elle ne peut plus recevoir d'ordre de déplacement normal.
+
+### Carburant pendant la retraite
+
+Une division tente de consommer le carburant normalement requis pendant son repli.
+
+Contrairement au mouvement normal, une quantité insuffisante de carburant ne bloque pas complètement la retraite.
+
+Cette abstraction représente provisoirement :
+
+- l'abandon de matériel ;
+- le remorquage ;
+- la marche à pied ;
+- les mouvements d'urgence.
+
+Les conséquences matérielles d'une retraite sans carburant seront modélisées ultérieurement.
+
+### Conséquences territoriales d'une victoire
+
+Lorsqu'un engagement dans une province se termine avec un vainqueur, le contrôle de la province est désormais transféré au pays vainqueur.
+
+Les formations brisées du camp perdant commencent ensuite leur repli vers l'arrière.
+
+### Sélection des routes
+
+La retraite utilise pour l'instant une recherche basée principalement sur :
+
+1. la sécurité de la destination ;
+2. la distance en nombre de provinces.
+
+La qualité des routes n'est pas encore utilisée comme critère principal de sélection d'une destination de retraite.
+
+### Tests ajoutés
+
+- vérification qu'une province non adjacente à l'ennemi est préférée ;
+- vérification de l'utilisation d'une province de fallback lorsqu'aucune destination parfaitement sûre n'existe ;
+- vérification du déclenchement automatique d'une retraite après une défaite ;
+- vérification de l'arrivée d'une division brisée dans une province arrière ;
+- vérification du transfert de contrôle territorial au vainqueur.
