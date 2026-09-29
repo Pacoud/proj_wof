@@ -743,3 +743,140 @@ Controller = France
 - vérification que la capture territoriale nécessite un état de guerre ;
 - vérification que les itinéraires explicites respectent les restrictions territoriales.
 
+
+# COMMIT # 
+
+## Itération — Détection des engagements militaires et consommation de combat
+
+Le moteur peut désormais détecter un contact hostile entre divisions et créer un état d'engagement militaire.
+
+Cette itération introduit la première frontière entre les systèmes de mouvement et de combat, sans encore calculer les pertes ou déterminer un vainqueur.
+
+### États opérationnels
+
+Les divisions disposent désormais d'un état opérationnel dérivé de leur situation :
+
+- `Stationary`
+- `Moving`
+- `Paused`
+- `Engaged`
+
+Lorsqu'un contact hostile est détecté, les divisions concernées passent automatiquement dans l'état `Engaged`.
+
+### Engagement
+
+Une nouvelle entité `Engagement` représente un contact militaire actif.
+
+Un engagement contient actuellement :
+
+- un identifiant ;
+- l'heure de début ;
+- les divisions participantes ;
+- son emplacement ;
+- son état actif.
+
+Deux types de localisation sont actuellement possibles :
+
+- une province ;
+- une liaison entre deux provinces.
+
+Aucune résolution de combat n'est encore effectuée.
+
+### Défense d'une province
+
+Lorsqu'une division arrive dans une province contenant une force appartenant à un pays ennemi :
+
+1. la capture automatique de la province est interrompue ;
+2. un engagement est créé ;
+3. l'attaquant et le défenseur passent dans l'état `Engaged`.
+
+Le contrôle territorial reste donc inchangé tant que l'engagement n'est pas résolu.
+
+### Rencontre sur une liaison
+
+Deux divisions ennemies se déplaçant en sens opposé sur la même liaison peuvent désormais se rencontrer pendant un tick.
+
+La détection utilise leur progression précédente et actuelle afin de déterminer si leurs trajectoires se sont croisées.
+
+Exemple :
+
+Tick précédent :
+
+France = 25 %
+Germany = 75 %
+
+Tick suivant :
+
+France = 50 %
+Germany = 50 %
+
+Un engagement est alors créé sur la liaison.
+
+### Suspension du mouvement
+
+Lorsqu'une division entre en combat :
+
+- son `TransitState` est conservé ;
+- sa progression est suspendue ;
+- son itinéraire futur n'est pas exécuté ;
+- sa position relative sur la liaison est conservée.
+
+Cette architecture permettra ultérieurement de reprendre, annuler ou transformer le mouvement après la résolution du combat.
+
+### Consommation de carburant au combat
+
+L'arrêt du mouvement ne signifie pas l'arrêt de la consommation de carburant.
+
+Les divisions engagées utilisent désormais une consommation horaire de combat provisoire :
+
+Infantry  : 0.8 unité/h
+Motorized : 3.0 unités/h
+Armored   : 5.0 unités/h
+
+Cette consommation remplace la consommation de déplacement pendant l'engagement.
+
+### Manque de carburant pendant un combat
+
+Une division ne quitte pas un engagement lorsqu'elle manque de carburant.
+
+Si son stock est insuffisant :
+
+- elle consomme le carburant restant ;
+- son stock peut atteindre zéro ;
+- l'engagement continue.
+
+Les pénalités militaires liées au manque de carburant seront introduites lors de la résolution réelle des combats.
+
+### Logistique
+
+Les divisions engagées sont temporairement exclues du ravitaillement logistique normal.
+
+Un futur système pourra différencier :
+
+- ravitaillement normal ;
+- ravitaillement d'une unité en transit ;
+- ravitaillement d'une formation engagée au combat.
+
+### Intégration avec le SimulationEngine
+
+Chaque tick traite maintenant notamment :
+
+1. la consommation de carburant des engagements déjà actifs ;
+2. les déplacements ;
+3. la détection des rencontres sur les liaisons ;
+4. la détection des forces hostiles dans une même province ;
+5. la capture des provinces uniquement en l'absence d'opposition ;
+6. le ravitaillement ;
+7. la reprise éventuelle des itinéraires non engagés.
+
+### Tests ajoutés
+
+- vérification qu'un défenseur ennemi empêche la capture automatique d'une province ;
+- vérification de la création d'un engagement dans une province contestée ;
+- vérification de la rencontre de deux divisions ennemies sur une liaison ;
+- vérification de l'arrêt de la progression pendant un engagement ;
+- vérification de la consommation horaire de carburant au combat ;
+- vérification qu'une division reste engagée même lorsque son carburant atteint zéro.
+
+
+# COMMIT # 

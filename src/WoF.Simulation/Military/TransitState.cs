@@ -12,6 +12,8 @@ public sealed class TransitState
 
     public int RemainingHours { get; private set; }
 
+    public double PreviousProgress { get; private set; }
+
     public int ElapsedHours =>
         TotalHours - RemainingHours;
 
@@ -60,5 +62,10 @@ public sealed class TransitState
     public void Resume()
     {
         IsPaused = false;
+    }
+
+    public void BeginTick()
+    {
+        PreviousProgress = Progress;
     }
 }

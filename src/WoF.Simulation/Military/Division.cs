@@ -1,4 +1,5 @@
 using WoF.Simulation.World;
+using WoF.Simulation.Military.Combat;
 
 namespace WoF.Simulation.Military;
 
@@ -10,9 +11,11 @@ public sealed class Division
     
     public double FuelCapacity {get;}
 
+    public double Ammunition { get; private set; }
+
     public Country? Country { get; }
 
-    public double Ammunition { get; private set; }
+    public Engagement? CurrentEngagement { get; private set; }
 
     public Province? CurrentProvince { get; private set; }
 
@@ -24,10 +27,12 @@ public sealed class Division
     PlannedRoute?.NextWaypoint;
 
     public bool IsInTransit =>
-        Transit != null;
-
+    Transit != null;
 
     public bool IsMoving => Transit != null && !Transit.IsPaused;
+
+    public bool IsEngaged =>
+    CurrentEngagement != null;
 
     public IReadOnlyList<Province> QueuedDestinations =>
     PlannedRoute?.RemainingWaypoints
@@ -98,6 +103,11 @@ public sealed class Division
         if (Transit == null)
             return;
 
+        Transit.BeginTick();
+
+        if (IsEngaged)
+            return;
+
         if (Transit.IsPaused)
             return;
 
@@ -110,10 +120,7 @@ public sealed class Division
             return;
         }
 
-        Fuel = Math.Round(
-            Fuel - fuelNeeded,
-            2
-        );
+        ConsumeFuel(fuelNeeded);
 
         Transit.AdvanceOneHour();
 
@@ -199,6 +206,55 @@ public sealed class Division
     public void ClearPlannedRoute()
     {
         PlannedRoute = null;
+    }
+
+
+    public DivisionOperationalState OperationalState
+    {
+        get
+        {
+            if (IsEngaged)
+                return DivisionOperationalState.Engaged;
+
+            if (Transit == null)
+                return DivisionOperationalState.Stationary;
+
+            if (Transit.IsPaused)
+                return DivisionOperationalState.Paused;
+
+            return DivisionOperationalState.Moving;
+        }
+    }
+
+    internal void JoinEngagement(
+    Engagement engagement)
+    {
+        if (CurrentEngagement != null)
+            return;
+
+        CurrentEngagement = engagement;
+
+        if (Transit != null)
+        {
+            Transit.Pause();
+        }
+    }
+
+    public double ConsumeFuel(
+    double amount)
+    {
+        if (amount <= 0)
+            return 0;
+
+        double consumed =
+            Math.Min(amount, Fuel);
+
+        Fuel = Math.Round(
+            Fuel - consumed,
+            2
+        );
+
+        return consumed;
     }
 
 }

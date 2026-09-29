@@ -21,7 +21,7 @@ public sealed class SupplyNetwork
     public void ProcessFuelSupply(
     IEnumerable<SupplyDepot> depots,
     IEnumerable<Division> divisions)
-    {
+    {   
         // Capacité encore disponible sur chaque liaison pour ce tick.
         var remainingLinkCapacity =
             _links.ToDictionary(
@@ -36,6 +36,13 @@ public sealed class SupplyNetwork
 
             foreach (var division in divisions)
             {
+
+                if (division.IsEngaged)
+                    continue;
+
+                if (division.IsInTransit)
+                    continue;
+                
                 if (remainingDepotCapacity <= 0)
                     break;
 

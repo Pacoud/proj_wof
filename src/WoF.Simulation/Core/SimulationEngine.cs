@@ -4,6 +4,7 @@ using WoF.Simulation.Logistics;
 using WoF.Simulation.World;
 using WoF.Simulation.World.Infrastructure;
 using WoF.Simulation.Diplomacy;
+using WoF.Simulation.Military.Combat;
 
 namespace WoF.Simulation.Core;
 
@@ -14,6 +15,8 @@ public sealed class SimulationEngine
     private readonly List<Division> _divisions = new();
 
     public SimulationClock Clock { get; } = new();
+
+    public EngagementSystem Engagements { get; }
 
     public DiplomacySystem Diplomacy { get; } = new();
 
@@ -35,6 +38,10 @@ public sealed class SimulationEngine
     {
         Clock.AdvanceOneHour();
 
+        Engagements.ProcessCombatFuel();
+
+        var arrivals = new List<Division>();
+
         foreach (var division in _divisions)
         {
             bool wasInTransit =
@@ -48,6 +55,31 @@ public sealed class SimulationEngine
                 && division.CurrentProvince != null;
 
             if (hasArrived)
+            {
+                arrivals.Add(
+                    division
+                );
+            }
+        }
+
+            // Deux colonnes ennemies peuvent s'être croisées.
+        Engagements.DetectTransitEngagements(
+            _divisions,
+            Clock.CurrentHour
+        );
+
+        // Une division peut être arrivée dans une
+        // province déjà occupée par l'ennemi.
+        Engagements.DetectProvinceEngagements(
+            _divisions,
+            Clock.CurrentHour
+        );
+
+        // Seules les arrivées sans opposition
+        // peuvent prendre le contrôle.
+        foreach (var division in arrivals)
+        {
+            if (!division.IsEngaged)
             {
                 ResolveProvinceControl(
                     division
@@ -109,6 +141,9 @@ public sealed class SimulationEngine
     Division division,
     Province destination)
     {
+        if (division.IsEngaged)
+            return false;
+
         Province? routingStart =
             GetRoutingStart(division);
 
@@ -157,6 +192,10 @@ public sealed class SimulationEngine
     private bool TryStartNextSegment(
     Division division)
     {
+        if (division.IsEngaged)
+            return false;
+
+
         if (division.IsInTransit)
             return false;
 
@@ -195,6 +234,9 @@ public sealed class SimulationEngine
     Division division,
     IReadOnlyList<Province> waypoints)
     {
+        if (division.IsEngaged)
+            return false;
+
         if (waypoints.Count == 0)
             return false;
 
@@ -311,6 +353,14 @@ public sealed class SimulationEngine
             first,
             second
         );
+    }
+
+    public SimulationEngine()
+    {
+        Engagements =
+            new EngagementSystem(
+                Diplomacy
+            );
     }
 
 
