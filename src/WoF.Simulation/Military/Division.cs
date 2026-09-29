@@ -11,6 +11,10 @@ public sealed class Division
     
     public double FuelCapacity {get;}
 
+    public double MaxOrganization { get; }
+
+    public double Organization { get; private set; }
+
     public double Ammunition { get; private set; }
 
     public Country? Country { get; }
@@ -25,6 +29,9 @@ public sealed class Division
 
     public Province? NextQueuedDestination =>
     PlannedRoute?.NextWaypoint;
+
+    public bool IsBroken =>
+    Organization <= 0;
 
     public bool IsInTransit =>
     Transit != null;
@@ -51,21 +58,38 @@ public sealed class Division
         double ammunition,
         double fuelCapacity = 100,
         DivisionType type = DivisionType.Infantry,
-        Country? country = null)
+        Country? country = null,
+        double maxOrganization = 100)
     {
+        if (maxOrganization <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                nameof(maxOrganization)
+                );
+            }
+
         Name = name;
         CurrentProvince = position;
+
         Fuel = fuel;
         Ammunition = ammunition;
         FuelCapacity = fuelCapacity;
+
         Type = type;
         Country = country;
+
+        MaxOrganization = maxOrganization;
+        Organization = maxOrganization;
     }
 
     public bool TryStartMovement(
         Province destination,
         MovementPlan plan)
-    {
+    {   
+
+        if (IsBroken)
+            return false;
+
         if (IsInTransit)
             return false;
         
@@ -164,7 +188,10 @@ public sealed class Division
     }
 
     public bool ResumeMovement()
-    {
+    {   
+        if (IsBroken)
+            return false;   
+
         if (Transit == null)
             return false;
 
@@ -216,6 +243,9 @@ public sealed class Division
             if (IsEngaged)
                 return DivisionOperationalState.Engaged;
 
+            if (IsBroken)
+                return DivisionOperationalState.Broken;
+
             if (Transit == null)
                 return DivisionOperationalState.Stationary;
 
@@ -228,7 +258,10 @@ public sealed class Division
 
     internal void JoinEngagement(
     Engagement engagement)
-    {
+    {   
+        if (IsBroken)
+            return;
+
         if (CurrentEngagement != null)
             return;
 
@@ -255,6 +288,36 @@ public sealed class Division
         );
 
         return consumed;
+    }
+
+
+    public double LoseOrganization(double amount)
+    {
+        if (amount <= 0)
+            return 0;
+
+        double lost =
+            Math.Min(amount, Organization);
+
+        Organization = Math.Round(
+            Organization - lost,
+            2
+        );
+
+        return lost;
+    }
+
+    internal void LeaveEngagement(
+    Engagement engagement)
+    {
+        if (!ReferenceEquals(
+                CurrentEngagement,
+                engagement))
+        {
+            return;
+        }
+
+        CurrentEngagement = null;
     }
 
 }

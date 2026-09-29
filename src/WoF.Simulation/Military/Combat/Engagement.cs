@@ -18,6 +18,8 @@ public sealed class Engagement
 
     public Province? ConnectionB { get; }
 
+    public Country? WinnerCountry { get; private set; }
+
     public IReadOnlyList<Division> Participants =>
         _participants;
 
@@ -56,11 +58,24 @@ public sealed class Engagement
     internal void AddParticipant(
         Division division)
     {
+        if (division.IsBroken)
+            return;
+
         if (_participants.Contains(division))
             return;
 
         _participants.Add(division);
 
         division.JoinEngagement(this);
+    }
+
+    internal void End(
+    Country? winnerCountry)
+    {
+        if (!IsActive)
+            return;
+
+        WinnerCountry = winnerCountry;
+        IsActive = false;
     }
 }

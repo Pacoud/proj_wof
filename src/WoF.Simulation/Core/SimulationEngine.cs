@@ -38,7 +38,7 @@ public sealed class SimulationEngine
     {
         Clock.AdvanceOneHour();
 
-        Engagements.ProcessCombatFuel();
+        Engagements.ProcessEngagements();
 
         var arrivals = new List<Division>();
 
@@ -141,7 +141,7 @@ public sealed class SimulationEngine
     Division division,
     Province destination)
     {
-        if (division.IsEngaged)
+        if (division.IsEngaged || division.IsBroken)
             return false;
 
         Province? routingStart =
@@ -234,7 +234,7 @@ public sealed class SimulationEngine
     Division division,
     IReadOnlyList<Province> waypoints)
     {
-        if (division.IsEngaged)
+        if (division.IsEngaged || division.IsBroken)
             return false;
 
         if (waypoints.Count == 0)

@@ -374,7 +374,7 @@ Le ravitaillement des unités en transit fera l'objet d'une évolution ultérieu
 - vérification de la reprise d'un déplacement interrompu ;
 - vérification de l'arrêt automatique lorsqu'une division manque de carburant pendant son trajet.
 
-# COMMIT # 
+# COMMIT 08a9b5413369d3950252867fdcc775bef419c43e # 
 ## Itération — Représentation explicite des divisions en transit
 
 Le système de mouvement a été refactorisé afin qu'une division en déplacement ne soit plus considérée comme étant toujours présente dans sa province d'origine.
@@ -639,7 +639,7 @@ La capture n'a lieu qu'à l'arrivée effective dans la province et non au début
 - vérification qu'un déplacement entre provinces déjà contrôlées par le même pays ne modifie pas leur appartenance.
 
 
-# COMMIT #
+# COMMIT 2e4617c163cceb18caf3548adbac98b69bb0595d #
 
 ## Itération — États de guerre et restrictions territoriales
 
@@ -744,7 +744,7 @@ Controller = France
 - vérification que les itinéraires explicites respectent les restrictions territoriales.
 
 
-# COMMIT # 
+# COMMIT 9be38eff2f74877cebe9297ec2cef1a948bd9595 # 
 
 ## Itération — Détection des engagements militaires et consommation de combat
 
@@ -880,3 +880,128 @@ Chaque tick traite maintenant notamment :
 
 
 # COMMIT # 
+## Itération — Organisation et première résolution des engagements
+
+Les engagements militaires peuvent désormais évoluer et se terminer grâce à l'introduction d'une valeur d'organisation pour chaque division.
+
+Cette itération constitue la première forme de résolution des combats du prototype.
+
+### Organisation
+
+Chaque division possède désormais :
+
+- une organisation maximale ;
+- une organisation actuelle.
+
+Par défaut :
+
+MaxOrganization = 100
+Organization = 100
+
+L'organisation représente de manière abstraite la cohésion, la coordination et la capacité immédiate d'une formation à continuer le combat.
+
+Une division dont l'organisation atteint zéro devient `Broken`.
+
+### Nouvel état opérationnel
+
+Un nouvel état a été ajouté :
+
+`Broken`
+
+Une division brisée :
+
+- n'est plus capable de poursuivre normalement le combat ;
+- ne peut plus recevoir d'ordre de mouvement ;
+- ne peut pas reprendre un mouvement suspendu.
+
+La retraite des formations brisées sera implémentée ultérieurement.
+
+### Pression de combat
+
+Chaque type de division génère pour l'instant une pression organisationnelle abstraite.
+
+Valeurs provisoires :
+
+Infantry  : 6.0
+Motorized : 7.5
+Armored   : 10.0
+
+Ces valeurs ne représentent pas encore des données historiques et servent uniquement à construire le premier modèle de résolution.
+
+### Influence du carburant
+
+La puissance de combat dépend désormais de la quantité de carburant réellement disponible pendant le tick.
+
+Une division qui reçoit tout le carburant nécessaire combat à pleine efficacité.
+
+Une division manquant de carburant voit son efficacité diminuer.
+
+Efficacité minimale provisoire sans carburant :
+
+Infantry  : 85 %
+Motorized : 50 %
+Armored   : 25 %
+
+Une formation blindée sans carburant reste donc engagée mais perd une grande partie de sa capacité offensive.
+
+### Résolution simultanée
+
+Les pressions de combat de toutes les divisions sont calculées avant l'application des pertes d'organisation.
+
+Cela évite qu'un camp obtienne artificiellement un avantage uniquement parce qu'il est traité en premier dans la boucle de simulation.
+
+### Supériorité numérique
+
+La pression totale d'un camp est répartie entre les formations adverses.
+
+Une supériorité numérique commence ainsi à produire naturellement un avantage organisationnel.
+
+Exemple simplifié :
+
+2 divisions à 6 points de pression
+contre
+1 division à 6 points.
+
+Le défenseur reçoit 12 points de pression tandis que les deux divisions adverses se partagent les 6 points opposés.
+
+### Fin d'un engagement
+
+Après chaque tick de combat, le moteur vérifie quels pays disposent encore d'au moins une division dont l'organisation est supérieure à zéro.
+
+Si un seul pays reste capable de combattre :
+
+- l'engagement se termine ;
+- ce pays est enregistré comme vainqueur ;
+- les participants quittent l'état `Engaged`.
+
+Si aucune formation ne reste opérationnelle, l'engagement peut se terminer sans vainqueur.
+
+### Itinéraires après combat
+
+Pour cette première version, les itinéraires planifiés des participants sont supprimés lors de la fin d'un engagement.
+
+Aucune division ne reprend donc automatiquement son ancienne progression après une bataille.
+
+Le comportement post-combat sera traité avec les futurs systèmes de retraite et de poursuite.
+
+### Intégration avec le carburant
+
+Un tick d'engagement traite maintenant :
+
+1. la consommation de carburant de combat ;
+2. l'efficacité résultante de chaque division ;
+3. la pression de combat ;
+4. les pertes d'organisation ;
+5. la détection des formations brisées ;
+6. la résolution éventuelle de l'engagement.
+
+### Tests ajoutés
+
+- vérification de la perte d'organisation pendant un engagement ;
+- vérification qu'une formation blindée disposant de carburant inflige davantage de pression qu'une formation à sec ;
+- vérification du passage à l'état `Broken` lorsque l'organisation atteint zéro ;
+- vérification de la fin d'un engagement lorsqu'un seul camp reste opérationnel ;
+- vérification qu'une division brisée ne peut plus recevoir d'ordre de mouvement.
+
+
+

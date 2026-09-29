@@ -4,7 +4,7 @@ using WoF.Simulation.World;
 using WoF.Simulation.World.Infrastructure;
 using WoF.Simulation.Core;
 
-namespace WoF.Simulation.Tests.Logistics;
+namespace WoF.Simulation.Tests.Combat;
 
 public class EngagementsTests
 {

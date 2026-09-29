@@ -5,5 +5,6 @@ public enum DivisionOperationalState
     Stationary,
     Moving,
     Paused,
-    Engaged
+    Engaged,
+    Broken
 }

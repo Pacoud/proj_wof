@@ -49,7 +49,8 @@ public sealed class EngagementSystem
             divisions
                 .Where(
                     division =>
-                        division.CurrentProvince != null
+                        division.CurrentProvince != null 
+                        && !division.IsBroken
                 )
                 .ToList();
 
@@ -142,6 +143,9 @@ public sealed class EngagementSystem
         {
             if (candidate.IsEngaged)
                 continue;
+            
+            if (candidate.IsBroken)
+                continue;
 
             bool hostileToParticipant =
                 engagement.Participants.Any(
@@ -172,6 +176,8 @@ public sealed class EngagementSystem
                         division.Transit != null
                         &&
                         !division.IsEngaged
+                        && 
+                        !division.IsBroken
                 )
                 .ToList();
 
@@ -295,23 +301,14 @@ public sealed class EngagementSystem
     }
 
 
-    public void ProcessCombatFuel()
+    public void ProcessEngagements()
     {
-        foreach (var engagement
-                in ActiveEngagements)
+        foreach (var engagement in
+                ActiveEngagements.ToList())
         {
-            foreach (var division
-                    in engagement.Participants)
-            {
-                double requestedFuel =
-                    GetCombatFuelPerHour(
-                        division.Type
-                    );
-
-                division.ConsumeFuel(
-                    requestedFuel
-                );
-            }
+            ProcessEngagementTick(
+                engagement
+            );
         }
     }
 
@@ -326,6 +323,252 @@ public sealed class EngagementSystem
 
             _ => 0.8
         };
+    }
+
+    private static double GetBaseCombatPressure(
+    DivisionType type)
+    {
+        return type switch
+        {
+            DivisionType.Infantry => 6.0,
+            DivisionType.Motorized => 7.5,
+            DivisionType.Armored => 10.0,
+
+            _ => 6.0
+        };
+    }
+
+    private static double GetMinimumFuelEffectiveness(
+    DivisionType type)
+    {
+        return type switch
+        {
+            DivisionType.Infantry => 0.85,
+            DivisionType.Motorized => 0.50,
+            DivisionType.Armored => 0.25,
+
+            _ => 0.85
+        };
+    }
+
+
+    private static double CalculateFuelEffectiveness(
+    Division division,
+    double requestedFuel,
+    double consumedFuel)
+    {
+        if (requestedFuel <= 0)
+            return 1.0;
+
+        double fuelSatisfaction =
+            Math.Clamp(
+                consumedFuel / requestedFuel,
+                0.0,
+                1.0
+            );
+
+        double minimum =
+            GetMinimumFuelEffectiveness(
+                division.Type
+            );
+
+        return minimum
+            + (1.0 - minimum)
+            * fuelSatisfaction;
+    }
+
+    private double ProcessDivisionCombatFuel(
+    Division division)
+    {
+        double requestedFuel =
+            GetCombatFuelPerHour(
+                division.Type
+            );
+
+        double consumedFuel =
+            division.ConsumeFuel(
+                requestedFuel
+            );
+
+        double fuelEffectiveness =
+            CalculateFuelEffectiveness(
+                division,
+                requestedFuel,
+                consumedFuel
+            );
+
+        return Math.Round(
+            GetBaseCombatPressure(
+                division.Type
+            )
+            * fuelEffectiveness,
+            2
+        );
+    }
+
+    private void ProcessEngagementTick(
+    Engagement engagement)
+    {
+        var participants =
+            engagement.Participants
+                .Where(
+                    division =>
+                        ReferenceEquals(
+                            division.CurrentEngagement,
+                            engagement
+                        )
+                )
+                .ToList();
+
+        if (participants.Count < 2)
+        {
+            ResolveEngagementIfPossible(
+                engagement,
+                participants
+            );
+
+            return;
+        }
+
+        var pressures =
+            new Dictionary<Division, double>();
+
+        // Première phase :
+        // calcul simultané de la puissance disponible.
+        foreach (var division in participants)
+        {
+            if (division.IsBroken)
+            {
+                pressures[division] = 0;
+                continue;
+            }
+
+            pressures[division] =
+                ProcessDivisionCombatFuel(
+                    division
+                );
+        }
+
+        var organizationLosses =
+            new Dictionary<Division, double>();
+
+        // Deuxième phase :
+        // calcul des pertes d'organisation.
+        foreach (var division in participants)
+        {
+            if (division.IsBroken
+                || division.Country == null)
+            {
+                organizationLosses[division] = 0;
+                continue;
+            }
+
+            double hostilePressure =
+                participants
+                    .Where(
+                        other =>
+                            !other.IsBroken
+                            &&
+                            AreHostile(
+                                division,
+                                other
+                            )
+                    )
+                    .Sum(
+                        other =>
+                            pressures[other]
+                    );
+
+            int friendlyTargets =
+                participants.Count(
+                    other =>
+                        !other.IsBroken
+                        &&
+                        other.Country != null
+                        &&
+                        other.Country.Id
+                            == division.Country.Id
+                );
+
+            if (friendlyTargets <= 0)
+            {
+                organizationLosses[division] = 0;
+                continue;
+            }
+
+            organizationLosses[division] =
+                Math.Round(
+                    hostilePressure
+                    / friendlyTargets,
+                    2
+                );
+        }
+
+        // Troisième phase :
+        // application simultanée.
+        foreach (var pair in organizationLosses)
+        {
+            pair.Key.LoseOrganization(
+                pair.Value
+            );
+        }
+
+        ResolveEngagementIfPossible(
+            engagement,
+            participants
+        );
+    }
+
+
+    private void ResolveEngagementIfPossible(
+    Engagement engagement,
+    IReadOnlyCollection<Division> participants)
+    {
+        var combatCapableCountries =
+            participants
+                .Where(
+                    division =>
+                        !division.IsBroken
+                        &&
+                        division.Country != null
+                )
+                .Select(
+                    division =>
+                        division.Country!
+                )
+                .GroupBy(
+                    country =>
+                        country.Id
+                )
+                .Select(
+                    group =>
+                        group.First()
+                )
+                .ToList();
+
+        if (combatCapableCountries.Count > 1)
+            return;
+
+        Country? winner =
+            combatCapableCountries.Count == 1
+                ? combatCapableCountries[0]
+                : null;
+
+        engagement.End(
+            winner
+        );
+
+        foreach (var division
+                in engagement.Participants)
+        {
+            division.LeaveEngagement(
+                engagement
+            );
+
+            // Pour l'instant, aucun participant ne
+            // poursuit automatiquement son ancien ordre.
+            division.ClearPlannedRoute();
+        }
     }
 
 
