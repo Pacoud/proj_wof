@@ -459,16 +459,15 @@ public sealed class EngagementSystem
             division.Composition
         );
 
-        double terrainModifier =
-            CombatTerrainModifier.GetPressureModifier(
-                division.Type,
+        CombatPowerProfile terrainAdjustedPower =
+            CombatTerrainModifier.Apply(
+                physicalPower,
                 engagement.BattleTerrain
         );
 
         return Math.Round(
-            physicalPower.Total
-            * fuelEffectiveness
-            * terrainModifier,
+            terrainAdjustedPower.Total
+            * fuelEffectiveness,
             2
         );
     }

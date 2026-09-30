@@ -1596,7 +1596,7 @@ Les tests vérifient notamment :
 - la conservation de la compatibilité avec les types de divisions existants.
 
 
-# COMMIT  # 
+# COMMIT # 
 ## Itération — Puissance de combat dérivée de la composition physique
 
 La puissance de base d'une division n'est désormais plus déterminée directement par son `DivisionType`.
@@ -1693,3 +1693,82 @@ Ces dépendances seront progressivement remplacées par des propriétés dériv�
 - aucune distinction entre modèles individuels de chars, canons ou armes n'existe ;
 - les pertes physiques de combat ne sont pas encore calculées ;
 - le personnel spécialisé et les équipages ne sont pas encore représentés.
+
+# COMMIT # 
+## Itération — Modificateurs de terrain par composante de combat
+
+Le terrain n'est désormais plus appliqué globalement à une division selon son `DivisionType`.
+
+Il affecte séparément les différentes composantes de sa puissance de combat.
+
+### TerrainCombatModifiers
+
+Chaque terrain définit actuellement trois coefficients :
+
+- SmallArms
+- Artillery
+- Armored
+
+Exemple pour la montagne :
+
+SmallArms = 0.90
+Artillery = 0.75
+Armored = 0.45
+
+Les valeurs restent provisoires et servent actuellement à établir le comportement du modèle.
+
+### Application composante par composante
+
+Le `CombatPowerProfile` brut issu de la composition est transformé par le terrain avant le calcul de la pression finale.
+
+Exemple :
+
+SmallArms = 2.50
+Artillery = 1.08
+Armored = 6.30
+
+en montagne devient approximativement :
+
+SmallArms = 2.25
+Artillery = 0.81
+Armored = 2.84
+
+La puissance totale effective résulte ensuite de la somme de ces composantes.
+
+### Disparition du terrain basé sur DivisionType
+
+`DivisionType` ne détermine plus directement l'effet du terrain sur la puissance de combat.
+
+Deux divisions possédant le même `DivisionType` mais des compositions différentes peuvent désormais réagir différemment au même terrain.
+
+### Formations mixtes
+
+Une formation contenant à la fois de l'infanterie, de l'artillerie et des chars ne reçoit plus un malus global de formation blindée.
+
+Chaque composante conserve son comportement propre.
+
+Cela permet aux formations mixtes de produire naturellement des résultats différents sans nécessiter de nouveaux types de divisions.
+
+### Meeting Engagement et Province Battle
+
+Les deux types d'engagement continuent d'utiliser le `BattleTerrain` déjà déterminé par le moteur.
+
+La différence réside uniquement dans la manière dont ce terrain agit sur les composantes physiques de chaque formation.
+
+### Compatibilité
+
+`DivisionType` reste actuellement utilisé par :
+
+- le mouvement ;
+- la consommation de carburant ;
+- l'efficacité liée au carburant.
+
+Son rôle dans le calcul direct du terrain de combat est supprimé.
+
+### Limites actuelles
+
+- les coefficients de terrain restent provisoires ;
+- le carburant affecte encore globalement toute la puissance de la division ;
+- les munitions ne sont pas encore différenciées par catégorie ;
+- SmallArms, Artillery et Armored restent des catégories agrégées ;
+- l'effet du rôle Attacker/Defender n'est pas encore appliqué à la résolution du combat.

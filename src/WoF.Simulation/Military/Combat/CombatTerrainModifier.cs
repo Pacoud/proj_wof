@@ -1,108 +1,103 @@
+using WoF.Simulation.Military.Combat.Power;
 using WoF.Simulation.World;
 
 namespace WoF.Simulation.Military.Combat;
 
 public static class CombatTerrainModifier
 {
-    public static double GetPressureModifier(
-        DivisionType divisionType,
+    public static TerrainCombatModifiers GetModifiers(
         TerrainType terrain)
     {
-        return (divisionType, terrain) switch
+        return terrain switch
         {
-            // INFANTRY
+            TerrainType.Plains =>
+                new TerrainCombatModifiers(
+                    SmallArms: 1.00,
+                    Artillery: 1.00,
+                    Armored: 1.15
+                ),
 
-            (DivisionType.Infantry,
-             TerrainType.Plains)
-                => 1.00,
+            TerrainType.Desert =>
+                new TerrainCombatModifiers(
+                    SmallArms: 0.95,
+                    Artillery: 1.00,
+                    Armored: 1.05
+                ),
 
-            (DivisionType.Infantry,
-             TerrainType.Desert)
-                => 0.95,
+            TerrainType.Hills =>
+                new TerrainCombatModifiers(
+                    SmallArms: 0.95,
+                    Artillery: 0.90,
+                    Armored: 0.75
+                ),
 
-            (DivisionType.Infantry,
-             TerrainType.Hills)
-                => 0.95,
+            TerrainType.Forest =>
+                new TerrainCombatModifiers(
+                    SmallArms: 0.95,
+                    Artillery: 0.85,
+                    Armored: 0.65
+                ),
 
-            (DivisionType.Infantry,
-             TerrainType.Forest)
-                => 0.95,
+            TerrainType.Urban =>
+                new TerrainCombatModifiers(
+                    SmallArms: 1.00,
+                    Artillery: 0.90,
+                    Armored: 0.65
+                ),
 
-            (DivisionType.Infantry,
-             TerrainType.Urban)
-                => 1.00,
+            TerrainType.Marsh =>
+                new TerrainCombatModifiers(
+                    SmallArms: 0.85,
+                    Artillery: 0.70,
+                    Armored: 0.45
+                ),
 
-            (DivisionType.Infantry,
-             TerrainType.Marsh)
-                => 0.85,
+            TerrainType.Mountain =>
+                new TerrainCombatModifiers(
+                    SmallArms: 0.90,
+                    Artillery: 0.75,
+                    Armored: 0.45
+                ),
 
-            (DivisionType.Infantry,
-             TerrainType.Mountain)
-                => 0.90,
-
-
-            // MOTORIZED
-
-            (DivisionType.Motorized,
-             TerrainType.Plains)
-                => 1.05,
-
-            (DivisionType.Motorized,
-             TerrainType.Desert)
-                => 1.00,
-
-            (DivisionType.Motorized,
-             TerrainType.Hills)
-                => 0.85,
-
-            (DivisionType.Motorized,
-             TerrainType.Forest)
-                => 0.80,
-
-            (DivisionType.Motorized,
-             TerrainType.Urban)
-                => 0.85,
-
-            (DivisionType.Motorized,
-             TerrainType.Marsh)
-                => 0.65,
-
-            (DivisionType.Motorized,
-             TerrainType.Mountain)
-                => 0.65,
-
-
-            // ARMORED
-
-            (DivisionType.Armored,
-             TerrainType.Plains)
-                => 1.15,
-
-            (DivisionType.Armored,
-             TerrainType.Desert)
-                => 1.05,
-
-            (DivisionType.Armored,
-             TerrainType.Hills)
-                => 0.75,
-
-            (DivisionType.Armored,
-             TerrainType.Forest)
-                => 0.65,
-
-            (DivisionType.Armored,
-             TerrainType.Urban)
-                => 0.65,
-
-            (DivisionType.Armored,
-             TerrainType.Marsh)
-                => 0.45,
-
-            (DivisionType.Armored,
-             TerrainType.Mountain)
-                => 0.45,
-
-            _ => 1.00
+            _ =>
+                new TerrainCombatModifiers(
+                    SmallArms: 1.00,
+                    Artillery: 1.00,
+                    Armored: 1.00
+                )
         };
+    }
+
+    public static CombatPowerProfile Apply(
+        CombatPowerProfile power,
+        TerrainType terrain)
+    {
+        TerrainCombatModifiers modifiers =
+            GetModifiers(
+                terrain
+            );
+
+        return new CombatPowerProfile(
+            SmallArms:
+                Math.Round(
+                    power.SmallArms
+                    * modifiers.SmallArms,
+                    4
+                ),
+
+            Artillery:
+                Math.Round(
+                    power.Artillery
+                    * modifiers.Artillery,
+                    4
+                ),
+
+            Armored:
+                Math.Round(
+                    power.Armored
+                    * modifiers.Armored,
+                    4
+                )
+        );
     }
 }

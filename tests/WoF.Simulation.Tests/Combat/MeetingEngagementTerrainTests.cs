@@ -5,6 +5,7 @@ using WoF.Simulation.World;
 using WoF.Simulation.World.Infrastructure;
 using WoF.Simulation.Core;
 using WoF.Simulation.Diplomacy;
+using WoF.Simulation.Military.Combat.Power;
 
 
 namespace WoF.Simulation.Tests.Combat;
@@ -178,36 +179,36 @@ public class MeetingEngagementTerrainTests{
     }
 
     [Fact]
-    public void ArmoredDivisionIsMorePenalizedByMountainThanInfantry()
+    public void MountainPenalizesArmoredPowerMoreThanSmallArms()
     {
-        double infantryModifier =
+        TerrainCombatModifiers modifiers =
             CombatTerrainModifier
-                .GetPressureModifier(
-                    DivisionType.Infantry,
-                    TerrainType.Mountain
-                );
-
-        double armoredModifier =
-            CombatTerrainModifier
-                .GetPressureModifier(
-                    DivisionType.Armored,
+                .GetModifiers(
                     TerrainType.Mountain
                 );
 
         Assert.Equal(
             0.90,
-            infantryModifier
+            modifiers.SmallArms,
+            2
+        );
+
+        Assert.Equal(
+            0.75,
+            modifiers.Artillery,
+            2
         );
 
         Assert.Equal(
             0.45,
-            armoredModifier
+            modifiers.Armored,
+            2
         );
 
         Assert.True(
-            armoredModifier
+            modifiers.Armored
             <
-            infantryModifier
+            modifiers.SmallArms
         );
     }
 
