@@ -229,6 +229,18 @@ public sealed class EngagementSystem
                     continue;
                 }
 
+                 SynchronizeDivisionToMeetingPoint(
+                    first,
+                    connectionA,
+                    contactProgress
+                );
+
+                SynchronizeDivisionToMeetingPoint(
+                    second,
+                    connectionA,
+                    contactProgress
+                );
+
                 var engagement =
                     new Engagement(
                         _nextEngagementId++,
@@ -703,6 +715,30 @@ public sealed class EngagementSystem
         }
 
         return 1.0 - progress;
+    }
+
+    private static void SynchronizeDivisionToMeetingPoint(
+    Division division,
+    Province connectionA,
+    double progressFromA)
+    {
+        if (division.Transit == null)
+            return;
+
+        TransitState transit =
+            division.Transit;
+
+        double progressInOwnDirection =
+            ReferenceEquals(
+                transit.Origin,
+                connectionA
+            )
+                ? progressFromA
+                : 1.0 - progressFromA;
+
+        transit.SynchronizeProgress(
+            progressInOwnDirection
+        );
     }
 
 

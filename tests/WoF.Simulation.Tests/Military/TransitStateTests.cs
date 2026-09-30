@@ -56,7 +56,8 @@ public class TransitStateTests
 
         Assert.Equal(
             2,
-            transit.RemainingHours
+            transit.RemainingHours,
+            6
         );
 
         Assert.Equal(

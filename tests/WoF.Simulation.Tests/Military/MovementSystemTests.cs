@@ -743,7 +743,7 @@ public class MovementSystemTests
         double fuelAfterFirstHour =
             division.Fuel;
 
-        int remainingHours =
+        double remainingHours =
             division.Transit!
                 .RemainingHours;
 
@@ -817,7 +817,7 @@ public class MovementSystemTests
 
         division.StopMovement();
 
-        int remainingBeforePause =
+        double remainingBeforePause =
             division.Transit!
                 .RemainingHours;
 
@@ -888,7 +888,7 @@ public class MovementSystemTests
             division.Fuel
         );
 
-        int remaining =
+        double remaining =
             division.Transit!
                 .RemainingHours;
 

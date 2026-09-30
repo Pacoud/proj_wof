@@ -293,4 +293,261 @@ public class MeetingEngagementTerrainTests{
             infantryOrganizationAfterMountain
         );
     }
+
+
+    [Fact]
+    public void MeetingEngagementSynchronizesBothDivisionsAtExactContactPoint()
+    {
+        var france =
+            new Country(1, "France");
+
+        var germany =
+            new Country(2, "Germany");
+
+        var a =
+            new Province(
+                1,
+                "A",
+                TerrainType.Mountain,
+                owner: france
+            );
+
+        var b =
+            new Province(
+                2,
+                "B",
+                TerrainType.Plains,
+                owner: germany
+            );
+
+        a.ConnectTo(b);
+
+        var french =
+            new Division(
+                "French Division",
+                a,
+                100,
+                100,
+                country: france
+            );
+
+        var german =
+            new Division(
+                "German Division",
+                b,
+                100,
+                100,
+                country: germany
+            );
+
+        var frenchPlan =
+            new MovementPlan(
+                DurationHours: 4,
+                FuelPerHour: 0
+            );
+
+        var germanPlan =
+            new MovementPlan(
+                DurationHours: 5,
+                FuelPerHour: 0
+            );
+
+        Assert.True(
+            french.TryStartMovement(
+                b,
+                frenchPlan
+            )
+        );
+
+        Assert.True(
+            german.TryStartMovement(
+                a,
+                germanPlan
+            )
+        );
+
+        // Tick 1
+        french.AdvanceOneHour();
+        german.AdvanceOneHour();
+
+        // Tick 2
+        french.AdvanceOneHour();
+        german.AdvanceOneHour();
+
+        // Positions :
+        //
+        // FR = 0.50 depuis A
+        // DE = 0.40 depuis B
+        //    = 0.60 depuis A
+        //
+        // Ils ne se sont pas encore croisés.
+
+        // Tick 3
+        //
+        // FR : 0.50 -> 0.75
+        // DE : 0.60 -> 0.40 dans le référentiel A -> B
+        french.AdvanceOneHour();
+        german.AdvanceOneHour();
+
+        var diplomacy =
+            new DiplomacySystem();
+
+        diplomacy.DeclareWar(
+            france,
+            germany
+        );
+
+        var system =
+            new EngagementSystem(
+                diplomacy
+            );
+
+        system.DetectTransitEngagements(
+            new[]
+            {
+                french,
+                german
+            },
+            currentHour: 3
+        );
+
+        var engagement =
+            Assert.Single(
+                system.ActiveEngagements
+            );
+
+        double contact =
+            engagement.ConnectionProgress!.Value;
+
+        // Le contact réel vaut environ 0.555555...
+        Assert.Equal(
+            0.555556,
+            contact,
+            6
+        );
+
+        Assert.NotNull(
+            french.Transit
+        );
+
+        Assert.NotNull(
+            german.Transit
+        );
+
+        // France utilise le référentiel A -> B.
+        Assert.Equal(
+            contact,
+            french.Transit!.Progress,
+            6
+        );
+
+        // Allemagne utilise B -> A.
+        Assert.Equal(
+            1.0 - contact,
+            german.Transit!.Progress,
+            6
+        );
+
+        Assert.True(
+            french.Transit.IsPaused
+        );
+
+        Assert.True(
+            german.Transit.IsPaused
+        );
+    }
+
+    [Fact]
+    public void TestReverseMethodfractionedposition()
+    {
+         var france =
+            new Country(1, "France");
+
+        var germany =
+            new Country(2, "Germany");
+
+        var a =
+            new Province(
+                1,
+                "A",
+                TerrainType.Mountain,
+                owner: france
+            );
+
+        var b =
+            new Province(
+                2,
+                "B",
+                TerrainType.Plains,
+                owner: germany
+            );
+
+        a.ConnectTo(b);
+
+        var french =
+            new Division(
+                "French Division",
+                a,
+                100,
+                100,
+                country: france
+            );
+
+        var german =
+            new Division(
+                "German Division",
+                b,
+                100,
+                100,
+                country: germany
+            );
+
+        var frenchPlan =
+            new MovementPlan(
+                DurationHours: 4,
+                FuelPerHour: 0
+            );
+
+        var germanPlan =
+            new MovementPlan(
+                DurationHours: 5,
+                FuelPerHour: 0
+            );
+            
+        Assert.True(french.TryStartMovement(b, frenchPlan));
+        Assert.True(german.TryStartMovement(a, germanPlan));
+
+        for (int hour = 0; hour < 3; hour++)
+        {
+            french.AdvanceOneHour();
+            german.AdvanceOneHour();
+        }
+
+        var diplomacy = new DiplomacySystem();
+        diplomacy.DeclareWar(france, germany);
+
+        var system = new EngagementSystem(diplomacy);
+        system.DetectTransitEngagements(
+            new[] { french, german },
+            currentHour: 3
+        );
+
+        var engagement = Assert.Single(system.ActiveEngagements);
+        Assert.NotNull(engagement.ConnectionProgress);
+        Assert.NotNull(german.Transit);
+
+        double positionBeforeReverse =
+            engagement.ConnectionProgress!.Value;
+
+        Assert.Equal(0.555556, positionBeforeReverse, 6);
+        Assert.Equal(1.0 - positionBeforeReverse, german.Transit!.Progress, 6);
+
+        german.Transit.Reverse();
+
+        Assert.Same(a, german.Transit.Origin);
+        Assert.Same(b, german.Transit.Destination);
+        Assert.Equal(positionBeforeReverse, german.Transit.Progress, 6);
+        Assert.Equal(german.Transit.Progress, german.Transit.PreviousProgress, 6);
+        Assert.False(german.Transit.IsPaused);
+    }
 }

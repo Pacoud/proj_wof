@@ -1357,3 +1357,75 @@ La distinction attaquant/défenseur et les bonus défensifs seront introduits da
 - utilisation du terrain de la province lors d'un `ProvinceBattle` ;
 - vérification de la forte pénalité des blindés en montagne ;
 - vérification que le terrain modifie effectivement la pression organisationnelle produite pendant un combat.
+
+# COMMIT # 
+
+## Itération — Synchronisation physique des Meeting Engagements
+
+Le calcul précis du point de rencontre introduit précédemment est désormais également appliqué à la position réelle des divisions sur une liaison.
+
+### Progression fractionnaire
+
+`TransitState` peut maintenant représenter une progression continue sur une liaison.
+
+`ElapsedHours` et `RemainingHours` utilisent des valeurs fractionnaires, ce qui permet de représenter des positions telles que :
+
+- 55.5 %
+- 57.5 %
+- 63.27 %
+
+au lieu d'être limité aux positions correspondant à des ticks entiers.
+
+### Synchronisation au point de contact
+
+Lorsqu'un `MeetingEngagement` est détecté, les deux divisions sont désormais repositionnées exactement au point de rencontre calculé.
+
+Exemple :
+
+France :
+50 % -> 75 %
+
+Allemagne :
+60 % -> 40 %
+dans le référentiel commun A -> B.
+
+Point de contact calculé :
+
+55.556 %
+
+Après détection :
+
+France A -> B :
+Progress = 55.556 %
+
+Allemagne B -> A :
+Progress = 44.444 %
+
+Les deux valeurs représentent exactement le même emplacement physique.
+
+### Pause de l'engagement
+
+Une fois leur progression synchronisée, les deux formations sont mises en pause par leur entrée dans l'engagement.
+
+Elles ne conservent donc plus artificiellement la position atteinte à la fin du tick après avoir dépassé leur véritable point de rencontre.
+
+### Retraite après un combat sur liaison
+
+`TransitState.Reverse()` prend désormais correctement en charge les positions fractionnaires.
+
+Une division vaincue peut faire demi-tour depuis le point exact du combat sans téléportation ou perte de précision.
+
+### Limite temporelle actuelle
+
+La simulation reste basée sur des ticks horaires.
+
+La position du contact est calculée à l'intérieur du tick, mais la consommation de carburant du mouvement reste actuellement traitée à l'échelle du tick complet.
+
+Une éventuelle résolution sous-horaire des événements sera étudiée ultérieurement.
+
+### Maintenance du dépôt
+
+Un fichier `.gitignore` a été ajouté afin d'exclure les artefacts de compilation .NET.
+
+Les dossiers `bin/` et `obj/` précédemment suivis par Git ont été retirés de l'index tout en restant disponibles localement.
+
