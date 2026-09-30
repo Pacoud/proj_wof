@@ -1499,7 +1499,7 @@ Les effets défensifs, retranchements et autres modificateurs seront introduits 
 - un combat créé sans historique d'arrivée ne reçoit pas de rôles arbitraires.
 
 
-# COMMIT # 
+# COMMIT 4c8d3a52bf4e4662d52dbec8097873c0165ea1b0 # 
 ## Itération — Première représentation physique de la composition des divisions
 
 Le modèle des divisions commence à évoluer d'un système reposant principalement sur des types abstraits vers une représentation physique de leur composition.
@@ -1594,3 +1594,102 @@ Les tests vérifient notamment :
 - l'application correcte des renforts ;
 - l'utilisation d'une composition explicite par une division ;
 - la conservation de la compatibilité avec les types de divisions existants.
+
+
+# COMMIT  # 
+## Itération — Puissance de combat dérivée de la composition physique
+
+La puissance de base d'une division n'est désormais plus déterminée directement par son `DivisionType`.
+
+Elle est dérivée de sa composition physique actuelle.
+
+### CombatPowerProfile
+
+La puissance brute d'une formation est séparée en plusieurs composantes :
+
+- `SmallArms`
+- `Artillery`
+- `Armored`
+
+La propriété `Total` représente pour l'instant la somme de ces composantes et peut être utilisée par le système de combat existant.
+
+Cette séparation prépare des interactions futures spécifiques au terrain, à l'armure, à l'antichar et aux différentes catégories de munitions.
+
+### Puissance des armes légères
+
+La contribution `SmallArms` dépend du nombre d'équipements d'infanterie réellement utilisables.
+
+Le nombre utilisable est actuellement limité par le personnel disponible.
+
+Une formation possédant davantage de fusils que d'hommes ne bénéficie donc pas de la puissance des armes sans opérateurs disponibles.
+
+### Artillerie et chars
+
+L'artillerie et les chars produisent une puissance propre en fonction de leur quantité présente dans la division.
+
+Leur efficacité est également provisoirement modulée par la disponibilité globale du personnel afin de représenter la nécessité de disposer d'équipages.
+
+### Disparition du BaseCombatPressure par type
+
+Les anciennes valeurs :
+
+Infantry = 6
+Motorized = 7.5
+Armored = 10
+
+ne déterminent plus directement la puissance de base.
+
+Une division blindée est désormais puissante parce qu'elle possède réellement des chars, de l'artillerie et du personnel.
+
+### Pertes matérielles
+
+Les valeurs `Current` des `StrengthPool` influencent immédiatement la puissance calculée.
+
+Une division passant de :
+
+180 tanks
+
+à :
+
+90 tanks
+
+voit donc naturellement diminuer sa composante blindée sans changer de `DivisionType`.
+
+### Pertes humaines
+
+La réduction du manpower diminue également la capacité à employer les armes et équipements présents.
+
+Cette représentation des équipages reste provisoire et sera raffinée lorsque le modèle distinguera davantage les différentes fonctions du personnel.
+
+### Intégration au combat
+
+Le système de combat utilise désormais :
+
+Composition
+→ Raw Combat Power
+→ Fuel Effectiveness
+→ Terrain Modifier
+→ Effective Combat Pressure
+
+Les pertes physiques ne sont pas encore générées automatiquement par les combats.
+
+La composition influence donc déjà le résultat d'une bataille, mais elle n'est pas encore modifiée par celle-ci.
+
+### Compatibilité temporaire
+
+`DivisionType` reste utilisé par plusieurs systèmes existants :
+
+- mouvement ;
+- consommation de carburant ;
+- modificateurs globaux de terrain.
+
+Ces dépendances seront progressivement remplacées par des propriétés dérivées de la composition.
+
+### Limites actuelles
+
+- les coefficients de puissance sont provisoires ;
+- le terrain affecte encore toute la division via `DivisionType` ;
+- les munitions ne modifient pas encore la puissance ;
+- aucune distinction entre modèles individuels de chars, canons ou armes n'existe ;
+- les pertes physiques de combat ne sont pas encore calculées ;
+- le personnel spécialisé et les équipages ne sont pas encore représentés.

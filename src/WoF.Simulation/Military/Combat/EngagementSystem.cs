@@ -1,5 +1,6 @@
 using WoF.Simulation.Diplomacy;
 using WoF.Simulation.World;
+using WoF.Simulation.Military.Combat.Power;
 
 namespace WoF.Simulation.Military.Combat;
 
@@ -393,19 +394,6 @@ public sealed class EngagementSystem
         };
     }
 
-    private static double GetBaseCombatPressure(
-    DivisionType type)
-    {
-        return type switch
-        {
-            DivisionType.Infantry => 6.0,
-            DivisionType.Motorized => 7.5,
-            DivisionType.Armored => 10.0,
-
-            _ => 6.0
-        };
-    }
-
     private static double GetMinimumFuelEffectiveness(
     DivisionType type)
     {
@@ -445,7 +433,7 @@ public sealed class EngagementSystem
             * fuelSatisfaction;
     }
 
-    private double ProcessDivisionCombatFuel(
+    private double CalculateDivisionCombatPressure(
     Division division,
     Engagement engagement)
     {
@@ -466,6 +454,11 @@ public sealed class EngagementSystem
                 consumedFuel
             );
 
+        CombatPowerProfile physicalPower = 
+        CompositionCombatPowerCalculator.Calculate(
+            division.Composition
+        );
+
         double terrainModifier =
             CombatTerrainModifier.GetPressureModifier(
                 division.Type,
@@ -473,9 +466,7 @@ public sealed class EngagementSystem
         );
 
         return Math.Round(
-            GetBaseCombatPressure(
-                division.Type
-            )
+            physicalPower.Total
             * fuelEffectiveness
             * terrainModifier,
             2
@@ -520,7 +511,7 @@ public sealed class EngagementSystem
             }
 
             pressures[division] =
-                ProcessDivisionCombatFuel(
+                CalculateDivisionCombatPressure(
                     division,
                     engagement
                 );

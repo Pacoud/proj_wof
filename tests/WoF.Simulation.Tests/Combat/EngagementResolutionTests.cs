@@ -3,6 +3,7 @@ using WoF.Simulation.Military;
 using WoF.Simulation.World;
 using WoF.Simulation.World.Infrastructure;
 using WoF.Simulation.Core;
+using WoF.Simulation.Military.Composition;
 
 namespace WoF.Simulation.Tests.Combat;
 
@@ -286,4 +287,114 @@ private static (
             scenario.French.IsEngaged
         );
     }
-}
+
+        [Fact]
+    public void ReducedPhysicalCompositionAppliesLessOrganizationPressure()
+    {
+        double fullStrengthResult =
+            RunCombatAgainstComposition(
+                tanks: 180
+            );
+
+        double depletedResult =
+            RunCombatAgainstComposition(
+                tanks: 30
+            );
+
+        // Plus l'organisation ennemie est basse,
+        // plus la pression reçue était élevée.
+        Assert.True(
+            fullStrengthResult
+            <
+            depletedResult
+        );
+    }
+
+        private static double RunCombatAgainstComposition(
+        int tanks)
+        {
+            var france =
+                new Country(
+                    1,
+                    "France"
+                );
+
+            var germany =
+                new Country(
+                    2,
+                    "Germany"
+                );
+
+            var province =
+                new Province(
+                    1,
+                    "Battlefield",
+                    owner: france
+                );
+
+            var armoredComposition =
+                new DivisionComposition(
+                    new StrengthPool(
+                        authorized: 8_000,
+                        current: 8_000
+                    ),
+                    new StrengthPool(
+                        authorized: 5_000,
+                        current: 5_000
+                    ),
+                    new StrengthPool(
+                        authorized: 36,
+                        current: 36
+                    ),
+                    new StrengthPool(
+                        authorized: 180,
+                        current: tanks
+                    )
+                );
+
+            var armored =
+                new Division(
+                    "French Armored",
+                    province,
+                    fuel: 100,
+                    ammunition: 100,
+                    type: DivisionType.Armored,
+                    country: france,
+                    composition:
+                        armoredComposition
+                );
+
+            var infantry =
+                new Division(
+                    "German Infantry",
+                    province,
+                    fuel: 100,
+                    ammunition: 100,
+                    country: germany
+                );
+
+            var simulation =
+                new SimulationEngine();
+
+            simulation.AddDivision(
+                armored
+            );
+
+            simulation.AddDivision(
+                infantry
+            );
+
+            simulation.DeclareWar(
+                france,
+                germany
+            );
+
+            // Détection.
+            simulation.Tick();
+
+            // Premier tick de combat.
+            simulation.Tick();
+
+            return infantry.Organization;
+        }
+    }
