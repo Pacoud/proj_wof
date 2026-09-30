@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("WoF.Prototype")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+bd02cf1e0dd5d92027807c9a2a4c11fdcf9f1964")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5b6a0e8a5a82eb70724dae27ffbb0633535ba7c5")]
 [assembly: System.Reflection.AssemblyProductAttribute("WoF.Prototype")]
 [assembly: System.Reflection.AssemblyTitleAttribute("WoF.Prototype")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

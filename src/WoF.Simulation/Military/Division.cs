@@ -1,5 +1,6 @@
 using WoF.Simulation.World;
 using WoF.Simulation.Military.Combat;
+using WoF.Simulation.Military.Retreat;
 
 namespace WoF.Simulation.Military;
 
@@ -41,7 +42,11 @@ public sealed class Division
     public bool IsEngaged =>
     CurrentEngagement != null;
 
-    public bool IsRetreating { get; private set; }
+    public RetreatPhase RetreatPhase { get; private set; }
+    = RetreatPhase.None;
+
+    public bool IsRetreating =>
+    RetreatPhase != RetreatPhase.None;
 
     public IReadOnlyList<Province> QueuedDestinations =>
     PlannedRoute?.RemainingWaypoints
@@ -333,7 +338,8 @@ public sealed class Division
 
         ReplacePlannedRoute(route);
 
-        IsRetreating = true;
+        RetreatPhase =
+            RetreatPhase.MovingToSafety;
     }
 
     internal void CompleteRetreat()
@@ -344,8 +350,10 @@ public sealed class Division
         if (NextQueuedDestination != null)
             return;
 
-        IsRetreating = false;
+        RetreatPhase =
+            RetreatPhase.None;
     }
+
 
     public bool StopMovement()
     {
@@ -380,6 +388,36 @@ public sealed class Division
         Transit.Resume();
 
         return true;
+    }
+
+    internal bool BeginReturnToOriginRetreat()
+    {
+        if (!IsBroken)
+            return false;
+
+        if (Transit == null)
+            return false;
+
+        ClearPlannedRoute();
+
+        Transit.Reverse();
+
+        RetreatPhase =
+            RetreatPhase.ReturningToOrigin;
+
+        return true;
+    }
+
+
+    internal void ResumeTransitAfterEngagement()
+    {
+        if (IsBroken)
+            return;
+
+        if (Transit == null)
+            return;
+
+        Transit.Resume();
     }
 
 

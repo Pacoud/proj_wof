@@ -4,9 +4,9 @@ namespace WoF.Simulation.Military;
 
 public sealed class TransitState
 {
-    public Province Origin { get; }
+    public Province Origin { get; private set; }
 
-    public Province Destination { get; }
+    public Province Destination { get; private set; }
 
     public int TotalHours { get; }
 
@@ -28,6 +28,7 @@ public sealed class TransitState
 
     public bool IsCompleted =>
         RemainingHours == 0;
+
 
     public TransitState(
         Province origin,
@@ -66,6 +67,27 @@ public sealed class TransitState
 
     public void BeginTick()
     {
+        PreviousProgress = Progress;
+    }
+
+    public void Reverse() // Gère les cas ou la division est vaincue dans un combat inter provinces
+    {
+        if (IsCompleted)
+            return;
+
+        Province oldOrigin = Origin;
+
+        int oldElapsedHours =
+            ElapsedHours;
+
+        Origin = Destination;
+        Destination = oldOrigin;
+
+        RemainingHours = oldElapsedHours;
+
+        IsPaused = false;
+
+
         PreviousProgress = Progress;
     }
 }

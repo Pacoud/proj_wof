@@ -79,28 +79,30 @@ public sealed class SimulationEngine
             Clock.CurrentHour
         );
 
-        // Seules les arrivées sans opposition
-        // peuvent prendre le contrôle.
+        ProcessEndedEngagements();
+
+        // Capture uniquement par des unités
+        // capables d'occuper normalement le terrain.
         foreach (var division in arrivals)
         {
-            if (!division.IsEngaged)
-            {
-                ResolveProvinceControl(
-                    division
-                );
-            }
+            if (division.IsEngaged)
+                continue;
+            
+            if (division.IsBroken)
+                continue;
+            
+            if (division.IsRetreating)
+                continue;
+            
+            ResolveProvinceControl(
+                division
+            );
+            
+
         }
-            Engagements.DetectTransitEngagements(
-                _divisions,
-                Clock.CurrentHour
-            );
-
-            Engagements.DetectProvinceEngagements(
-                _divisions,
-                Clock.CurrentHour
-            );
-
-            ProcessEndedEngagements();
+        // Retour sur la province d'origine terminé ?
+        // Chercher maintenant une destination arrière.
+        ProcessRetreatTransitions();
 
         // Une division venant d'arriver dans une province
         // peut être ravitaillée.
@@ -117,13 +119,15 @@ public sealed class SimulationEngine
     {   
         foreach (var division in _divisions)
         {
+            if(division.IsRetreating)
+            {
 
-            if (division.IsRetreating)
+            if (division.RetreatPhase == RetreatPhase.MovingToSafety)
             {
             TryStartNextRetreatSegment(
-            division
+                division
             );
-
+            }
             continue;
             }
             if (division.IsInTransit)
@@ -216,10 +220,6 @@ public sealed class SimulationEngine
     private bool TryStartNextSegment(
     Division division)
     {
-        if (division.IsEngaged)
-            return false;
-
-
         if (division.IsInTransit)
             return false;
 
@@ -414,15 +414,21 @@ public sealed class SimulationEngine
             foreach (var division
                     in engagement.Participants)
             {
-                if (!division.IsBroken)
+                if (division.IsBroken)
+                {
+                    Retreats.BeginRetreatAfterEngagement(
+                        division,
+                        engagement,
+                        _divisions
+                    );
                     continue;
+                }
 
-                Retreats.TryPlanRetreat(
-                    division,
-                    engagement,
-                    _divisions
-                );
-            }
+                if (engagement.LocationType == EngagementLocationType.Connection)
+                {
+                    division.ResumeTransitAfterEngagement();
+                }
+            }   
         }
     }
 
@@ -467,6 +473,29 @@ public sealed class SimulationEngine
         }
 
         return started;
+    }
+
+    private void ProcessRetreatTransitions()
+    {
+        foreach (var division in _divisions)
+        {
+            if (division.RetreatPhase
+                != RetreatPhase.ReturningToOrigin)
+            {
+                continue;
+            }
+
+            if (division.IsInTransit)
+                continue;
+
+            if (division.CurrentProvince == null)
+                continue;
+
+            Retreats.ContinueRetreatToSafety(
+                division,
+                _divisions
+            );
+        }
     }
 
 

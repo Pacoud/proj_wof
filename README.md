@@ -13,7 +13,7 @@ pathfinding (arbres de graphes), le ravitaillement traverse plusieurs provinces
 - Gestion du cas où aucun chemin logistique n’existe.
 
 
-# COMMIT # 47da8f214851e333d5e22797109ae7498c3f69b0 
+# COMMIT  47da8f214851e333d5e22797109ae7498c3f69b0 # 
 -recherche du chemin offrant la meilleure capacité logistique ;
 -prise en compte du maillon le plus faible de chaque trajet ;
 -utilisation des capacités restantes pendant le tick, et non uniquement des capacités nominales ;
@@ -1005,7 +1005,7 @@ Un tick d'engagement traite maintenant :
 
 
 
-# COMMIT # 
+# COMMIT 5b6a0e8a5a82eb70724dae27ffbb0633535ba7c5 # 
 ## Itération — Retraite automatique des divisions brisées
 
 Les divisions dont l'organisation atteint zéro ne restent désormais plus indéfiniment sur le champ de bataille.
@@ -1103,3 +1103,106 @@ La qualité des routes n'est pas encore utilisée comme critère principal de s�
 - vérification du déclenchement automatique d'une retraite après une défaite ;
 - vérification de l'arrivée d'une division brisée dans une province arrière ;
 - vérification du transfert de contrôle territorial au vainqueur.
+
+# COMMIT # 
+## Itération — Retraite après un engagement sur une liaison
+
+Le système de retraite prend désormais en charge les divisions brisées lors d'un combat ayant lieu entre deux provinces.
+
+Une division vaincue au milieu d'une liaison n'est plus téléportée vers une province.
+
+### Inversion du TransitState
+
+`TransitState` peut désormais inverser son origine et sa destination tout en conservant exactement la position physique de la division.
+
+Exemple :
+
+A -> B
+Progress = 40 %
+
+devient :
+
+B -> A
+Progress = 60 %
+
+La division reste au même emplacement sur la liaison.
+
+Pour un trajet de cinq heures :
+
+avant :
+
+ElapsedHours   = 2
+RemainingHours = 3
+
+après inversion :
+
+ElapsedHours   = 3
+RemainingHours = 2
+
+La division met donc exactement deux heures à revenir vers la province qu'elle avait quittée.
+
+### Phases de retraite
+
+La retraite distingue maintenant plusieurs phases :
+
+- `None`
+- `ReturningToOrigin`
+- `MovingToSafety`
+
+Lorsqu'une division est brisée lors d'un engagement sur une liaison, elle passe d'abord en :
+
+`ReturningToOrigin`
+
+Elle fait demi-tour sur la liaison et retourne vers sa province de départ.
+
+Une fois cette province atteinte, le `RetreatPathfinder` recherche une province arrière sûre et la division passe en :
+
+`MovingToSafety`
+
+### Vainqueur d'un combat sur une liaison
+
+Une division victorieuse non brisée reprend le transit qui avait été suspendu par l'engagement.
+
+Le comportement devient donc :
+
+Winner:
+resume current transit
+
+Loser:
+reverse current transit
+-> return to origin
+-> retreat toward safe rear
+
+Les itinéraires futurs restent supprimés après un engagement ; seul le segment interrompu du vainqueur est repris.
+
+### Absence de téléportation
+
+Une division vaincue ne change jamais instantanément de province.
+
+Sa position intermédiaire est conservée grâce au progrès du `TransitState`.
+
+La retraite utilise donc le même système temporel de déplacement que les mouvements militaires ordinaires.
+
+### Capture territoriale
+
+Une division brisée ou en retraite ne peut pas capturer une province simplement parce qu'elle y arrive pendant son repli.
+
+Les changements de contrôle territorial restent réservés aux unités capables d'occuper normalement le territoire.
+
+### Interaction avec le système de retraite existant
+
+Après le retour à la province d'origine :
+
+1. le moteur détecte la fin du transit inverse ;
+2. le `RetreatPathfinder` recherche une destination arrière ;
+3. un itinéraire de retraite est créé ;
+4. la division poursuit automatiquement son repli ;
+5. elle quitte l'état `Retreating` une fois arrivée à sa destination finale.
+
+### Tests ajoutés
+
+- vérification que l'inversion d'un `TransitState` conserve la position physique ;
+- vérification de l'inversion de l'origine et de la destination ;
+- vérification qu'une division brisée sur une liaison retourne vers sa province de départ ;
+- vérification que le vainqueur reprend son transit interrompu ;
+- vérification du passage de `ReturningToOrigin` vers `MovingToSafety`.
