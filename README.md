@@ -1253,7 +1253,7 @@ Une formation située directement au contact du front ne peut donc pas se réorg
 - absence de récupération pendant un déplacement ;
 - limitation de l'organisation à sa valeur maximale.
 
-# COMMIT # 
+# COMMIT 72d38c1a27ee5e32c0e5cbdd281a790aa579bf1f # 
 ## Itération — Terrain des engagements et localisation des combats de rencontre
 
 Le système de combat distingue désormais explicitement les combats ayant lieu dans une province des rencontres entre forces se déplaçant sur une liaison.
@@ -1358,7 +1358,7 @@ La distinction attaquant/défenseur et les bonus défensifs seront introduits da
 - vérification de la forte pénalité des blindés en montagne ;
 - vérification que le terrain modifie effectivement la pression organisationnelle produite pendant un combat.
 
-# COMMIT # 
+# COMMIT b43fdc5a876f6d12f7934d8dc9350d06296d024e # 
 
 ## Itération — Synchronisation physique des Meeting Engagements
 
@@ -1429,3 +1429,71 @@ Un fichier `.gitignore` a été ajouté afin d'exclure les artefacts de compilat
 
 Les dossiers `bin/` et `obj/` précédemment suivis par Git ont été retirés de l'index tout en restant disponibles localement.
 
+# COMMIT 3722d32f4f1740478a7e8f3247493d80e478d1e2 #
+## Itération — Identification des attaquants et défenseurs
+
+Les engagements ayant lieu dans une province peuvent désormais distinguer les forces attaquantes des forces défenseuses lorsque l'origine du combat est connue.
+
+### EngagementRole
+
+Chaque participant peut désormais posséder l'un des rôles suivants :
+
+- `None`
+- `Attacker`
+- `Defender`
+
+Les rôles sont stockés directement dans l'`Engagement`.
+
+### Province Battle
+
+Lorsqu'une division termine son mouvement dans une province contenant déjà une force ennemie stationnaire :
+
+- le pays de la formation arrivante constitue le camp attaquant ;
+- le pays de la formation déjà stationnée constitue le camp défenseur.
+
+Les autres divisions appartenant à ces mêmes pays héritent du rôle correspondant.
+
+Cette approche évite de considérer automatiquement toute division arrivée pendant le tick comme attaquante, notamment lorsqu'un renfort du défenseur arrive simultanément.
+
+### Meeting Engagement
+
+Les engagements ayant lieu sur une liaison restent symétriques.
+
+Aucun participant à un `MeetingEngagement` n'est automatiquement considéré comme attaquant ou défenseur.
+
+Leur rôle reste :
+
+`EngagementRole.None`
+
+### Provenance des rôles
+
+`SimulationEngine` conservait déjà la liste des divisions ayant terminé un transit pendant le tick.
+
+Cette information est désormais transmise à `EngagementSystem` afin de distinguer une formation venant d'entrer dans la province d'une formation déjà présente.
+
+Le rôle n'est donc pas déduit arbitrairement du propriétaire ou du contrôleur de la province.
+
+### Cas sans historique de mouvement
+
+Lorsque plusieurs divisions ennemies sont directement présentes dans une même province sans qu'une arrivée puisse être identifiée, aucun rôle artificiel n'est attribué.
+
+Cela permet notamment aux scénarios de tests construits directement dans une province de rester neutres.
+
+### Renforts
+
+Les renforts rejoignant une bataille de province héritent du rôle déjà associé à leur pays lorsque celui-ci est connu.
+
+### Effets sur le combat
+
+Cette itération introduit uniquement l'identification des rôles.
+
+Aucun bonus ou malus de combat n'est encore associé à `Attacker` ou `Defender`.
+
+Les effets défensifs, retranchements et autres modificateurs seront introduits séparément.
+
+### Tests ajoutés
+
+- une division arrivant dans une province ennemie est identifiée comme attaquante ;
+- une division ennemie déjà stationnée est identifiée comme défenseuse ;
+- un `MeetingEngagement` ne possède aucun attaquant ou défenseur ;
+- un combat créé sans historique d'arrivée ne reçoit pas de rôles arbitraires.
