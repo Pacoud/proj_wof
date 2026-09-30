@@ -1,0 +1,19 @@
+# .NET build output
+**/bin/
+**/obj/
+
+# Test output
+TestResults/
+coverage/
+coverage.*
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# OS temporary files
+.DS_Store
+Thumbs.db
