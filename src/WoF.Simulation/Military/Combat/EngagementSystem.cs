@@ -49,8 +49,15 @@ public sealed class EngagementSystem
 
     public void DetectProvinceEngagements(
     IEnumerable<Division> divisions,
-    long currentHour)
+    long currentHour,
+    IReadOnlyCollection<Division>? arrivals = null)
     {
+
+        var arrivalSet =
+        arrivals != null
+        ? arrivals.ToHashSet()
+        : new HashSet<Division>();
+
         var stationedDivisions =
             divisions
                 .Where(
@@ -90,7 +97,8 @@ public sealed class EngagementSystem
             {
                 AddReinforcementsToProvinceEngagement(
                     existing,
-                    divisionsHere
+                    divisionsHere,
+                    arrivalSet
                 );
 
                 continue;
@@ -120,6 +128,11 @@ public sealed class EngagementSystem
             if (involved.Count < 2)
                 continue;
 
+            var roles = DetermineProvinceBattleRoles(
+                involved,
+                arrivalSet
+            );
+
             var engagement =
                 new Engagement(
                     _nextEngagementId++,
@@ -130,7 +143,8 @@ public sealed class EngagementSystem
             foreach (var division in involved)
             {
                 engagement.AddParticipant(
-                    division
+                    division,
+                    roles[division]
                 );
             }
 
@@ -140,10 +154,70 @@ public sealed class EngagementSystem
         }
     }
 
+    private EngagementRole DetermineReinforcementRole(
+    Engagement engagement,
+    Division candidate,
+    IReadOnlySet<Division> arrivals)
+    {
+        if (candidate.Country == null)
+            return EngagementRole.None;
+
+        // Même pays qu'un attaquant existant.
+        if (engagement.Attackers.Any(
+                attacker =>
+                    attacker.Country != null
+                    &&
+                    attacker.Country.Id
+                        == candidate.Country.Id))
+        {
+            return EngagementRole.Attacker;
+        }
+
+        // Même pays qu'un défenseur existant.
+        if (engagement.Defenders.Any(
+                defender =>
+                    defender.Country != null
+                    &&
+                    defender.Country.Id
+                        == candidate.Country.Id))
+        {
+            return EngagementRole.Defender;
+        }
+
+        // Fallback simple pour les cas encore non classifiés.
+
+        if (arrivals.Contains(candidate)
+            &&
+            engagement.Defenders.Any(
+                defender =>
+                    AreHostile(
+                        candidate,
+                        defender
+                    )))
+        {
+            return EngagementRole.Attacker;
+        }
+
+        if (!arrivals.Contains(candidate)
+            &&
+            engagement.Attackers.Any(
+                attacker =>
+                    AreHostile(
+                        candidate,
+                        attacker
+                    )))
+        {
+            return EngagementRole.Defender;
+        }
+
+        return EngagementRole.None;
+    }
+
 
     private void AddReinforcementsToProvinceEngagement(
     Engagement engagement,
-    IEnumerable<Division> divisions)
+    IEnumerable<Division> divisions,
+    IReadOnlySet<Division> arrivals)
     {
         foreach (var candidate in divisions)
         {
@@ -161,11 +235,17 @@ public sealed class EngagementSystem
                             participant
                         )
                 );
-
+            
             if (hostileToParticipant)
             {
+                EngagementRole role = DetermineReinforcementRole(
+                    engagement,
+                    candidate,
+                    arrivals
+                );
                 engagement.AddParticipant(
-                    candidate
+                    candidate,
+                    role
                 );
             }
         }
@@ -739,6 +819,92 @@ public sealed class EngagementSystem
         transit.SynchronizeProgress(
             progressInOwnDirection
         );
+    }
+
+    private Dictionary<Division, EngagementRole> DetermineProvinceBattleRoles(
+        IReadOnlyCollection<Division> participants,
+        IReadOnlySet<Division> arrivals)
+    {
+        var roles =
+            participants.ToDictionary(
+                division => division,
+                _ => EngagementRole.None
+            );
+
+        var arriving =
+            participants
+                .Where(arrivals.Contains)
+                .ToList();
+
+        var stationary =
+            participants
+                .Where(
+                    division =>
+                        !arrivals.Contains(division)
+                )
+                .ToList();
+
+        Country? attackerCountry = null;
+        Country? defenderCountry = null;
+
+        foreach (var arrivingDivision in arriving)
+        {
+            foreach (var stationaryDivision in stationary)
+            {
+                if (!AreHostile(
+                        arrivingDivision,
+                        stationaryDivision))
+                {
+                    continue;
+                }
+
+                attackerCountry =
+                    arrivingDivision.Country;
+
+                defenderCountry =
+                    stationaryDivision.Country;
+
+                break;
+            }
+
+            if (attackerCountry != null
+                && defenderCountry != null)
+            {
+                break;
+            }
+        }
+
+        // Aucun affrontement arrivée vs unité stationnaire :
+        // on n'invente pas de rôles.
+        if (attackerCountry == null
+            || defenderCountry == null)
+        {
+            return roles;
+        }
+
+        foreach (var division in participants)
+        {
+            if (division.Country == null)
+                continue;
+
+            if (division.Country.Id
+                == attackerCountry.Id)
+            {
+                roles[division] =
+                    EngagementRole.Attacker;
+
+                continue;
+            }
+
+            if (division.Country.Id
+                == defenderCountry.Id)
+            {
+                roles[division] =
+                    EngagementRole.Defender;
+            }
+        }
+
+        return roles;
     }
 
 

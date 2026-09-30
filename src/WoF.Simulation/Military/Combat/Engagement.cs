@@ -6,6 +6,8 @@ public sealed class Engagement
 {
     private readonly List<Division> _participants = new();
 
+    private readonly Dictionary<Division, EngagementRole> _roles = new();
+
     public int Id { get; }
 
     public long StartHour { get; }
@@ -26,6 +28,32 @@ public sealed class Engagement
 
     public IReadOnlyList<Division> Participants =>
         _participants;
+
+
+    public IEnumerable<Division> Attackers =>
+    _participants.Where(
+        division =>
+            GetRole(division)
+                == EngagementRole.Attacker
+    );
+
+    public IEnumerable<Division> Defenders =>
+        _participants.Where(
+            division =>
+                GetRole(division)
+                    == EngagementRole.Defender
+        );
+
+    public EngagementRole GetRole(
+    Division division)
+    {
+        return _roles.TryGetValue(
+            division,
+            out EngagementRole role
+        )
+            ? role
+            : EngagementRole.None;
+    }
 
     public bool IsActive { get; private set; } = true;
 
@@ -85,15 +113,30 @@ public sealed class Engagement
     }
 
     internal void AddParticipant(
-        Division division)
+        Division division,
+        EngagementRole role = EngagementRole.None)
     {
         if (division.IsBroken)
             return;
 
         if (_participants.Contains(division))
-            return;
+            {
+                        // Permet d'attribuer un rôle ultérieurement
+                // à un participant encore non classifié.
+                if (GetRole(division)
+                        == EngagementRole.None
+                    &&
+                    role != EngagementRole.None)
+                {
+                    _roles[division] = role;
+                }
+
+                return;
+            }
 
         _participants.Add(division);
+
+        _roles[division] = role;
 
         division.JoinEngagement(this);
     }

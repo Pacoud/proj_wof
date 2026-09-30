@@ -3,6 +3,7 @@ using WoF.Simulation.Military;
 using WoF.Simulation.World;
 using WoF.Simulation.World.Infrastructure;
 using WoF.Simulation.Core;
+using WoF.Simulation.Military.Combat;
 
 namespace WoF.Simulation.Tests.Combat;
 
@@ -367,6 +368,238 @@ public class EngagementsTests
         simulation.DeclareWar(france, germany);
 
         return (simulation, armored);
+    }
+
+
+    [Fact]
+    public void ArrivingDivisionIsAttackerAndStationaryEnemyIsDefender()
+    {
+        var france =
+            new Country(1, "France");
+
+        var germany =
+            new Country(2, "Germany");
+
+        var a =
+            new Province(
+                1,
+                "A",
+                owner: france
+            );
+
+        var b =
+            new Province(
+                2,
+                "B",
+                owner: germany
+            );
+
+        a.ConnectTo(b);
+
+        var road =
+            new InfrastructureLink(
+                a,
+                b,
+                InfrastructureType.Road,
+                level: 2
+            );
+
+        var french =
+            new Division(
+                "French Division",
+                a,
+                100,
+                100,
+                country: france
+            );
+
+        var german =
+            new Division(
+                "German Division",
+                b,
+                100,
+                100,
+                country: germany
+            );
+
+        var simulation =
+            new SimulationEngine();
+
+        simulation.AddDivision(french);
+        simulation.AddDivision(german);
+
+        simulation.AddInfrastructureLink(
+            road
+        );
+
+        simulation.DeclareWar(
+            france,
+            germany
+        );
+
+        simulation.TryOrderMoveTo(
+            french,
+            b
+        );
+
+        int safety = 20;
+
+        while (!french.IsEngaged
+            && safety-- > 0)
+        {
+            simulation.Tick();
+        }
+
+        Assert.True(
+            safety > 0
+        );
+
+        var engagement =
+            Assert.Single(
+                simulation
+                    .Engagements
+                    .ActiveEngagements
+            );
+
+        Assert.Equal(
+            EngagementType.ProvinceBattle,
+            engagement.Type
+        );
+
+        Assert.Equal(
+            EngagementRole.Attacker,
+            engagement.GetRole(french)
+        );
+
+        Assert.Equal(
+            EngagementRole.Defender,
+            engagement.GetRole(german)
+        );
+
+        Assert.Contains(
+            french,
+            engagement.Attackers
+        );
+
+        Assert.Contains(
+            german,
+            engagement.Defenders
+        );
+    }
+
+    [Fact]
+    public void MeetingEngagementHasNoAttackerOrDefenderRoles()
+    {
+        var (
+            simulation,
+            french,
+            german
+        ) =
+            CreateOpposingTransitScenario();
+
+        simulation.Tick();
+        simulation.Tick();
+
+        var engagement =
+            Assert.Single(
+                simulation
+                    .Engagements
+                    .ActiveEngagements
+            );
+
+        Assert.Equal(
+            EngagementType.MeetingEngagement,
+            engagement.Type
+        );
+
+        Assert.Equal(
+            EngagementRole.None,
+            engagement.GetRole(french)
+        );
+
+        Assert.Equal(
+            EngagementRole.None,
+            engagement.GetRole(german)
+        );
+
+        Assert.Empty(
+            engagement.Attackers
+        );
+
+        Assert.Empty(
+            engagement.Defenders
+        );
+    }
+
+
+    [Fact]
+    public void CoLocatedDivisionsWithoutArrivalHaveNoForcedRoles()
+    {
+        var france =
+            new Country(1, "France");
+
+        var germany =
+            new Country(2, "Germany");
+
+        var province =
+            new Province(
+                1,
+                "Battlefield",
+                owner: france
+            );
+
+        var french =
+            new Division(
+                "French Division",
+                province,
+                100,
+                100,
+                country: france
+            );
+
+        var german =
+            new Division(
+                "German Division",
+                province,
+                100,
+                100,
+                country: germany
+            );
+
+        var simulation =
+            new SimulationEngine();
+
+        simulation.AddDivision(french);
+        simulation.AddDivision(german);
+
+        simulation.DeclareWar(
+            france,
+            germany
+        );
+
+        simulation.Tick();
+
+        var engagement =
+            Assert.Single(
+                simulation
+                    .Engagements
+                    .ActiveEngagements
+            );
+
+        Assert.Equal(
+            EngagementType.ProvinceBattle,
+            engagement.Type
+        );
+
+        Assert.Equal(
+            EngagementRole.None,
+            engagement.GetRole(french)
+        );
+
+        Assert.Equal(
+            EngagementRole.None,
+            engagement.GetRole(german)
+        );
     }
 
 }

@@ -70,7 +70,7 @@ public sealed class SimulationEngine
             }
         }
 
-            // Deux colonnes ennemies peuvent s'être croisées.
+        // Deux colonnes ennemies peuvent s'être croisées.
         Engagements.DetectTransitEngagements(
             _divisions,
             Clock.CurrentHour
@@ -80,7 +80,8 @@ public sealed class SimulationEngine
         // province déjà occupée par l'ennemi.
         Engagements.DetectProvinceEngagements(
             _divisions,
-            Clock.CurrentHour
+            Clock.CurrentHour,
+            arrivals
         );
 
         ProcessEndedEngagements();
