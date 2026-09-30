@@ -6,6 +6,8 @@ using WoF.Simulation.World.Infrastructure;
 using WoF.Simulation.Diplomacy;
 using WoF.Simulation.Military.Combat;
 using WoF.Simulation.Military.Retreat;
+using WoF.Simulation.Military.Recovery;
+
 
 namespace WoF.Simulation.Core;
 
@@ -21,6 +23,8 @@ public sealed class SimulationEngine
     public SimulationClock Clock { get; } = new();
 
     public EngagementSystem Engagements { get; }
+
+    public OrganizationRecoverySystem OrganizationRecovery { get; }
 
     public DiplomacySystem Diplomacy { get; } = new();
 
@@ -113,6 +117,10 @@ public sealed class SimulationEngine
 
         // Puis elle peut commencer son segment suivant.
         StartQueuedMovements();
+
+        OrganizationRecovery.ProcessRecovery(
+            _divisions
+        );
     }
 
     private void StartQueuedMovements()
@@ -387,6 +395,11 @@ public sealed class SimulationEngine
             );
         Engagements =
             new EngagementSystem(
+                Diplomacy
+            );
+
+        OrganizationRecovery =
+            new OrganizationRecoverySystem(
                 Diplomacy
             );
     }

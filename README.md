@@ -1104,7 +1104,7 @@ La qualité des routes n'est pas encore utilisée comme critère principal de s�
 - vérification de l'arrivée d'une division brisée dans une province arrière ;
 - vérification du transfert de contrôle territorial au vainqueur.
 
-# COMMIT # 
+# COMMIT 437194afa3ede04370d9e9ea8708c4fe85274a8c # 
 ## Itération — Retraite après un engagement sur une liaison
 
 Le système de retraite prend désormais en charge les divisions brisées lors d'un combat ayant lieu entre deux provinces.
@@ -1206,3 +1206,50 @@ Après le retour à la province d'origine :
 - vérification qu'une division brisée sur une liaison retourne vers sa province de départ ;
 - vérification que le vainqueur reprend son transit interrompu ;
 - vérification du passage de `ReturningToOrigin` vers `MovingToSafety`.
+
+# COMMIT # 
+
+## Itération — Récupération progressive de l'organisation
+
+Les divisions peuvent désormais récupérer progressivement leur organisation après un combat.
+
+Cette évolution permet à une formation brisée de redevenir opérationnelle après une période de repos dans une zone arrière sûre.
+
+
+### État Broken
+`Broken` ne représente pas directement un faible niveau d'organisation.
+
+Il représente une formation ayant rompu au combat et se trouvant dans un état de déroute.
+
+Une division devient `Broken` lorsque son organisation atteint zéro pendant un engagement.
+
+Elle reste `Broken` pendant sa retraite.
+
+Une fois sa retraite terminée dans une province arrière valide, elle quitte immédiatement l'état `Broken`, même si son niveau d'organisation reste très faible.
+
+La faiblesse d'une formation récemment retraitée n'est donc pas représentée par une interdiction artificielle de combattre, mais directement par son faible niveau d'organisation.
+
+Une division remise en ligne trop rapidement pourra ainsi être engagée normalement mais risque de rompre presque immédiatement si elle subit une nouvelle pression ennemie.
+
+### Conditions de récupération
+
+Une division ne récupère son organisation que si :
+
+- elle est stationnée dans une province ;
+- elle n'est pas engagée ;
+- elle n'est pas en transit ;
+- elle n'est pas en retraite ;
+- la province est contrôlée par son propre pays ;
+- aucune force ennemie capable de combattre n'est présente dans la province ou dans une province adjacente.
+
+Une formation située directement au contact du front ne peut donc pas se réorganiser normalement.
+
+### Tests ajoutés
+
+- récupération progressive dans une province amie sûre ;
+- maintien de l'état `Broken` sous le seuil de réorganisation ;
+- sortie de l'état `Broken` lorsque le seuil est atteint ;
+- absence de récupération lorsqu'une force ennemie se trouve à proximité ;
+- absence de récupération pendant un déplacement ;
+- limitation de l'organisation à sa valeur maximale.
+

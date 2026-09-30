@@ -339,7 +339,7 @@ public class TransitStateTests
             german.IsRetreating
         );
 
-        Assert.True(
+        Assert.False(
             german.IsBroken
         );
 

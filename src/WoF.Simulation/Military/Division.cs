@@ -31,8 +31,7 @@ public sealed class Division
     public Province? NextQueuedDestination =>
     PlannedRoute?.NextWaypoint;
 
-    public bool IsBroken =>
-    Organization <= 0;
+    public bool IsBroken { get; private set; }
 
     public bool IsInTransit =>
     Transit != null;
@@ -315,6 +314,12 @@ public sealed class Division
             2
         );
 
+        if(Organization<= 0)
+        {
+            Organization = 0;
+            IsBroken = true; 
+        }
+
         return lost;
     }
 
@@ -352,6 +357,8 @@ public sealed class Division
 
         RetreatPhase =
             RetreatPhase.None;
+
+        IsBroken = false;
     }
 
 
@@ -418,6 +425,29 @@ public sealed class Division
             return;
 
         Transit.Resume();
+    }
+
+
+    public double RecoverOrganization(double amount)
+    {
+        if (amount <= 0)
+            return 0;
+
+        if (Organization >= MaxOrganization)
+            return 0;
+
+        double recovered =
+            Math.Min(
+                amount,
+                MaxOrganization - Organization
+            );
+
+        Organization = Math.Round(
+            Organization + recovered,
+            2
+        );
+
+        return recovered;
     }
 
 
