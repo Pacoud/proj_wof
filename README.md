@@ -1497,3 +1497,100 @@ Les effets défensifs, retranchements et autres modificateurs seront introduits 
 - une division ennemie déjà stationnée est identifiée comme défenseuse ;
 - un `MeetingEngagement` ne possède aucun attaquant ou défenseur ;
 - un combat créé sans historique d'arrivée ne reçoit pas de rôles arbitraires.
+
+
+# COMMIT # 
+## Itération — Première représentation physique de la composition des divisions
+
+Le modèle des divisions commence à évoluer d'un système reposant principalement sur des types abstraits vers une représentation physique de leur composition.
+
+### DivisionComposition
+
+Chaque division possède désormais une `DivisionComposition`.
+
+La première version représente quatre éléments :
+
+- manpower ;
+- infantry equipment ;
+- artillery ;
+- tanks.
+
+Ces catégories constituent volontairement une première abstraction et seront enrichies ultérieurement.
+
+### StrengthPool
+
+Chaque composant est représenté par un `StrengthPool`.
+
+Un pool distingue :
+
+Authorized
+
+la quantité théorique correspondant à l'effectif ou à la dotation normale de la division ;
+
+Current
+
+la quantité réellement disponible.
+
+Il expose également :
+
+Missing
+
+et :
+
+AvailabilityRatio
+
+afin de représenter simplement le niveau de complétude d'une formation.
+
+### Pertes
+
+`ApplyLoss()` retire une quantité d'un pool sans jamais permettre de valeur négative.
+
+La méthode retourne la perte réellement appliquée.
+
+Une perte supérieure aux effectifs disponibles ramène donc simplement le pool à zéro.
+
+### Renforts
+
+`Reinforce()` permet de réintroduire du personnel ou du matériel.
+
+La quantité présente ne peut jamais dépasser la dotation autorisée.
+
+Cette mécanique constituera plus tard le point de connexion avec les systèmes de remplacement, de production et de logistique.
+
+### Compatibilité avec DivisionType
+
+`DivisionType` reste actuellement présent car les systèmes existants de mouvement, consommation de carburant et combat l'utilisent encore.
+
+Un `PrototypeDivisionCompositionFactory` fournit temporairement une composition par défaut aux types :
+
+Infantry
+Motorized
+Armored
+
+afin de conserver la compatibilité avec les scénarios et tests existants.
+
+Ces compositions provisoires ne constituent pas encore des données historiques ou définitives.
+
+### Composition explicite
+
+Une division peut désormais recevoir directement une composition spécifique lors de sa création.
+
+Il devient donc possible de représenter des formations ayant une structure différente même lorsqu'elles partagent encore le même `DivisionType`.
+
+### Effets sur le combat
+
+La composition physique n'influence pas encore la résolution des combats.
+
+Cette séparation est volontaire : cette itération introduit uniquement le modèle de données nécessaire au futur système de combat physique.
+
+### Tests ajoutés
+
+Les tests vérifient notamment :
+
+- l'initialisation à l'effectif théorique ;
+- l'impossibilité d'obtenir une quantité négative ;
+- l'impossibilité de dépasser la dotation autorisée ;
+- l'application correcte des pertes ;
+- l'application correcte des renforts ;
+- l'utilisation d'une composition explicite par une division ;
+- la conservation de la compatibilité avec les types de divisions existants.

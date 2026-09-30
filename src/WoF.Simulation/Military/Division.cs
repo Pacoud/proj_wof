@@ -1,12 +1,15 @@
 using WoF.Simulation.World;
 using WoF.Simulation.Military.Combat;
 using WoF.Simulation.Military.Retreat;
+using WoF.Simulation.Military.Composition;
 
 namespace WoF.Simulation.Military;
 
 public sealed class Division
 {
     public string Name { get; }
+
+    public DivisionComposition Composition { get; }
 
     public double Fuel { get; private set; }
     
@@ -65,7 +68,8 @@ public sealed class Division
         double fuelCapacity = 100,
         DivisionType type = DivisionType.Infantry,
         Country? country = null,
-        double maxOrganization = 100)
+        double maxOrganization = 100,
+        DivisionComposition? composition = null)
     {
         if (maxOrganization <= 0)
             {
@@ -86,6 +90,11 @@ public sealed class Division
 
         MaxOrganization = maxOrganization;
         Organization = maxOrganization;
+
+        Composition = 
+        composition ?? PrototypeDivisionCompositionFactory.Create(
+            type
+        );
     }
 
     public bool TryStartMovement(
