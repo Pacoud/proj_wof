@@ -412,8 +412,8 @@ public sealed class SimulationEngine
         {
             // Une bataille de province remportée
             // transfère maintenant réellement le contrôle.
-            if (engagement.LocationType
-                    == EngagementLocationType.Province
+            if (engagement.Type
+                    == EngagementType.ProvinceBattle
                 &&
                 engagement.Province != null
                 &&
@@ -437,7 +437,7 @@ public sealed class SimulationEngine
                     continue;
                 }
 
-                if (engagement.LocationType == EngagementLocationType.Connection)
+                if (engagement.Type == EngagementType.MeetingEngagement)
                 {
                     division.ResumeTransitAfterEngagement();
                 }

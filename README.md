@@ -1207,7 +1207,7 @@ Après le retour à la province d'origine :
 - vérification que le vainqueur reprend son transit interrompu ;
 - vérification du passage de `ReturningToOrigin` vers `MovingToSafety`.
 
-# COMMIT # 
+# COMMIT 29ec5fbf1bdff88e094ef4cc2d70b9f754044fce # 
 
 ## Itération — Récupération progressive de l'organisation
 
@@ -1253,3 +1253,107 @@ Une formation située directement au contact du front ne peut donc pas se réorg
 - absence de récupération pendant un déplacement ;
 - limitation de l'organisation à sa valeur maximale.
 
+# COMMIT # 
+## Itération — Terrain des engagements et localisation des combats de rencontre
+
+Le système de combat distingue désormais explicitement les combats ayant lieu dans une province des rencontres entre forces se déplaçant sur une liaison.
+
+### Types d'engagement
+
+Deux types d'engagement sont actuellement représentés :
+
+- `ProvinceBattle`
+- `MeetingEngagement`
+
+Un `ProvinceBattle` correspond à un combat ayant lieu directement dans une province.
+
+Un `MeetingEngagement` correspond à la rencontre de deux formations sur une liaison entre deux provinces.
+
+Aucune distinction attaquant/défenseur n'est encore appliquée aux combats de rencontre.
+
+### Terrain de bataille
+
+Chaque engagement possède désormais un `BattleTerrain`.
+
+Pour un combat dans une province :
+
+`BattleTerrain = Province.Terrain`
+
+Pour une rencontre sur une liaison, le terrain dépend de la position exacte du contact entre les deux provinces.
+
+### Calcul du point de rencontre
+
+Le moteur utilise la progression précédente et actuelle des deux divisions afin de déterminer le moment précis où leurs trajectoires se croisent pendant le tick.
+
+La position du contact est représentée par une valeur comprise entre :
+
+0.0 = province A
+1.0 = province B
+
+Cette méthode permet de calculer correctement la rencontre même lorsque les deux divisions se déplacent à des vitesses différentes.
+
+### Détermination du terrain sur une liaison
+
+La liaison est actuellement divisée en deux zones abstraites :
+
+0.00 à 0.50 :
+terrain de la province A
+
+0.50 à 1.00 :
+terrain de la province B
+
+Exemple :
+
+A = Mountain
+B = Plains
+
+Contact à 60 % :
+
+BattleTerrain = Plains
+
+Cette abstraction permet d'utiliser les terrains déjà définis pour les provinces sans introduire une nouvelle carte de terrain propre aux liaisons.
+
+### Modificateurs de terrain par type de division
+
+Le terrain affecte désormais la pression de combat produite par chaque division.
+
+Les différents types de formations ne réagissent pas de la même manière au terrain.
+
+Les blindés sont notamment très efficaces en terrain ouvert mais fortement pénalisés dans les montagnes, marais, forêts et zones urbaines.
+
+Exemple de prototype :
+
+Armored + Plains :
+BasePressure × 1.15
+
+Armored + Mountain :
+BasePressure × 0.45
+
+Infantry + Mountain :
+BasePressure × 0.90
+
+Une division disposant d'une puissance de base supérieure peut donc devenir moins efficace qu'une formation plus légère lorsque le terrain lui est défavorable.
+
+### Meeting Engagement
+
+Dans un combat de rencontre :
+
+- aucun camp n'est automatiquement considéré comme attaquant ou défenseur ;
+- les deux camps combattent sur le même terrain ;
+- chaque division reçoit néanmoins le modificateur correspondant à son propre type.
+
+Le terrain reste donc déterminant sans introduire un avantage défensif artificiel.
+
+### Province Battle
+
+Les combats de province utilisent également les modificateurs de terrain propres aux différents types de divisions.
+
+La distinction attaquant/défenseur et les bonus défensifs seront introduits dans une itération séparée.
+
+### Tests ajoutés
+
+- calcul d'un point de rencontre à 60 % d'une liaison ;
+- sélection du terrain de la province correspondant au point de contact ;
+- utilisation du terrain de la province lors d'un `ProvinceBattle` ;
+- vérification de la forte pénalité des blindés en montagne ;
+- vérification que le terrain modifie effectivement la pression organisationnelle produite pendant un combat.

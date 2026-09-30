@@ -64,8 +64,8 @@ public sealed class RetreatSystem
 
         // Combat rencontré au milieu d'une liaison :
         // retour obligatoire vers la province d'origine.
-        if (engagement.LocationType
-                == EngagementLocationType.Connection
+        if (engagement.Type
+                == EngagementType.MeetingEngagement
             && division.Transit != null)
         {
             return division.BeginReturnToOriginRetreat();

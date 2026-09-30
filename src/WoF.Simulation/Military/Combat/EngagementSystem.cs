@@ -77,8 +77,8 @@ public sealed class EngagementSystem
                     engagement =>
                         engagement.IsActive
                         &&
-                        engagement.LocationType
-                            == EngagementLocationType.Province
+                        engagement.Type
+                            == EngagementType.ProvinceBattle
                         &&
                         ReferenceEquals(
                             engagement.Province,
@@ -219,9 +219,12 @@ public sealed class EngagementSystem
                     continue;
                 }
 
-                if (!DidCrossDuringTick(
+                if (!TryCalculateMeetingPoint(
                         first,
-                        second))
+                        second,
+                        out Province connectionA,
+                        out Province connectionB,
+                        out  double contactProgress))
                 {
                     continue;
                 }
@@ -230,8 +233,9 @@ public sealed class EngagementSystem
                     new Engagement(
                         _nextEngagementId++,
                         currentHour,
-                        first.Transit!.Origin,
-                        first.Transit.Destination
+                        connectionA,
+                        connectionB,
+                        contactProgress
                     );
 
                 engagement.AddParticipant(
@@ -271,41 +275,6 @@ public sealed class EngagementSystem
                 second.Transit.Origin
             );
     }
-
-    private static bool DidCrossDuringTick(
-        Division first,
-        Division second)
-    {
-        TransitState firstTransit =
-            first.Transit!;
-
-        TransitState secondTransit =
-            second.Transit!;
-
-        // Référentiel : Origin de first = 0,
-        // Destination de first = 1.
-
-        double firstPrevious =
-            firstTransit.PreviousProgress;
-
-        double firstCurrent =
-            firstTransit.Progress;
-
-        // second se déplace dans le sens inverse.
-        double secondPrevious =
-            1.0
-            - secondTransit.PreviousProgress;
-
-        double secondCurrent =
-            1.0
-            - secondTransit.Progress;
-
-        return
-            firstPrevious <= secondPrevious
-            &&
-            firstCurrent >= secondCurrent;
-    }
-
 
     public void ProcessEngagements()
     {
@@ -385,7 +354,8 @@ public sealed class EngagementSystem
     }
 
     private double ProcessDivisionCombatFuel(
-    Division division)
+    Division division,
+    Engagement engagement)
     {
         double requestedFuel =
             GetCombatFuelPerHour(
@@ -404,11 +374,18 @@ public sealed class EngagementSystem
                 consumedFuel
             );
 
+        double terrainModifier =
+            CombatTerrainModifier.GetPressureModifier(
+                division.Type,
+                engagement.BattleTerrain
+        );
+
         return Math.Round(
             GetBaseCombatPressure(
                 division.Type
             )
-            * fuelEffectiveness,
+            * fuelEffectiveness
+            * terrainModifier,
             2
         );
     }
@@ -452,7 +429,8 @@ public sealed class EngagementSystem
 
             pressures[division] =
                 ProcessDivisionCombatFuel(
-                    division
+                    division,
+                    engagement
                 );
         }
 
@@ -580,6 +558,151 @@ public sealed class EngagementSystem
             // poursuit automatiquement son ancien ordre.
             division.ClearPlannedRoute();
         }
+    }
+
+
+    private static bool TryCalculateMeetingPoint(
+    Division first,
+    Division second,
+    out Province connectionA,
+    out Province connectionB,
+    out double progressFromA)
+    {
+        connectionA = null!;
+        connectionB = null!;
+        progressFromA = 0;
+
+        if (first.Transit == null
+            || second.Transit == null)
+        {
+            return false;
+        }
+
+        TransitState firstTransit =
+            first.Transit;
+
+        TransitState secondTransit =
+            second.Transit;
+
+        if (!AreTravellingOppositeDirections(
+                first,
+                second))
+        {
+            return false;
+        }
+
+        // Référentiel déterministe :
+        // la province ayant l'ID le plus petit = A.
+        if (firstTransit.Origin.Id
+            < firstTransit.Destination.Id)
+        {
+            connectionA =
+                firstTransit.Origin;
+
+            connectionB =
+                firstTransit.Destination;
+        }
+        else
+        {
+            connectionA =
+                firstTransit.Destination;
+
+            connectionB =
+                firstTransit.Origin;
+        }
+
+        double firstPrevious =
+            GetProgressInReference(
+                firstTransit,
+                connectionA,
+                previous: true
+            );
+
+        double firstCurrent =
+            GetProgressInReference(
+                firstTransit,
+                connectionA,
+                previous: false
+            );
+
+        double secondPrevious =
+            GetProgressInReference(
+                secondTransit,
+                connectionA,
+                previous: true
+            );
+
+        double secondCurrent =
+            GetProgressInReference(
+                secondTransit,
+                connectionA,
+                previous: false
+            );
+
+        double firstDelta =
+            firstCurrent - firstPrevious;
+
+        double secondDelta =
+            secondCurrent - secondPrevious;
+
+        double relativeMovement =
+            firstDelta - secondDelta;
+
+        if (Math.Abs(relativeMovement)
+            < 0.000001)
+        {
+            return false;
+        }
+
+        double tickFraction =
+            (secondPrevious - firstPrevious)
+            / relativeMovement;
+
+        if (tickFraction < 0
+            || tickFraction > 1)
+        {
+            return false;
+        }
+
+        double contactPosition =
+            firstPrevious
+            + firstDelta * tickFraction;
+
+        if (contactPosition < 0
+            || contactPosition > 1)
+        {
+            return false;
+        }
+
+        progressFromA =
+            Math.Clamp(
+                contactPosition,
+                0,
+                1
+            );
+
+        return true;
+    }
+
+
+    private static double GetProgressInReference(
+    TransitState transit,
+    Province referenceOrigin,
+    bool previous)
+    {
+        double progress =
+            previous
+                ? transit.PreviousProgress
+                : transit.Progress;
+
+        if (ReferenceEquals(
+                transit.Origin,
+                referenceOrigin))
+        {
+            return progress;
+        }
+
+        return 1.0 - progress;
     }
 
 

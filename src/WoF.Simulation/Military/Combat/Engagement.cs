@@ -10,13 +10,17 @@ public sealed class Engagement
 
     public long StartHour { get; }
 
-    public EngagementLocationType LocationType { get; }
+    public EngagementType Type { get; }
 
     public Province? Province { get; }
 
     public Province? ConnectionA { get; }
 
     public Province? ConnectionB { get; }
+
+    public TerrainType BattleTerrain { get; }
+
+    public double? ConnectionProgress { get; }
 
     public Country? WinnerCountry { get; private set; }
 
@@ -33,26 +37,51 @@ public sealed class Engagement
         Id = id;
         StartHour = startHour;
 
-        LocationType =
-            EngagementLocationType.Province;
+        Type =
+            EngagementType.ProvinceBattle;
 
         Province = province;
+
+        BattleTerrain = province.Terrain;
     }
 
     public Engagement(
         int id,
         long startHour,
         Province connectionA,
-        Province connectionB)
+        Province connectionB,
+        double connectionProgress)
     {
+        if (connectionProgress < 0
+        || connectionProgress > 1)
+
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(connectionProgress)
+        );
+
+        }
         Id = id;
         StartHour = startHour;
 
-        LocationType =
-            EngagementLocationType.Connection;
+        Type =
+            EngagementType.MeetingEngagement;
 
         ConnectionA = connectionA;
         ConnectionB = connectionB;
+
+        ConnectionProgress = 
+            Math.Round(
+                connectionProgress,
+                6
+            );
+
+        BattleTerrain = 
+            BattleTerrainResolver.ResolveMeetingTerrain(
+                connectionA,
+                connectionB,
+                connectionProgress
+            );
     }
 
     internal void AddParticipant(
