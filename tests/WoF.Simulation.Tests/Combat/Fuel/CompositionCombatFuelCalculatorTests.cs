@@ -101,7 +101,7 @@ public class CompositionCombatFuelCalculatorTests
         var composition =
             new DivisionComposition(
                 manpower:
-                    new StrengthPool(
+                    new PersonnelPool(
                         authorized: 8_000,
                         current: 0
                     ),

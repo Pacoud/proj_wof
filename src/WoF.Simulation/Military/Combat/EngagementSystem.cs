@@ -2,6 +2,7 @@ using WoF.Simulation.Diplomacy;
 using WoF.Simulation.World;
 using WoF.Simulation.Military.Combat.Power;
 using WoF.Simulation.Military.Combat.Fuel;
+using WoF.Simulation.Military.Combat.Losses;
 
 namespace WoF.Simulation.Military.Combat;
 
@@ -383,7 +384,7 @@ public sealed class EngagementSystem
     }
 
 
-    private double CalculateDivisionCombatPressure(
+    private CombatPowerProfile CalculateDivisionEffectiveCombatPower(
     Division division,
     Engagement engagement)
     {
@@ -428,10 +429,8 @@ public sealed class EngagementSystem
             );
 
 
-        return Math.Round(
-            fuelAdjustedPower.Total,
-            2
-        );
+     
+            return fuelAdjustedPower;
     }
 
     private void ProcessEngagementTick(
@@ -458,8 +457,15 @@ public sealed class EngagementSystem
             return;
         }
 
-        var pressures =
-            new Dictionary<Division, double>();
+        // =========================================================
+        // PHASE 1
+        // Calcul de la puissance effective de chaque division.
+        //
+        // Rien n'est encore appliqué aux participants.
+        // =========================================================
+
+        var combatPowers =
+            new Dictionary<Division, CombatPowerProfile>();
 
         // Première phase :
         // calcul simultané de la puissance disponible.
@@ -467,19 +473,34 @@ public sealed class EngagementSystem
         {
             if (division.IsBroken)
             {
-                pressures[division] = 0;
+                combatPowers[division] = new CombatPowerProfile(
+                    SmallArms : 0,
+                    Artillery : 0,
+                    Armored : 0
+                );
+
                 continue;
             }
 
-            pressures[division] =
-                CalculateDivisionCombatPressure(
+            combatPowers[division] =
+                CalculateDivisionEffectiveCombatPower(
                     division,
                     engagement
                 );
         }
 
+        // =========================================================
+        // PHASE 2
+        // Calcul de toutes les conséquences du combat.
+        //
+        // Toujours aucune modification réelle des divisions.
+        // =========================================================
+
         var organizationLosses =
             new Dictionary<Division, double>();
+
+        var personnelLosses = 
+            new Dictionary<Division,PersonnelCasualtyReport>();
 
         // Deuxième phase :
         // calcul des pertes d'organisation.
@@ -489,10 +510,13 @@ public sealed class EngagementSystem
                 || division.Country == null)
             {
                 organizationLosses[division] = 0;
+
+                personnelLosses[division] = PersonnelCasualtyReport.None;
+
                 continue;
             }
 
-            double hostilePressure =
+            var hostileDivisions =
                 participants
                     .Where(
                         other =>
@@ -503,10 +527,19 @@ public sealed class EngagementSystem
                                 other
                             )
                     )
-                    .Sum(
-                        other =>
-                            pressures[other]
-                    );
+                    .ToList();
+
+            if (hostileDivisions.Count == 0)
+            {
+                organizationLosses[division] = 0;
+
+                personnelLosses[division] =
+                    PersonnelCasualtyReport.None;
+
+                continue;
+            }
+
+   
 
             int friendlyTargets =
                 participants.Count(
@@ -522,8 +555,17 @@ public sealed class EngagementSystem
             if (friendlyTargets <= 0)
             {
                 organizationLosses[division] = 0;
+
+                personnelLosses[division] = PersonnelCasualtyReport.None;
+
                 continue;
             }
+
+                     double hostilePressure =
+                        hostileDivisions.Sum(
+                        other =>
+                           combatPowers[other].Total
+                            );
 
             organizationLosses[division] =
                 Math.Round(
@@ -531,10 +573,78 @@ public sealed class EngagementSystem
                     / friendlyTargets,
                     2
                 );
-        }
+        
 
-        // Troisième phase :
-        // application simultanée.
+        // -----------------------------------------------------
+        // Conservation de la nature de la puissance ennemie.
+        //
+        // On ne veut surtout pas perdre l'information :
+        // SmallArms / Artillery / Armored.
+        // -----------------------------------------------------
+        double hostileSmallArms =
+            hostileDivisions.Sum(
+                other =>
+                    combatPowers[other]
+                        .SmallArms
+            );
+
+        double hostileArtillery =
+            hostileDivisions.Sum(
+                other =>
+                    combatPowers[other]
+                        .Artillery
+            );
+
+        double hostileArmored =
+            hostileDivisions.Sum(
+                other =>
+                    combatPowers[other]
+                        .Armored
+            );
+
+        
+          // La puissance ennemie est répartie entre
+        // les formations amies actuellement engagées.
+        var hostilePowerPerTarget =
+            new CombatPowerProfile(
+                SmallArms:
+                    hostileSmallArms
+                    / friendlyTargets,
+
+                Artillery:
+                    hostileArtillery
+                    / friendlyTargets,
+
+                Armored:
+                    hostileArmored
+                    / friendlyTargets
+            );
+
+
+        // -----------------------------------------------------
+        // Calcul des pertes humaines.
+        //
+        // IMPORTANT :
+        // elles ne sont toujours PAS appliquées ici.
+        // -----------------------------------------------------
+
+        personnelLosses[division] = PersonnelCasualtyCalculator.Calculate(
+                hostilePowerPerTarget,
+                division.Composition
+                    .Manpower
+                    .Current
+            );
+
+        }
+    
+
+    // =========================================================
+    // PHASE 3
+    // Application simultanée des résultats.
+    //
+    // Tout a été calculé à partir de l'état du début du tick.
+    // =========================================================
+
         foreach (var pair in organizationLosses)
         {
             pair.Key.LoseOrganization(
@@ -542,11 +652,28 @@ public sealed class EngagementSystem
             );
         }
 
+        foreach (var pair in personnelLosses)
+        {
+            pair.Key
+                .Composition
+                .Manpower
+                .ApplyCasualties(
+                    pair.Value
+                );
+        }
+
+    // =========================================================
+    // PHASE 4
+    // Vérification de la fin éventuelle de l'engagement.
+    // =========================================================
+
         ResolveEngagementIfPossible(
             engagement,
             participants
         );
     }
+
+
 
 
     private void ResolveEngagementIfPossible(
@@ -860,5 +987,5 @@ public sealed class EngagementSystem
     }
 
 
-
 }
+

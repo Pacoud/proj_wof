@@ -1,4 +1,5 @@
 using WoF.Simulation.Military.Combat.Power;
+using WoF.Simulation.Military.Combat.Losses;
 using WoF.Simulation.Military.Composition;
 
 namespace WoF.Simulation.Tests.Combat.Power;
@@ -153,8 +154,12 @@ public class CompositionCombatPowerCalculatorTests
 
         composition
             .Manpower
-            .ApplyLoss(
-                4_000
+            .ApplyCasualties(
+                new PersonnelCasualtyReport(
+                    KilledInAction: 0,
+                    WoundedInAction: 4_000,
+                    MissingOrCaptured: 0
+                )
             );
 
         CombatPowerProfile after =
@@ -194,7 +199,7 @@ public class CompositionCombatPowerCalculatorTests
         var composition =
             new DivisionComposition(
                 manpower:
-                    new StrengthPool(
+                    new PersonnelPool(
                         authorized: 0,
                         current: 0
                     ),

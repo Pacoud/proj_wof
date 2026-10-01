@@ -1774,7 +1774,7 @@ Son rôle dans le calcul direct du terrain de combat est supprimé.
 - l'effet du rôle Attacker/Defender n'est pas encore appliqué à la résolution du combat.
 
 
-# COMMIT #
+# COMMIT 58a9c4a9456e2c1193a8568fb9ab8cd00db7432f #
 ## Itération — Consommation et effets du carburant dérivés de la composition
 
 Le carburant utilisé pendant un combat n'est désormais plus déterminé directement par `DivisionType`.
@@ -1871,3 +1871,71 @@ La consommation de déplacement sera migrée ultérieurement vers un modèle dé
 - les camions sont encore représentés comme une catégorie agrégée ;
 - la consommation de déplacement dépend encore de `DivisionType` ;
 - les valeurs de consommation et les coefficients d'efficacité restent provisoires.
+
+
+# COMMIT #
+## Itération — Pertes humaines physiques au combat
+
+Le combat commence désormais à produire des pertes physiques persistantes en plus des pertes d'organisation.
+
+### PersonnelPool
+
+Le manpower d'une division n'est plus représenté par un simple `StrengthPool`.
+
+Le nouveau `PersonnelPool` distingue :
+
+- personnel actuellement apte au combat ;
+- tués au combat ;
+- blessés actuellement indisponibles ;
+- nombre cumulé de blessés ;
+- disparus ou prisonniers.
+
+### KIA et WIA
+
+Les pertes causées directement par les combats sont actuellement réparties entre :
+
+Killed In Action
+Wounded In Action
+
+La proportion initiale est calibrée autour des ordres de grandeur historiques de la Seconde Guerre mondiale.
+
+Les disparus et prisonniers ne sont pas générés par le feu normal : ils seront liés ultérieurement aux retraites, encerclements et redditions.
+
+### Sources des pertes
+
+La capacité à produire des pertes humaines dépend séparément de :
+
+SmallArms
+Artillery
+Armored
+
+L'artillerie reçoit actuellement une pondération supérieure afin de refléter son importance historique dans la production des pertes sur les champs de bataille de la Seconde Guerre mondiale.
+
+### Calibration générale
+
+Le coefficient de pertes initial est choisi afin qu'un affrontement soutenu entre formations comparables produise un ordre de grandeur proche des taux historiques observés pour une division en ligne.
+
+Les combats beaucoup plus intenses devront pouvoir atteindre les taux constatés lors des journées de combat sévère.
+
+### Application simultanée
+
+Toutes les pertes d'une heure sont calculées avant leur application.
+
+Les deux camps combattent donc avec l'état qu'ils possédaient au début du tick.
+
+### Blessés
+
+Les blessés quittent immédiatement le manpower disponible mais ne sont pas considérés comme des pertes permanentes.
+
+Le système permet déjà leur retour au service via `ReturnWoundedToDuty()`.
+
+La durée de récupération et le risque de mort des blessures ne sont pas encore simulés.
+
+### Limites actuelles
+
+- les coefficients restent une première calibration ;
+- le hasard statistique n'est pas encore introduit ;
+- les blessures ne possèdent pas encore de gravité ;
+- la qualité du service médical n'est pas encore prise en compte ;
+- les MIA/POW seront calculés lors des retraites et redditions ;
+- les pertes matérielles seront traitées séparément afin de distinguer matériel endommagé, détruit, abandonné et capturé.

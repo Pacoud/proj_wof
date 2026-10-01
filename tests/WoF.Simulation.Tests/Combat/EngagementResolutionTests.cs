@@ -334,7 +334,7 @@ private static (
 
             var armoredComposition =
                 new DivisionComposition(
-                    new StrengthPool(
+                    new PersonnelPool(
                         authorized: 8_000,
                         current: 8_000
                     ),

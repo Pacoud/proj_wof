@@ -2,7 +2,7 @@ namespace WoF.Simulation.Military.Composition;
 
 public sealed class DivisionComposition
 {
-    public StrengthPool Manpower { get; }
+    public PersonnelPool Manpower { get; }
 
     public StrengthPool InfantryEquipment { get; }
 
@@ -19,7 +19,7 @@ public sealed class DivisionComposition
         int tanks,
         int trucks = 0)
         : this(
-            new StrengthPool(manpower),
+            new PersonnelPool(manpower),
             new StrengthPool(infantryEquipment),
             new StrengthPool(artillery),
             new StrengthPool(tanks),
@@ -29,7 +29,7 @@ public sealed class DivisionComposition
     }
 
     public DivisionComposition(
-        StrengthPool manpower,
+        PersonnelPool manpower,
         StrengthPool infantryEquipment,
         StrengthPool artillery,
         StrengthPool tanks,
