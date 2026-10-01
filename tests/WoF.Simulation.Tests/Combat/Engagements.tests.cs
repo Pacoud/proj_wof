@@ -4,6 +4,7 @@ using WoF.Simulation.World;
 using WoF.Simulation.World.Infrastructure;
 using WoF.Simulation.Core;
 using WoF.Simulation.Military.Combat;
+using WoF.Simulation.Military.Combat.Fuel;
 
 namespace WoF.Simulation.Tests.Combat;
 
@@ -232,17 +233,29 @@ public class EngagementsTests
                 armoredFuel: 100
             );
 
-        // Le premier tick détecte l'engagement.
-        simulation.Tick();
+        double expectedFuelDemand =
+        CompositionCombatFuelCalculator
+            .Calculate(
+                armored.Composition
+            )
+            .Total;
 
         double fuelBeforeCombatTick =
             armored.Fuel;
 
+        // Le premier tick détecte l'engagement.
         simulation.Tick();
 
         Assert.Equal(
-            fuelBeforeCombatTick - 5.0,
-            armored.Fuel
+        fuelBeforeCombatTick,
+        armored.Fuel
+        );
+
+        simulation.Tick();
+
+        Assert.Equal(
+            fuelBeforeCombatTick - expectedFuelDemand, armored.Fuel,
+            2
         );
 
         Assert.True(

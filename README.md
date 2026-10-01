@@ -1596,7 +1596,7 @@ Les tests vérifient notamment :
 - la conservation de la compatibilité avec les types de divisions existants.
 
 
-# COMMIT # 
+# COMMIT 089611517d8a4ae64949e57e7e85fb42936724c7 # 
 ## Itération — Puissance de combat dérivée de la composition physique
 
 La puissance de base d'une division n'est désormais plus déterminée directement par son `DivisionType`.
@@ -1694,7 +1694,7 @@ Ces dépendances seront progressivement remplacées par des propriétés dériv�
 - les pertes physiques de combat ne sont pas encore calculées ;
 - le personnel spécialisé et les équipages ne sont pas encore représentés.
 
-# COMMIT # 
+# COMMIT be06ab7157d4c772adefc0077e0cb6d7952bab4c # 
 ## Itération — Modificateurs de terrain par composante de combat
 
 Le terrain n'est désormais plus appliqué globalement à une division selon son `DivisionType`.
@@ -1772,3 +1772,102 @@ Son rôle dans le calcul direct du terrain de combat est supprimé.
 - les munitions ne sont pas encore différenciées par catégorie ;
 - SmallArms, Artillery et Armored restent des catégories agrégées ;
 - l'effet du rôle Attacker/Defender n'est pas encore appliqué à la résolution du combat.
+
+
+# COMMIT #
+## Itération — Consommation et effets du carburant dérivés de la composition
+
+Le carburant utilisé pendant un combat n'est désormais plus déterminé directement par `DivisionType`.
+
+La consommation est dérivée des équipements réellement présents dans la division.
+
+### Trucks
+
+La composition physique représente désormais également les camions.
+
+Les camions ne produisent pas directement de puissance de feu, mais contribuent à la consommation de carburant et prépareront les futurs systèmes de mobilité et de logistique.
+
+### Demande de carburant
+
+Le moteur calcule une demande de carburant de combat à partir des quantités actuellement disponibles de :
+
+- trucks ;
+- artillery ;
+- tanks.
+
+Chaque catégorie possède une consommation provisoire propre.
+
+La perte de véhicules ou de chars réduit donc naturellement la consommation future de la formation.
+
+### Personnel disponible
+
+La demande de carburant est modulée par la disponibilité du personnel.
+
+Du matériel sans équipage ne produit ni puissance de combat normale ni consommation opérationnelle complète.
+
+### Fuel Satisfaction
+
+La quantité réellement consommée est comparée à la demande de carburant.
+
+Le ratio obtenu est appelé `fuelSatisfaction`.
+
+Une satisfaction de :
+
+1.0
+
+signifie que toute la demande a été fournie.
+
+Une satisfaction de :
+
+0.0
+
+signifie qu'aucun carburant demandé n'a pu être fourni.
+
+### Effets composante par composante
+
+Le manque de carburant n'affecte plus toute la division uniformément.
+
+Les effets actuels à zéro carburant sont approximativement :
+
+SmallArms = 95 % de l'efficacité normale
+Artillery = 70 %
+Armored = 20 %
+
+Les chars sont donc beaucoup plus sensibles au manque de carburant que l'infanterie à pied.
+
+### Suppression de la dépendance au DivisionType
+
+Les anciennes méthodes déterminant :
+
+- le carburant de combat par type ;
+- l'efficacité minimale par type ;
+
+ont été supprimées.
+
+La consommation et l'effet du carburant sont désormais dérivés de la composition physique et des composantes de puissance.
+
+### Chaîne de calcul du combat
+
+La pression de combat suit désormais :
+
+Composition
+→ CombatPowerProfile brut
+→ modificateurs de terrain par composante
+→ calcul de la demande de carburant
+→ satisfaction de la demande
+→ modificateurs de carburant par composante
+→ pression de combat totale
+
+### Compatibilité temporaire
+
+`DivisionType` reste encore utilisé pour le mouvement et sa consommation de carburant.
+
+La consommation de déplacement sera migrée ultérieurement vers un modèle dérivé de la composition.
+
+### Limites actuelles
+
+- toutes les catégories utilisent encore un réservoir commun ;
+- aucune priorité de distribution du carburant entre équipements n'existe ;
+- les camions sont encore représentés comme une catégorie agrégée ;
+- la consommation de déplacement dépend encore de `DivisionType` ;
+- les valeurs de consommation et les coefficients d'efficacité restent provisoires.

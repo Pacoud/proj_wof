@@ -10,16 +10,20 @@ public sealed class DivisionComposition
 
     public StrengthPool Tanks { get; }
 
+    public StrengthPool Trucks { get; }
+
     public DivisionComposition(
         int manpower,
         int infantryEquipment,
         int artillery,
-        int tanks)
+        int tanks,
+        int trucks = 0)
         : this(
             new StrengthPool(manpower),
             new StrengthPool(infantryEquipment),
             new StrengthPool(artillery),
-            new StrengthPool(tanks)
+            new StrengthPool(tanks),
+            new StrengthPool(trucks)
         )
     {
     }
@@ -28,7 +32,8 @@ public sealed class DivisionComposition
         StrengthPool manpower,
         StrengthPool infantryEquipment,
         StrengthPool artillery,
-        StrengthPool tanks)
+        StrengthPool tanks,
+        StrengthPool? trucks = null)
     {
         Manpower =
             manpower
@@ -53,5 +58,10 @@ public sealed class DivisionComposition
             ?? throw new ArgumentNullException(
                 nameof(tanks)
             );
+
+        Trucks = 
+            trucks
+            ?? new StrengthPool(0);
+            
     }
 }

@@ -1,6 +1,7 @@
 using WoF.Simulation.Diplomacy;
 using WoF.Simulation.World;
 using WoF.Simulation.Military.Combat.Power;
+using WoF.Simulation.Military.Combat.Fuel;
 
 namespace WoF.Simulation.Military.Combat;
 
@@ -381,79 +382,11 @@ public sealed class EngagementSystem
         }
     }
 
-    private static double GetCombatFuelPerHour(
-    DivisionType type)
-    {
-        return type switch
-        {
-            DivisionType.Infantry => 0.8,
-            DivisionType.Motorized => 3.0,
-            DivisionType.Armored => 5.0,
-
-            _ => 0.8
-        };
-    }
-
-    private static double GetMinimumFuelEffectiveness(
-    DivisionType type)
-    {
-        return type switch
-        {
-            DivisionType.Infantry => 0.85,
-            DivisionType.Motorized => 0.50,
-            DivisionType.Armored => 0.25,
-
-            _ => 0.85
-        };
-    }
-
-
-    private static double CalculateFuelEffectiveness(
-    Division division,
-    double requestedFuel,
-    double consumedFuel)
-    {
-        if (requestedFuel <= 0)
-            return 1.0;
-
-        double fuelSatisfaction =
-            Math.Clamp(
-                consumedFuel / requestedFuel,
-                0.0,
-                1.0
-            );
-
-        double minimum =
-            GetMinimumFuelEffectiveness(
-                division.Type
-            );
-
-        return minimum
-            + (1.0 - minimum)
-            * fuelSatisfaction;
-    }
 
     private double CalculateDivisionCombatPressure(
     Division division,
     Engagement engagement)
     {
-        double requestedFuel =
-            GetCombatFuelPerHour(
-                division.Type
-            );
-
-        double consumedFuel =
-            division.ConsumeFuel(
-                requestedFuel
-            );
-
-        double fuelEffectiveness =
-            CalculateFuelEffectiveness(
-                division,
-                requestedFuel,
-                consumedFuel
-            );
-
         CombatPowerProfile physicalPower = 
         CompositionCombatPowerCalculator.Calculate(
             division.Composition
@@ -465,9 +398,38 @@ public sealed class EngagementSystem
                 engagement.BattleTerrain
         );
 
+        CombatFuelDemandProfile fuelDemand = 
+        CompositionCombatFuelCalculator.Calculate(
+            division.Composition
+        );
+
+        double requestedFuel =
+            fuelDemand.Total;
+
+        double consumedFuel =
+            division.ConsumeFuel(
+                requestedFuel
+            );
+
+        double fuelSatisfaction =
+            requestedFuel <= 0
+            ? 1.0
+            : Math.Clamp(
+                consumedFuel
+                / requestedFuel,
+                0.0,
+                1.0
+            );
+
+        CombatPowerProfile fuelAdjustedPower = 
+            CombatFuelModifier.Apply(
+                terrainAdjustedPower,
+                fuelSatisfaction
+            );
+
+
         return Math.Round(
-            terrainAdjustedPower.Total
-            * fuelEffectiveness,
+            fuelAdjustedPower.Total,
             2
         );
     }

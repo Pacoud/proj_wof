@@ -12,7 +12,8 @@ public static class PrototypeDivisionCompositionFactory
                     manpower: 10_000,
                     infantryEquipment: 9_000,
                     artillery: 48,
-                    tanks: 0
+                    tanks: 0,
+                    trucks : 300
                 ),
 
             DivisionType.Motorized =>
@@ -20,7 +21,8 @@ public static class PrototypeDivisionCompositionFactory
                     manpower: 9_000,
                     infantryEquipment: 7_500,
                     artillery: 36,
-                    tanks: 0
+                    tanks: 0,
+                    trucks : 1_400
                 ),
 
             DivisionType.Armored =>
@@ -28,7 +30,8 @@ public static class PrototypeDivisionCompositionFactory
                     manpower: 8_000,
                     infantryEquipment: 5_000,
                     artillery: 36,
-                    tanks: 180
+                    tanks: 180,
+                    trucks : 600
                 ),
 
             _ =>
