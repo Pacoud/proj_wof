@@ -8,7 +8,7 @@ public sealed class DivisionComposition
 
     public StrengthPool Artillery { get; }
 
-    public StrengthPool Tanks { get; }
+    public TankPool Tanks { get; }
 
     public StrengthPool Trucks { get; }
 
@@ -22,7 +22,7 @@ public sealed class DivisionComposition
             new PersonnelPool(manpower),
             new StrengthPool(infantryEquipment),
             new StrengthPool(artillery),
-            new StrengthPool(tanks),
+            new TankPool(tanks),
             new StrengthPool(trucks)
         )
     {
@@ -32,7 +32,7 @@ public sealed class DivisionComposition
         PersonnelPool manpower,
         StrengthPool infantryEquipment,
         StrengthPool artillery,
-        StrengthPool tanks,
+        TankPool tanks,
         StrengthPool? trucks = null)
     {
         Manpower =

@@ -1,4 +1,5 @@
 using WoF.Simulation.Military.Combat.Fuel;
+using WoF.Simulation.Military.Combat.Losses;
 using WoF.Simulation.Military.Composition;
 
 namespace WoF.Simulation.Tests.Combat.Fuel;
@@ -67,8 +68,8 @@ public class CompositionCombatFuelCalculatorTests
                     composition
                 );
 
-        composition.Tanks.ApplyLoss(
-            120
+        composition.Tanks.ApplyExpectedLosses(
+            new TankLossExpectation(Damaged: 0, Destroyed: 120)
         );
 
         CombatFuelDemandProfile after =
@@ -79,8 +80,11 @@ public class CompositionCombatFuelCalculatorTests
 
         Assert.Equal(
             60,
-            composition.Tanks.Current
+            composition.Tanks.Operational
         );
+
+        Assert.Equal(0, composition.Tanks.Damaged);
+        Assert.Equal(120, composition.Tanks.Destroyed);
 
         Assert.True(
             after.Tanks
@@ -119,9 +123,9 @@ public class CompositionCombatFuelCalculatorTests
                     ),
 
                 tanks:
-                    new StrengthPool(
+                    new TankPool(
                         authorized: 180,
-                        current: 180
+                        operational: 180
                     ),
 
                 trucks:

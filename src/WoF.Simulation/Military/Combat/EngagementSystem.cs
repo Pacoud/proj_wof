@@ -502,10 +502,19 @@ public sealed class EngagementSystem
         var personnelLosses = 
             new Dictionary<Division,PersonnelCasualtyReport>();
 
+        var tankLossExpectations =
+            new Dictionary<  Division, TankLossExpectation>();
+
+        var tankCrewPositions =
+            new Dictionary< Division,int>();
+
         // Deuxième phase :
         // calcul des pertes d'organisation.
         foreach (var division in participants)
         {
+            tankLossExpectations[division] = TankLossExpectation.None;
+            tankCrewPositions[division] = 0;
+
             if (division.IsBroken
                 || division.Country == null)
             {
@@ -620,6 +629,35 @@ public sealed class EngagementSystem
                     / friendlyTargets
             );
 
+        int crewedTanks =
+            Math.Min(
+                division.Composition
+                    .Tanks
+                    .Operational,
+
+                division.Composition
+                    .Manpower
+                    .Current
+                / TankCrewCasualtyCalculator
+                    .CrewSize
+            );
+
+        int crewPositions =
+            crewedTanks
+            * TankCrewCasualtyCalculator
+                .CrewSize;
+
+        tankCrewPositions[division] = crewPositions;
+
+        int generalExposedManpower =
+            Math.Max(
+                0,
+                division.Composition
+                    .Manpower
+                    .Current
+                - crewPositions
+            );
+
 
         // -----------------------------------------------------
         // Calcul des pertes humaines.
@@ -629,14 +667,16 @@ public sealed class EngagementSystem
         // -----------------------------------------------------
 
         personnelLosses[division] = PersonnelCasualtyCalculator.Calculate(
-                hostilePowerPerTarget,
-                division.Composition
-                    .Manpower
-                    .Current
+                hostilePowerPerTarget,generalExposedManpower
             );
 
-        }
-    
+        tankLossExpectations[division] = 
+            TankLossCalculator.Calculate(
+                hostilePowerPerTarget,
+                crewedTanks
+            );
+
+        }    
 
     // =========================================================
     // PHASE 3
@@ -652,13 +692,56 @@ public sealed class EngagementSystem
             );
         }
 
-        foreach (var pair in personnelLosses)
+        var tankLossResults = new Dictionary<Division, TankLossResult>();
+
+        foreach (var pair in tankLossExpectations)
         {
-            pair.Key
+            tankLossResults[pair.Key] = pair.Key.Composition.Tanks.ApplyExpectedLosses(
+                pair.Value
+            );
+        }
+
+        foreach (var division in participants)
+        {
+            PersonnelCasualtyReport generalLosses = 
+                personnelLosses[
+                    division
+                ];
+
+            TankLossResult tankLosses = 
+                tankLossResults[
+                    division
+                ];
+
+            PersonnelCasualtyReport crewLosses =
+            TankCrewCasualtyCalculator
+                .Calculate(
+                    tankLosses,
+                    tankCrewPositions[
+                        division
+                    ]
+                );
+
+            var combinedLosses =
+            new PersonnelCasualtyReport(
+                KilledInAction:
+                    generalLosses.KilledInAction
+                    + crewLosses.KilledInAction,
+
+                WoundedInAction:
+                    generalLosses.WoundedInAction
+                    + crewLosses.WoundedInAction,
+
+                MissingOrCaptured:
+                    generalLosses.MissingOrCaptured
+                    + crewLosses.MissingOrCaptured
+            );
+
+            division
                 .Composition
                 .Manpower
                 .ApplyCasualties(
-                    pair.Value
+                    combinedLosses
                 );
         }
 

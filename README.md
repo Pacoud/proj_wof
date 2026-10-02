@@ -1873,7 +1873,7 @@ La consommation de déplacement sera migrée ultérieurement vers un modèle dé
 - les valeurs de consommation et les coefficients d'efficacité restent provisoires.
 
 
-# COMMIT #
+# COMMIT 9db0f034ad61f964f34afb66a88283ad737e02aa  #
 ## Itération — Pertes humaines physiques au combat
 
 Le combat commence désormais à produire des pertes physiques persistantes en plus des pertes d'organisation.
@@ -1939,3 +1939,87 @@ La durée de récupération et le risque de mort des blessures ne sont pas encor
 - la qualité du service médical n'est pas encore prise en compte ;
 - les MIA/POW seront calculés lors des retraites et redditions ;
 - les pertes matérielles seront traitées séparément afin de distinguer matériel endommagé, détruit, abandonné et capturé.
+
+
+# COMMIT # 
+## Itération — Pertes blindées et équipages
+
+Le système de pertes physiques représente désormais les premiers dommages matériels au combat.
+
+Cette première version se concentre volontairement sur les chars.
+
+### TankPool
+
+Les chars ne sont plus représentés par un simple `StrengthPool`.
+
+Le nouveau `TankPool` distingue :
+
+- `Operational`
+- `Damaged`
+- `Destroyed`
+
+`Destroyed` représente un cumul historique tandis que `Operational` et `Damaged` décrivent les véhicules actuellement détenus par la division.
+
+### Chars endommagés
+
+Un char endommagé reste physiquement présent dans la formation mais cesse de contribuer :
+
+- à la puissance blindée ;
+- à la consommation normale de carburant de combat.
+
+Une future mécanique permettra leur réparation.
+
+### Chars détruits
+
+Un char détruit quitte définitivement l'inventaire actuel de la division.
+
+Les remplacements futurs pourront restaurer la dotation opérationnelle sans effacer le compteur historique des véhicules détruits.
+
+### Pertes fractionnaires
+
+Les pertes matérielles attendues peuvent être inférieures à une unité par heure.
+
+Le moteur conserve donc des accumulateurs fractionnaires.
+
+Exemple :
+
+0.20 char détruit attendu par heure
+
+Après plusieurs ticks, l'accumulation produit une destruction physique réelle.
+
+Cette méthode permet de conserver un moteur déterministe sans supprimer les événements rares par arrondi.
+
+### Sources des pertes blindées
+
+La première version considère :
+
+- `Armored` comme principale source de pertes antichars ;
+- `Artillery` comme source secondaire de dégâts et destructions ;
+- `SmallArms` comme incapable de détruire directement les chars.
+
+Une future composante `AntiTank` affinera fortement ce modèle.
+
+### Équipages
+
+Les chars touchés peuvent désormais produire des pertes humaines parmi leurs équipages.
+
+Un char détruit présente un risque beaucoup plus important pour son équipage qu'un char seulement endommagé.
+
+Une perte de char ne signifie cependant jamais automatiquement la mort de tout son équipage.
+
+### Prévention du double comptage
+
+Les équipages affectés aux chars sont retirés du manpower soumis au calcul général des pertes humaines.
+
+Les pertes d'équipage sont ensuite calculées séparément à partir des dommages réels subis par les chars.
+
+### Limites actuelles
+
+- les équipages restent stockés dans le `PersonnelPool` global ;
+- la réaffectation de nouveaux équipages est encore implicite ;
+- aucune distinction entre modèles de chars n'existe ;
+- la taille d'équipage est provisoirement fixée à cinq personnes ;
+- les chars endommagés ne sont pas encore réparés automatiquement ;
+- les véhicules abandonnés ou capturés ne sont pas encore représentés ;
+- les canons, camions et équipements d'infanterie utilisent encore `StrengthPool`.
+

@@ -62,7 +62,7 @@ public static class CompositionCombatPowerCalculator
         double armoredPower =
             composition
                 .Tanks
-                .Current
+                .Operational
             * TankPowerPerTank
             * personnelAvailability;
 

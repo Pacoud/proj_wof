@@ -140,7 +140,7 @@ public class DivisionCompositionTests
             30,
             division.Composition
                 .Tanks
-                .Current
+                .Operational
         );
     }
 
@@ -165,7 +165,7 @@ public class DivisionCompositionTests
         Assert.True(
             division.Composition
                 .Tanks
-                .Current > 0
+                .Operational > 0
         );
 
         Assert.True(

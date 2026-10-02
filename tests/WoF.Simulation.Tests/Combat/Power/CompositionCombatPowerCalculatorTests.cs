@@ -102,8 +102,8 @@ public class CompositionCombatPowerCalculatorTests
 
         composition
             .Tanks
-            .ApplyLoss(
-                90
+            .ApplyExpectedLosses(
+                new TankLossExpectation(Damaged: 0, Destroyed: 90)
             );
 
         CombatPowerProfile after =
@@ -119,8 +119,11 @@ public class CompositionCombatPowerCalculatorTests
 
         Assert.Equal(
             90,
-            composition.Tanks.Current
+            composition.Tanks.Operational
         );
+
+        Assert.Equal(0, composition.Tanks.Damaged);
+        Assert.Equal(90, composition.Tanks.Destroyed);
 
         Assert.True(
             after.Armored
@@ -217,9 +220,9 @@ public class CompositionCombatPowerCalculatorTests
                     ),
 
                 tanks:
-                    new StrengthPool(
+                    new TankPool(
                         authorized: 180,
-                        current: 180
+                        operational: 180
                     )
             );
 

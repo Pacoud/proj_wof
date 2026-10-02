@@ -346,9 +346,9 @@ private static (
                         authorized: 36,
                         current: 36
                     ),
-                    new StrengthPool(
+                    new TankPool(
                         authorized: 180,
-                        current: tanks
+                        operational: tanks
                     )
                 );
 

@@ -44,7 +44,7 @@ public static class CompositionCombatFuelCalculator
             * personnelAvailability;
 
         double tankDemand =
-            composition.Tanks.Current
+            composition.Tanks.Operational
             * FuelPerTank
             * personnelAvailability;
 
