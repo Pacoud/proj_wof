@@ -2023,3 +2023,73 @@ Les pertes d'équipage sont ensuite calculées séparément à partir des dommag
 - les véhicules abandonnés ou capturés ne sont pas encore représentés ;
 - les canons, camions et équipements d'infanterie utilisent encore `StrengthPool`.
 
+# COMMIT #
+## Itération — Premier client graphique Avalonia
+
+Un premier client graphique desktop a été ajouté au prototype WoF.
+
+### WoF.Client
+
+Un nouveau projet `WoF.Client` utilisant Avalonia affiche désormais l'état du moteur de simulation.
+
+Le client référence directement `WoF.Simulation` et n'implémente aucune logique militaire propre.
+
+### Carte prototype
+
+Un scénario fictif composé de neuf provinces permet de visualiser :
+
+- les provinces ;
+- leurs connexions ;
+- leur terrain ;
+- leur contrôleur ;
+- les divisions présentes.
+
+Les coordonnées d'affichage sont conservées dans le client et ne font pas partie du modèle `Province`.
+
+### Divisions
+
+Les divisions françaises et allemandes sont représentées directement sur la carte.
+
+Lorsqu'une division est en transit, sa position graphique est interpolée entre la province d'origine et la province de destination à partir de `Transit.Progress`.
+
+La position visuelle correspond donc à la position calculée par le moteur.
+
+### Commandement
+
+Le joueur peut :
+
+- sélectionner une division française ;
+- sélectionner une province ;
+- donner un ordre de mouvement ;
+- faire avancer la simulation d'une heure ;
+- réinitialiser le scénario.
+
+Les ordres utilisent directement `SimulationEngine.TryOrderMoveTo()`.
+
+### Inspection
+
+Le panneau latéral affiche notamment :
+
+- état opérationnel ;
+- position ;
+- organisation ;
+- carburant ;
+- manpower disponible ;
+- KIA cumulés ;
+- WIA indisponibles.
+
+### Objectif
+
+Cette interface n'a pas encore vocation à représenter l'apparence finale du jeu.
+
+Elle constitue un visualisateur interactif permettant de tester et observer directement les mécaniques du moteur de simulation.
+
+### Limites actuelles
+
+- carte en graphe simplifiée ;
+- aucune génération procédurale ;
+- aucune caméra ou zoom ;
+- pas de multisélection ;
+- pas de véritable système graphique de pions militaires ;
+- pas encore d'affichage spécifique des engagements ;
+- le client lit encore directement les objets publics du moteur.

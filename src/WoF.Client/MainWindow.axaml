@@ -1,0 +1,145 @@
+<Window
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:military="using:WoF.Simulation.Military"
+    x:Class="WoF.Client.MainWindow"
+
+    Width="1200"
+    Height="760"
+
+    MinWidth="1000"
+    MinHeight="650"
+
+    Title="WoF - Simulation Prototype">
+
+    <Grid
+        RowDefinitions="Auto,*"
+        ColumnDefinitions="*,320">
+
+        <!-- BARRE SUPERIEURE -->
+
+        <Border
+            Grid.Row="0"
+            Grid.ColumnSpan="2"
+            Padding="14">
+
+            <StackPanel
+                Orientation="Horizontal"
+                Spacing="16">
+
+                <TextBlock
+                    Text="WoF"
+                    FontSize="22"
+                    FontWeight="Bold"/>
+
+                <TextBlock
+                    x:Name="HourText"
+                    VerticalAlignment="Center"/>
+
+                <Button
+                    Content="+1 heure"
+                    Click="OnTickClick"/>
+
+                <Button
+                    Content="Reset"
+                    Click="OnResetClick"/>
+
+            </StackPanel>
+
+        </Border>
+
+
+        <!-- CARTE -->
+
+        <Border
+            Grid.Row="1"
+            Grid.Column="0"
+
+            Margin="12"
+            BorderThickness="1"
+            CornerRadius="6"
+
+            ClipToBounds="True">
+
+            <Canvas
+                x:Name="MapCanvas"
+                Width="780"
+                Height="620"/>
+
+        </Border>
+
+
+        <!-- PANNEAU LATERAL -->
+
+        <StackPanel
+            Grid.Row="1"
+            Grid.Column="1"
+
+            Margin="12"
+            Spacing="12">
+
+            <TextBlock
+                Text="Commandement"
+                FontSize="20"
+                FontWeight="Bold"/>
+
+
+            <TextBlock
+                Text="Division sélectionnée"/>
+
+            <ComboBox
+                x:Name="DivisionSelector"
+                SelectionChanged="OnDivisionSelectionChanged">
+
+                <ComboBox.ItemTemplate>
+
+                    <DataTemplate x:DataType = "military:Division">
+
+                        <TextBlock
+                            Text="{Binding Name}"/>
+
+                    </DataTemplate>
+
+                </ComboBox.ItemTemplate>
+
+            </ComboBox>
+
+
+            <Separator/>
+
+
+            <TextBlock
+                Text="Province sélectionnée"/>
+
+            <TextBlock
+                x:Name="SelectedProvinceText"
+                FontWeight="Bold"/>
+
+
+            <Button
+                Content="Donner ordre de mouvement"
+                Click="OnMoveClick"/>
+
+
+            <TextBlock
+                x:Name="OrderResultText"
+                TextWrapping="Wrap"/>
+
+
+            <Separator/>
+
+
+            <TextBlock
+                Text="État de l'unité"
+                FontSize="18"
+                FontWeight="Bold"/>
+
+            <TextBlock
+                x:Name="DivisionInfoText"
+                TextWrapping="Wrap"/>
+
+        </StackPanel>
+
+    </Grid>
+
+</Window>
