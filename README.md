@@ -1941,7 +1941,7 @@ La durée de récupération et le risque de mort des blessures ne sont pas encor
 - les pertes matérielles seront traitées séparément afin de distinguer matériel endommagé, détruit, abandonné et capturé.
 
 
-# COMMIT # 
+# COMMIT 3aab73e386013d486391fd9ef0821e68c303196b # 
 ## Itération — Pertes blindées et équipages
 
 Le système de pertes physiques représente désormais les premiers dommages matériels au combat.
@@ -2023,7 +2023,7 @@ Les pertes d'équipage sont ensuite calculées séparément à partir des dommag
 - les véhicules abandonnés ou capturés ne sont pas encore représentés ;
 - les canons, camions et équipements d'infanterie utilisent encore `StrengthPool`.
 
-# COMMIT #
+# COMMIT f383b3d304d08b29e0c0c6fe663774e32847c69d #
 ## Itération — Premier client graphique Avalonia
 
 Un premier client graphique desktop a été ajouté au prototype WoF.
@@ -2093,3 +2093,84 @@ Elle constitue un visualisateur interactif permettant de tester et observer dire
 - pas de véritable système graphique de pions militaires ;
 - pas encore d'affichage spécifique des engagements ;
 - le client lit encore directement les objets publics du moteur.
+
+
+# COMMIT #
+## Itération — Visualisation des engagements, dépôts et commandement des deux camps
+
+Le client graphique Avalonia permet désormais d'observer plus clairement le déroulement des combats et de commander l'un ou l'autre camp.
+
+### Commandement des deux camps
+
+L'interface permet maintenant de choisir le camp commandé.
+
+Le sélecteur de divisions se met à jour en fonction du pays sélectionné, et il est également possible de sélectionner directement une division sur la carte, ce qui bascule automatiquement le commandement sur son camp.
+
+### Dépôts
+
+Le scénario prototype contient désormais des dépôts de ravitaillement visibles sur la carte.
+
+Chaque dépôt possède :
+
+- une province ;
+- un stock de carburant ;
+- un débit de transfert horaire.
+
+Ces dépôts sont ajoutés au moteur de simulation et peuvent ravitailler les divisions stationnaires connectées par le réseau logistique.
+
+### Marqueurs de bataille
+
+Les engagements sont maintenant visibles directement sur la carte :
+
+- une bataille en province est affichée par un marqueur au-dessus de la province ;
+- un engagement sur liaison est affiché par un marqueur positionné au point moyen des unités engagées sur cette liaison.
+
+### Informations enrichies
+
+L'inspecteur latéral affiche toujours l'état général d'une unité, avec en plus un meilleur suivi du matériel blindé :
+
+- chars opérationnels ;
+- chars endommagés ;
+- chars détruits.
+
+L'inspection d'une province indique également si un dépôt s'y trouve.
+
+### Objectif
+
+Cette itération renforce la valeur du prototype comme outil d'observation du moteur :
+
+- visualiser les combats ;
+- tester le ravitaillement ;
+- observer le comportement des deux camps ;
+- déboguer plus facilement les situations de mouvement et d'engagement.
+
+## Correction — Détection des rencontres lors d'une arrivée
+
+Un cas limite permettait précédemment à deux divisions ennemies de se traverser sur une liaison.
+
+Le problème apparaissait lorsqu'une division terminait son mouvement vers une province pendant le même tick qu'une division ennemie quittait cette province dans la direction opposée.
+
+### Cause
+
+Une division atteignant 100 % de progression supprimait immédiatement son `TransitState`.
+
+La détection des `MeetingEngagements` intervenant ensuite, le moteur ne possédait plus la trajectoire de cette division et ne pouvait plus détecter le croisement.
+
+### Nouvelle séquence
+
+La finalisation des arrivées est désormais séparée du déplacement.
+
+Le tick suit maintenant l'ordre :
+
+1. avance des mouvements ;
+2. détection des engagements sur liaison ;
+3. finalisation des arrivées restantes ;
+4. détection des engagements en province.
+
+Une division peut donc temporairement posséder un transit terminé (`Progress = 1.0`) jusqu'à la fin de la phase de détection des collisions.
+
+### Résultat
+
+Une division proche de sa destination ne peut plus traverser une unité ennemie quittant cette destination pendant le même tick.
+
+Le point exact de rencontre déjà calculé par le moteur est utilisé pour synchroniser les deux formations avant la création du `MeetingEngagement`.

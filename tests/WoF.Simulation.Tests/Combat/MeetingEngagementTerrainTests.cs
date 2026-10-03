@@ -551,4 +551,156 @@ public class MeetingEngagementTerrainTests{
         Assert.Equal(german.Transit.Progress, german.Transit.PreviousProgress, 6);
         Assert.False(german.Transit.IsPaused);
     }
+
+
+
+        [Fact]
+    public void DivisionReachingProvinceCannotPassThroughEnemyLeavingThatProvince()
+    {
+        var france =
+            new Country(
+                1,
+                "France"
+            );
+
+        var germany =
+            new Country(
+                2,
+                "Germany"
+            );
+
+        var a =
+            new Province(
+                1,
+                "A",
+                owner: france
+            );
+
+        var b =
+            new Province(
+                2,
+                "B",
+                owner: germany
+            );
+
+        a.ConnectTo(
+            b
+        );
+
+        var french =
+            new Division(
+                "French",
+                a,
+                fuel: 100,
+                ammunition: 100,
+                country: france
+            );
+
+        var german =
+            new Division(
+                "German",
+                b,
+                fuel: 100,
+                ammunition: 100,
+                country: germany
+            );
+
+        var germanPlan =
+            new MovementPlan(
+                DurationHours: 10,
+                FuelPerHour: 0
+            );
+
+        var frenchPlan =
+            new MovementPlan(
+                DurationHours: 5,
+                FuelPerHour: 0
+            );
+
+        Assert.True(
+            german.TryStartMovement(
+                a,
+                germanPlan
+            )
+        );
+
+        // Allemagne atteint 90 % vers A.
+        for (int i = 0; i < 9; i++)
+        {
+            german.AdvanceOneHour();
+        }
+
+        Assert.Equal(
+            0.90,
+            german.Transit!.Progress,
+            2
+        );
+
+        Assert.True(
+            french.TryStartMovement(
+                b,
+                frenchPlan
+            )
+        );
+
+        var diplomacy =
+            new DiplomacySystem();
+
+        diplomacy.DeclareWar(
+            france,
+            germany
+        );
+
+        // Tick commun.
+        german.AdvanceOneHour();
+        french.AdvanceOneHour();
+
+        var engagements =
+            new EngagementSystem(
+                diplomacy
+            );
+
+        engagements.DetectTransitEngagements(
+            new[]
+            {
+                french,
+                german
+            },
+            currentHour: 10
+        );
+
+        var engagement =
+            Assert.Single(
+                engagements.ActiveEngagements
+            );
+
+        Assert.Equal(
+            EngagementType.MeetingEngagement,
+            engagement.Type
+        );
+
+        Assert.True(
+            french.IsEngaged
+        );
+
+        Assert.True(
+            german.IsEngaged
+        );
+
+        Assert.NotNull(
+            french.Transit
+        );
+
+        Assert.NotNull(
+            german.Transit
+        );
+
+        Assert.False(
+            french.Transit!.IsCompleted
+        );
+
+        Assert.False(
+            german.Transit!.IsCompleted
+        );
+    }
 }

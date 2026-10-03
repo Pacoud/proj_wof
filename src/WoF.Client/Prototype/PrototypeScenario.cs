@@ -1,5 +1,6 @@
 using WoF.Simulation.Core;
 using WoF.Simulation.Military;
+using WoF.Simulation.Logistics;
 using WoF.Simulation.World;
 using WoF.Simulation.World.Infrastructure;
 
@@ -10,6 +11,30 @@ public sealed class PrototypeScenario
     public SimulationEngine Simulation { get; }
 
     public Country PlayerCountry { get; }
+
+    public IReadOnlyCollection<SupplyDepot> SupplyDepots { get; }
+
+    public IReadOnlyList<Country> CommandableCountries =>
+    new[]
+    {
+        PlayerCountry,
+        EnemyCountry
+    };
+
+    public IReadOnlyList<Division> GetDivisionsFor(
+    Country country){
+    return Simulation.Divisions
+        .Where(
+            division =>
+                ReferenceEquals(
+                    division.Country,
+                    country
+                )
+        )
+        .ToList();
+    }
+
+
 
     public Country EnemyCountry { get; }
 
@@ -33,17 +58,20 @@ public sealed class PrototypeScenario
         Country playerCountry,
         Country enemyCountry,
         IReadOnlyList<MapProvince> provinces,
-        IReadOnlyList<InfrastructureLink> links)
+        IReadOnlyList<InfrastructureLink> links,
+        IReadOnlyList<SupplyDepot> supplyDepots)
     {
         Simulation = simulation;
         PlayerCountry = playerCountry;
         EnemyCountry = enemyCountry;
         Provinces = provinces;
         Links = links;
+        SupplyDepots = supplyDepots;
     }
 
     public static PrototypeScenario Create()
     {
+
         var france =
             new Country(
                 1,
@@ -131,6 +159,37 @@ public sealed class PrototypeScenario
 
         var simulation =
             new SimulationEngine();
+
+        var supplyDepots = 
+            new List<SupplyDepot>();
+        
+        var frenchDepot = 
+            new SupplyDepot(
+                "Dépot Ouest",
+                west,
+                fuelStock : 2_000,
+                fuelTransferPerHour : 80
+            );
+        
+        var germanDepot =
+            new SupplyDepot(
+                "Dépot Est",
+                borderEast,
+                fuelStock : 2_000,
+                fuelTransferPerHour : 80
+            );
+
+        supplyDepots.Add(frenchDepot);
+        supplyDepots.Add(germanDepot);
+
+        simulation.AddSupplyDepot(
+            frenchDepot
+        );
+
+        simulation.AddSupplyDepot(
+            germanDepot
+        );
+
 
         var links =
             new List<InfrastructureLink>();
@@ -268,7 +327,8 @@ public sealed class PrototypeScenario
             france,
             germany,
             provinces,
-            links
+            links,
+            supplyDepots
         );
     }
 }

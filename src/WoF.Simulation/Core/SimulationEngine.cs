@@ -52,29 +52,23 @@ public sealed class SimulationEngine
 
         foreach (var division in _divisions)
         {
-            bool wasInTransit =
-                division.IsInTransit;
-
             division.AdvanceOneHour();
+        }
 
-            bool hasArrived =
-                wasInTransit
-                && !division.IsInTransit
-                && division.CurrentProvince != null;
+        Engagements.DetectTransitEngagements(
+            _divisions,
+            Clock.CurrentHour
+        );
 
-            if (hasArrived)
+        foreach (var division in _divisions)
+        {
+            if (division.FinalizeArrival())
             {
                 arrivals.Add(
                     division
                 );
             }
         }
-
-        // Deux colonnes ennemies peuvent s'être croisées.
-        Engagements.DetectTransitEngagements(
-            _divisions,
-            Clock.CurrentHour
-        );
 
         // Une division peut être arrivée dans une
         // province déjà occupée par l'ennemi.

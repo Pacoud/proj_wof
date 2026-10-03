@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using WoF.Simulation.Logistics;
 
 using WoF.Client.Prototype;
 
@@ -14,6 +15,8 @@ namespace WoF.Client;
 public partial class MainWindow : Window
 {
     private PrototypeScenario _scenario;
+
+    private Country? _selectedCountry;
 
     private Province? _selectedProvince;
 
@@ -33,20 +36,72 @@ public partial class MainWindow : Window
 
     private void LoadScenario()
     {
-        DivisionSelector.ItemsSource =
-            _scenario.PlayerDivisions;
+        CountrySelector.ItemsSource = 
+        _scenario.CommandableCountries;
 
-        if (_scenario.PlayerDivisions.Count > 0)
+        _selectedCountry = _scenario.PlayerCountry;
+
+        CountrySelector.SelectedItem = _selectedCountry;
+
+        RefreshDivisionSelector();
+
+        UpdateInterface(); 
+
+    }
+
+    private void RefreshDivisionSelector()
+    {
+        if (_selectedCountry == null)
         {
-            DivisionSelector.SelectedIndex =
-                0;
+            DivisionSelector.ItemsSource =
+                null;
 
             _selectedDivision =
-                _scenario.PlayerDivisions[0];
+                null;
+
+            return;
         }
 
-        UpdateInterface();
+        var divisions =
+            _scenario.GetDivisionsFor(
+                _selectedCountry
+            );
+
+        DivisionSelector.ItemsSource =
+            divisions;
+
+        if (divisions.Count > 0)
+        {
+            _selectedDivision =
+                divisions[0];
+
+            DivisionSelector.SelectedItem =
+                _selectedDivision;
+        }
+        else
+        {
+            _selectedDivision =
+                null;
+
+            DivisionSelector.SelectedItem =
+                null;
+        }
     }
+
+
+    private void OnCountrySelectionChanged(
+    object? sender,
+    SelectionChangedEventArgs e)
+    {
+        _selectedCountry =
+            CountrySelector.SelectedItem
+                as Country;
+
+        RefreshDivisionSelector();
+
+        UpdateDivisionInfo();
+    }
+
 
 
     private void UpdateInterface()
@@ -71,6 +126,214 @@ public partial class MainWindow : Window
         DrawProvinces();
 
         DrawDivisions();
+
+        DrawSupplyDepots();
+
+        DrawBattleMarkers();
+
+        DrawDivisions();
+    }
+
+
+    private void DrawSupplyDepots()
+    {
+        foreach (var depot in _scenario.SupplyDepots)
+        {
+            MapProvince? province =
+                FindMapProvince(
+                    depot.Position
+                );
+
+            if (province == null)
+                continue;
+
+            var depotMarker =
+                new Border
+                {
+                    Width = 28,
+                    Height = 28,
+                    CornerRadius = new CornerRadius(14),
+                    Background = Brushes.DarkSlateBlue,
+                    BorderBrush = Brushes.White,
+                    BorderThickness = new Thickness(2),
+                    Child =
+                        new TextBlock
+                        {
+                            Text = "D",
+                            Foreground = Brushes.White,
+                            HorizontalAlignment =
+                                Avalonia.Layout.HorizontalAlignment.Center,
+                            VerticalAlignment =
+                                Avalonia.Layout.VerticalAlignment.Center,
+                            TextAlignment =
+                                TextAlignment.Center
+                        }
+                };
+
+            ToolTip.SetTip(
+                depotMarker,
+                $"{depot.Name}\n" +
+                $"Stock : {depot.FuelStock:F0}\n" +
+                $"Débit : {depot.FuelTransferPerHour:F0}/h"
+            );
+
+            Canvas.SetLeft(
+                depotMarker,
+                province.X + 40
+            );
+
+            Canvas.SetTop(
+                depotMarker,
+                province.Y - 42
+            );
+
+            MapCanvas.Children.Add(
+                depotMarker
+            );
+        }
+    }
+
+
+    private void DrawBattleMarkers()
+    {
+        var engagementGroups =
+            _scenario.Simulation.Divisions
+                .Where(
+                    division =>
+                        division.CurrentEngagement != null
+                )
+                .GroupBy(
+                    division =>
+                        division.CurrentEngagement!
+                )
+                .ToList();
+
+        foreach (var group in engagementGroups)
+        {
+            var participants =
+                group.ToList();
+
+            bool provinceBattle =
+                participants.All(
+                    division =>
+                        division.CurrentProvince != null
+                );
+
+            if (provinceBattle)
+            {
+                Province province =
+                    participants[0]
+                        .CurrentProvince!;
+
+                MapProvince? mapProvince =
+                    FindMapProvince(
+                        province
+                    );
+
+                if (mapProvince == null)
+                    continue;
+
+                DrawBattleMarker(
+                    x: mapProvince.X,
+                    y: mapProvince.Y - 52,
+                    label: "⚔",
+                    tooltip:
+                        $"Bataille en province : {province.Name}\n" +
+                        $"Participants : {participants.Count}"
+                );
+
+                continue;
+            }
+
+            var positions =
+                participants
+                    .Select(
+                        division =>
+                            GetDivisionPosition(
+                                division
+                            )
+                    )
+                    .Where(
+                        position => position != null
+                    )
+                    .Select(
+                        position => position!.Value
+                    )
+                    .ToList();
+
+            if (positions.Count == 0)
+                continue;
+
+            double averageX =
+                positions.Average(
+                    position => position.X
+                );
+
+            double averageY =
+                positions.Average(
+                    position => position.Y
+                );
+
+            DrawBattleMarker(
+                x: averageX,
+                y: averageY - 18,
+                label: "⚔",
+                tooltip:
+                    $"Engagement sur liaison\n" +
+                    $"Participants : {participants.Count}"
+            );
+        }
+    }
+
+        // *** HELPER *** //
+    private void DrawBattleMarker(
+    double x,
+    double y,
+    string label,
+    string tooltip)
+    {
+        var marker =
+            new Border
+            {
+                Width = 34,
+                Height = 34,
+                CornerRadius = new CornerRadius(17),
+                Background = Brushes.DarkRed,
+                BorderBrush = Brushes.Gold,
+                BorderThickness = new Thickness(2),
+                Child =
+                    new TextBlock
+                    {
+                        Text = label,
+                        Foreground = Brushes.White,
+                        FontSize = 18,
+                        HorizontalAlignment =
+                            Avalonia.Layout.HorizontalAlignment.Center,
+                        VerticalAlignment =
+                            Avalonia.Layout.VerticalAlignment.Center,
+                        TextAlignment =
+                            TextAlignment.Center
+                    }
+            };
+
+        ToolTip.SetTip(
+            marker,
+            tooltip
+        );
+
+        Canvas.SetLeft(
+            marker,
+            x - 17
+        );
+
+        Canvas.SetTop(
+            marker,
+            y - 17
+        );
+
+        MapCanvas.Children.Add(
+            marker
+        );
     }
 
 
@@ -270,22 +533,26 @@ public partial class MainWindow : Window
                 };
 
 
-            if (ReferenceEquals(
-                    division.Country,
-                    _scenario.PlayerCountry))
-            {
-                marker.Click +=
-                    (_, _) =>
-                    {
-                        _selectedDivision =
-                            division;
+            marker.Click +=
+                (_, _) =>
+                {
+                    _selectedDivision =
+                        division;
 
-                        DivisionSelector.SelectedItem =
-                            division;
+                    _selectedCountry =
+                        division.Country;
 
-                        UpdateInterface();
-                    };
-            }
+                    CountrySelector.SelectedItem =
+                        _selectedCountry;
+
+                    RefreshDivisionSelector();
+
+                    DivisionSelector.SelectedItem =
+                        division;
+
+                    UpdateInterface();
+                };
+            
 
 
             Canvas.SetLeft(
@@ -306,6 +573,7 @@ public partial class MainWindow : Window
             );
         }
     }
+    
 
 
     private (double X, double Y)?
@@ -514,11 +782,26 @@ public partial class MainWindow : Window
                 ?.Name
             ?? "Aucun";
 
+        SupplyDepot? depot = 
+            _scenario.SupplyDepots.FirstOrDefault(
+                candidate =>
+                    ReferenceEquals(
+                        candidate.Position,
+                        _selectedProvince
+                    )
+            );
+
+        string depotText = 
+            depot == null 
+                ?"Aucun Dépot"
+                : $"Dépot : {depot.Name}" +
+                $"({depot.FuelStock:F0})";
 
         SelectedProvinceText.Text =
             $"{_selectedProvince.Name}\n" +
             $"Terrain : {_selectedProvince.Terrain}\n" +
-            $"Contrôle : {controller}";
+            $"Contrôle : {controller}\n" +
+            depotText;
     }
 
 
@@ -551,6 +834,8 @@ public partial class MainWindow : Window
         var personnel =
             division.Composition.Manpower;
 
+        var tanks = division.Composition.Tanks;
+
 
         DivisionInfoText.Text =
             $"{division.Name}\n\n" +
@@ -567,7 +852,18 @@ public partial class MainWindow : Window
             $"{division.Fuel:F1}" +
             $" / {division.FuelCapacity:F1}\n\n" +
 
+
+            $"Chars opérationnels : " +
+            $"{tanks.Operational:N0}\n" +
+
+            $"Chars endommagés : " +
+            $"{tanks.Damaged:N0}\n" +
+
+            $"Chars détruits : " +
+            $"{tanks.Destroyed:N0}\n"+
+
             $"Personnel apte : " +
+
             $"{personnel.Current:N0}\n" +
 
             $"KIA : " +
@@ -575,5 +871,7 @@ public partial class MainWindow : Window
 
             $"WIA indisponibles : " +
             $"{personnel.WoundedUnavailable:N0}";
+
+
     }
 }

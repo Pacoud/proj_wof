@@ -615,4 +615,129 @@ public class EngagementsTests
         );
     }
 
+
+    [Fact]
+    public void CompletedTransitIsFinalizedWhenNoMeetingEngagementOccurs()
+    {
+        var france =
+            new Country(
+                1,
+                "France"
+            );
+
+        var a =
+            new Province(
+                1,
+                "A",
+                owner: france
+            );
+
+        var b =
+            new Province(
+                2,
+                "B",
+                owner: france
+            );
+
+        a.ConnectTo(
+            b
+        );
+
+        var division =
+            new Division(
+                "French Division",
+                a,
+                fuel: 100,
+                ammunition: 100,
+                country: france
+            );
+
+        var plan =
+            new MovementPlan(
+                DurationHours: 2,
+                FuelPerHour: 0
+            );
+
+        Assert.True(
+            division.TryStartMovement(
+                b,
+                plan
+            )
+        );
+
+        Assert.NotNull(
+            division.Transit
+        );
+
+        Assert.Null(
+            division.CurrentProvince
+        );
+
+
+        // Première heure :
+        // progression = 50 %.
+        division.AdvanceOneHour();
+
+        Assert.NotNull(
+            division.Transit
+        );
+
+        Assert.False(
+            division.Transit!.IsCompleted
+        );
+
+        Assert.Equal(
+            0.50,
+            division.Transit.Progress,
+            2
+        );
+
+
+        // Deuxième heure :
+        // le transit atteint 100 %,
+        // mais l'arrivée n'est PAS encore finalisée.
+        division.AdvanceOneHour();
+
+        Assert.NotNull(
+            division.Transit
+        );
+
+        Assert.True(
+            division.Transit!.IsCompleted
+        );
+
+        Assert.Equal(
+            1.00,
+            division.Transit.Progress,
+            2
+        );
+
+        Assert.Null(
+            division.CurrentProvince
+        );
+
+
+        // La phase de finalisation termine réellement l'arrivée.
+        bool finalized =
+            division.FinalizeArrival();
+
+
+        Assert.True(
+            finalized
+        );
+
+        Assert.Null(
+            division.Transit
+        );
+
+        Assert.Same(
+            b,
+            division.CurrentProvince
+        );
+
+        Assert.False(
+            division.IsInTransit
+        );
+    }
+
 }

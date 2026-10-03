@@ -196,13 +196,6 @@ public sealed class Division
         Transit.AdvanceOneHour();
         
 
-        if (Transit.IsCompleted)
-        {
-            CurrentProvince =
-                Transit.Destination;
-
-            Transit = null;
-        }
     }
 
     public double ReceiveFuel(double amount)
@@ -457,6 +450,26 @@ public sealed class Division
         );
 
         return recovered;
+    }
+
+
+    internal bool FinalizeArrival()
+    {
+        if (Transit == null)
+            return false;
+
+        if (!Transit.IsCompleted)
+            return false;
+
+        if (IsEngaged)
+            return false;
+
+        CurrentProvince =
+            Transit.Destination;
+
+        Transit = null;
+
+        return true;
     }
 
 

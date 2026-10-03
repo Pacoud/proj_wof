@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\WoF.Simulation\WoF.Simulation.csproj" />
+    <ProjectReference Include="..\WoF.Simulation\WoF.Simulation.csproj"
+     />
   </ItemGroup>
 </Project>
