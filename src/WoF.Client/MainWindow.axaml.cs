@@ -4,6 +4,7 @@ using Avalonia.Controls.Shapes;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using WoF.Simulation.Logistics;
+using WoF.Simulation.Military.Combat;
 
 using WoF.Client.Prototype;
 
@@ -196,146 +197,192 @@ public partial class MainWindow : Window
 
     private void DrawBattleMarkers()
     {
-        var engagementGroups =
-            _scenario.Simulation.Divisions
-                .Where(
-                    division =>
-                        division.CurrentEngagement != null
-                )
-                .GroupBy(
-                    division =>
-                        division.CurrentEngagement!
-                )
-                .ToList();
-
-        foreach (var group in engagementGroups)
+        foreach (var engagement
+                in _scenario
+                    .Simulation
+                    .Engagements
+                    .ActiveEngagements)
         {
-            var participants =
-                group.ToList();
-
-            bool provinceBattle =
-                participants.All(
-                    division =>
-                        division.CurrentProvince != null
+            (double X, double Y)? position =
+                GetEngagementPosition(
+                    engagement
                 );
 
-            if (provinceBattle)
-            {
-                Province province =
-                    participants[0]
-                        .CurrentProvince!;
-
-                MapProvince? mapProvince =
-                    FindMapProvince(
-                        province
-                    );
-
-                if (mapProvince == null)
-                    continue;
-
-                DrawBattleMarker(
-                    x: mapProvince.X,
-                    y: mapProvince.Y - 52,
-                    label: "⚔",
-                    tooltip:
-                        $"Bataille en province : {province.Name}\n" +
-                        $"Participants : {participants.Count}"
-                );
-
-                continue;
-            }
-
-            var positions =
-                participants
-                    .Select(
-                        division =>
-                            GetDivisionPosition(
-                                division
-                            )
-                    )
-                    .Where(
-                        position => position != null
-                    )
-                    .Select(
-                        position => position!.Value
-                    )
-                    .ToList();
-
-            if (positions.Count == 0)
+            if (position == null)
                 continue;
 
-            double averageX =
-                positions.Average(
-                    position => position.X
-                );
-
-            double averageY =
-                positions.Average(
-                    position => position.Y
-                );
 
             DrawBattleMarker(
-                x: averageX,
-                y: averageY - 18,
-                label: "⚔",
-                tooltip:
-                    $"Engagement sur liaison\n" +
-                    $"Participants : {participants.Count}"
+                engagement,
+                position.Value.X,
+                position.Value.Y
             );
         }
     }
 
+    private (double X, double Y)?
+    GetEngagementPosition(
+        Engagement engagement)
+    {
+        if (engagement.Type
+                == EngagementType.ProvinceBattle
+            &&
+            engagement.Province != null)
+        {
+            MapProvince? province =
+                FindMapProvince(
+                    engagement.Province
+                );
+
+            if (province == null)
+                return null;
+
+            return (
+                province.X,
+                province.Y - 52
+            );
+        }
+
+        if (engagement.Type
+                == EngagementType.MeetingEngagement
+            &&
+            engagement.ConnectionA != null
+            &&
+            engagement.ConnectionB != null
+            &&
+            engagement.ConnectionProgress != null)
+        {
+            MapProvince? first =
+                FindMapProvince(
+                    engagement.ConnectionA
+                );
+
+            MapProvince? second =
+                FindMapProvince(
+                    engagement.ConnectionB
+                );
+
+            if (first == null
+                || second == null)
+            {
+                return null;
+            }
+
+            double progress =
+                engagement
+                    .ConnectionProgress
+                    .Value;
+
+            double x =
+                first.X
+                + (
+                    second.X - first.X
+                )
+                * progress;
+
+            double y =
+                first.Y
+                + (
+                    second.Y - first.Y
+                )
+                * progress;
+
+            return (
+                x,
+                y
+            );
+        }
+
+        return null;
+    }
+
         // *** HELPER *** //
-    private void DrawBattleMarker(
+   private void DrawBattleMarker(
+    Engagement engagement,
     double x,
-    double y,
-    string label,
-    string tooltip)
+    double y)
     {
         var marker =
             new Border
             {
-                Width = 34,
-                Height = 34,
-                CornerRadius = new CornerRadius(17),
-                Background = Brushes.DarkRed,
-                BorderBrush = Brushes.Gold,
-                BorderThickness = new Thickness(2),
+                Width = 36,
+                Height = 36,
+
+                CornerRadius =
+                    new CornerRadius(18),
+
+                Background =
+                    Brushes.DarkRed,
+
+                BorderBrush =
+                    Brushes.Gold,
+
+                BorderThickness =
+                    new Thickness(2),
+
                 Child =
                     new TextBlock
                     {
-                        Text = label,
-                        Foreground = Brushes.White,
-                        FontSize = 18,
+                        Text = "⚔",
+
+                        Foreground =
+                            Brushes.White,
+
+                        FontSize = 19,
+
                         HorizontalAlignment =
-                            Avalonia.Layout.HorizontalAlignment.Center,
+                            Avalonia.Layout
+                                .HorizontalAlignment
+                                .Center,
+
                         VerticalAlignment =
-                            Avalonia.Layout.VerticalAlignment.Center,
+                            Avalonia.Layout
+                                .VerticalAlignment
+                                .Center,
+
                         TextAlignment =
                             TextAlignment.Center
                     }
             };
 
+
+        Control battleInfo =
+            BattleInfoBuilder.Build(
+                engagement,
+                _scenario
+                    .Simulation
+                    .Clock
+                    .CurrentHour
+            );
+
+
         ToolTip.SetTip(
             marker,
-            tooltip
+            battleInfo
         );
+
+
+        ToolTip.SetShowDelay(
+            marker,
+            150
+        );
+
 
         Canvas.SetLeft(
             marker,
-            x - 17
+            x - 18
         );
 
         Canvas.SetTop(
             marker,
-            y - 17
+            y - 18
         );
+
 
         MapCanvas.Children.Add(
             marker
         );
     }
-
 
     private void DrawConnections()
     {

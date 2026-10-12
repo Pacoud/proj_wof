@@ -1,7 +1,23 @@
 Ce projet est une ambition de création de zero d'un jeu de simultation avancé 
 
 
---commit -- b7cabff7ed2690a999eb44053939ef7ce7dbca74 --  
+
+## COMMANDES ## 
+
+
+Client graphique Avalonia -- 
+Lancer l'interface graphique Avalonia :
+
+dotnet run --project src/WoF.Client/WoF.Client.csproj
+
+Lance le client console  :
+dotnet run --project src/WoF.Prototype/WoF.Prototype.csproj
+
+Pour lancer les tests : 
+dotnet test 
+
+
+# COMMIT --commit -- b7cabff7ed2690a999eb44053939ef7ce7dbca74 -- #   
 pathfinding (arbres de graphes), le ravitaillement traverse plusieurs provinces 
 
 - Recherche automatique d’un chemin logistique entre un dépôt et une division.
@@ -2095,7 +2111,7 @@ Elle constitue un visualisateur interactif permettant de tester et observer dire
 - le client lit encore directement les objets publics du moteur.
 
 
-# COMMIT #
+# COMMIT 56bbc54b6f2ca16db95ef09cede22bf0001781ff #
 ## Itération — Visualisation des engagements, dépôts et commandement des deux camps
 
 Le client graphique Avalonia permet désormais d'observer plus clairement le déroulement des combats et de commander l'un ou l'autre camp.

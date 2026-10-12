@@ -254,21 +254,94 @@ public sealed class EngagementSystem
         }
     }
 
+    private void AddReinforcementsToTransitEngagements(
+    IEnumerable<Division> candidates)
+    {
+        var meetings = ActiveEngagements
+            .Where(engagement =>
+                engagement.Type == EngagementType.MeetingEngagement)
+            .OrderBy(engagement => engagement.Id)
+            .ToList();
+
+        foreach (Division candidate in candidates)
+        {
+            if (candidate.Transit == null
+                || candidate.IsEngaged
+                || candidate.IsBroken)
+            {
+                continue;
+            }
+
+            Engagement? firstEncounter = null;
+            double firstContactTime = double.PositiveInfinity;
+
+            foreach (Engagement engagement in meetings)
+            {
+                bool facesEnemy = engagement.Participants.Any(
+                    participant =>
+                        !participant.IsBroken
+                        && AreHostile(candidate, participant)
+                );
+
+                if (!facesEnemy)
+                    continue;
+
+                if (!TryGetTransitContactTime(
+                        candidate.Transit,
+                        engagement,
+                        out double contactTime))
+                {
+                    continue;
+                }
+
+                // Si plusieurs combats sont sur la liaison,
+                // rejoindre le premier rencontré pendant le tick.
+                if (contactTime < firstContactTime)
+                {
+                    firstEncounter = engagement;
+                    firstContactTime = contactTime;
+                }
+            }
+
+            if (firstEncounter == null)
+                continue;
+
+            SynchronizeDivisionToMeetingPoint(
+                candidate,
+                firstEncounter.ConnectionA!,
+                firstEncounter.ConnectionProgress!.Value
+            );
+
+            firstEncounter.AddParticipant(candidate);
+        }
+    }
+
     public void DetectTransitEngagements(
     IEnumerable<Division> divisions,
     long currentHour)
     {
-        var moving =
-            divisions
-                .Where(
-                    division =>
-                        division.Transit != null
-                        &&
-                        !division.IsEngaged
-                        && 
-                        !division.IsBroken
-                )
-                .ToList();
+        var candidates = divisions
+            .Where(division =>
+                division.Transit != null
+                && !division.IsEngaged
+                && !division.IsBroken)
+            .ToList();
+
+        // Priorité aux combats qui existaient déjà.
+        AddReinforcementsToTransitEngagements(candidates);
+
+        // Créer les nouvelles rencontres.
+        DetectNewTransitEngagements(candidates, currentHour);
+
+        // Une troisième division peut atteindre un combat
+        // créé pendant ce même tick.
+        AddReinforcementsToTransitEngagements(candidates);
+    }
+
+    public void DetectNewTransitEngagements(
+    IReadOnlyList<Division> moving,
+    long currentHour)
+    {
 
         for (int i = 0; i < moving.Count; i++)
         {
@@ -1067,6 +1140,84 @@ public sealed class EngagementSystem
         }
 
         return roles;
+    }
+
+
+
+    private static bool IsOnSameConnection(
+    TransitState transit,
+    Province a,
+    Province b)
+    {
+        return
+            (ReferenceEquals(transit.Origin, a)
+            && ReferenceEquals(transit.Destination, b))
+            ||
+            (ReferenceEquals(transit.Origin, b)
+            && ReferenceEquals(transit.Destination, a));
+    }
+
+    private static bool TryGetTransitContactTime(
+        TransitState transit,
+        Engagement engagement,
+        out double contactTime)
+    {
+        const double tolerance = 0.000001;
+
+        contactTime = 0;
+
+        if (engagement.ConnectionA == null
+            || engagement.ConnectionB == null
+            || engagement.ConnectionProgress == null)
+        {
+            return false;
+        }
+
+        if (!IsOnSameConnection(
+                transit,
+                engagement.ConnectionA,
+                engagement.ConnectionB))
+        {
+            return false;
+        }
+
+        double previous = GetProgressInReference(
+            transit,
+            engagement.ConnectionA,
+            previous: true
+        );
+
+        double current = GetProgressInReference(
+            transit,
+            engagement.ConnectionA,
+            previous: false
+        );
+
+        double battlePosition =
+            engagement.ConnectionProgress.Value;
+
+        double movement = current - previous;
+
+        // Une division déjà exactement au contact
+        // peut rejoindre le combat même sans déplacement.
+        if (Math.Abs(movement) <= tolerance)
+        {
+            return Math.Abs(previous - battlePosition)
+                <= tolerance;
+        }
+
+        double fraction =
+            (battlePosition - previous) / movement;
+
+        if (fraction < -tolerance
+            || fraction > 1 + tolerance)
+        {
+            return false;
+        }
+
+        contactTime = Math.Clamp(fraction, 0, 1);
+
+        return true;
     }
 
 
