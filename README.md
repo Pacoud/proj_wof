@@ -2204,4 +2204,95 @@ interprovince et qu'une division tierce croisait le chemin de cet engagement, el
 Qui gère ce nouveau cas précisément 
 
 
+# COMMIT #
+## Itération — Battle Ledger : historique des batailles
 
+Cette itération introduit les premières fondations d'un registre historique des engagements militaires.
+
+### Captures initiales
+
+Lorsqu'une division rejoint une bataille, le moteur enregistre un `ParticipantBattleSnapshot` contenant une copie de ses statistiques à cet instant.
+
+Les valeurs suivies incluent :
+- manpower disponible ;
+- KIA et WIA cumulés ;
+- disparus ou prisonniers ;
+- chars opérationnels, endommagés et détruits ;
+- organisation ;
+- carburant.
+
+### Rapports individuels
+
+À la fin d'un engagement, un `ParticipantBattleReport` est produit pour chaque division participante.
+
+Il permet de connaître les pertes propres à cette bataille en comparant les compteurs cumulés au début et à la fin de la participation.
+
+### Renforts
+
+Les divisions rejoignant un engagement déjà commencé possèdent leur propre heure d'arrivée et leur propre état initial.
+
+Les pertes antérieures à leur entrée ne sont pas attribuées à cette bataille.
+
+### BattleReport
+
+Chaque bataille terminée produit un rapport contenant :
+- son identifiant ;
+- son type ;
+- son lieu et son terrain ;
+- ses heures de début et de fin ;
+- son issue ;
+- la liste des participants et leurs pertes.
+
+### BattleHistory
+
+Les rapports sont archivés dans `BattleHistory`.
+
+Ils restent consultables indépendamment de l'évolution ultérieure des divisions.
+
+Accès depuis le moteur : `SimulationEngine.Engagements.History.Reports`.
+
+L'heure courante est transmise explicitement à l'ajout de chaque participant et
+au traitement des engagements. Un nouvel appel pour un participant déjà présent
+ne remplace ni son snapshot initial ni son heure d'entrée.
+
+Les snapshots finaux sont capturés après l'application des conséquences du
+combat, avant la retraite, le ravitaillement et la récupération d'organisation.
+Les rapports ne conservent aucune référence aux divisions ou à leurs pools :
+les identités sont copiées sous forme de noms et d'identifiants, et les
+statistiques sous forme de valeurs. La collection des participants est copiée
+et exposée en lecture seule. Chaque engagement ne peut être archivé qu'une fois.
+
+### Compteurs et variations
+
+- `Killed` : différence de `KilledInAction` ;
+- `Wounded` : différence de `TotalWoundedInAction`, indépendante du retour des blessés ;
+- `MissingOrCaptured` : différence du cumul des disparus/prisonniers ;
+- `TanksDestroyed` : différence du cumul des chars détruits ;
+- `DamagedTanksChange` : variation nette du stock endommagé, qui peut être négative après réparation.
+
+La variation du manpower, de l'organisation ou des stocks ne constitue pas un
+compteur brut de pertes : les soins, renforts et réparations peuvent modifier
+ces valeurs indépendamment des pertes subies.
+
+### Tests du Battle Ledger
+
+- copie des statistiques sans référence aux pools vivants ;
+- exclusion des pertes antérieures et utilisation des WIA cumulés après soins ;
+- snapshots et heures propres aux renforts en province et sur liaison, dans les deux sens ;
+- interception d'un renfort avant son arrivée et sa capture territoriale ;
+- troisième participant rejoignant une rencontre pendant son tick de création ;
+- conservation du snapshot lors d'un ajout répété ;
+- archivage avec le vainqueur, ou sans vainqueur, et les heures du moteur ;
+- capture avant la récupération post-combat ;
+- indépendance des engagements successifs et immuabilité des rapports ;
+- copie défensive des collections et refus des doubles archivages ;
+- distinction entre stock endommagé et dommages bruts.
+
+### Limites
+
+- historique conservé uniquement en mémoire ;
+- aucune sauvegarde sur disque ;
+- aucun écran de consultation dans Avalonia ;
+- pas encore de journal détaillé de chaque heure ;
+- distinction des dommages matériels bruts et des variations de stock à développer ;
+- l'attribution précise des pertes infligées à une division ennemie n'est pas encore disponible.

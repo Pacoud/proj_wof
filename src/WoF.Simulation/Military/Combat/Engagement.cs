@@ -1,5 +1,7 @@
 using WoF.Simulation.World;
 
+using WoF.Simulation.Military.Combat.History;
+
 namespace WoF.Simulation.Military.Combat;
 
 public sealed class Engagement
@@ -8,9 +10,17 @@ public sealed class Engagement
 
     private readonly Dictionary<Division, EngagementRole> _roles = new();
 
+    private readonly Dictionary<Division, ParticipantBattleSnapshot>
+        _initialSnapshots = new();
+
+    private readonly Dictionary<Division, long>
+        _joinHours = new();
+
     public int Id { get; }
 
     public long StartHour { get; }
+
+    public long? EndHour { get; private set; }
 
     public EngagementType Type { get; }
 
@@ -112,10 +122,29 @@ public sealed class Engagement
             );
     }
 
+    internal ParticipantBattleSnapshot GetInitialSnapshot(
+        Division division)
+    {
+        return _initialSnapshots[division];
+    }
+
+    internal long GetJoinHour(Division division)
+    {
+        return _joinHours[division];
+    }
+
+
     internal void AddParticipant(
         Division division,
+        long currentHour,
         EngagementRole role = EngagementRole.None)
     {
+        if (!IsActive)
+            throw new InvalidOperationException("Cannot join an ended engagement.");
+
+        if (currentHour < StartHour)
+            throw new ArgumentOutOfRangeException(nameof(currentHour));
+
         if (division.IsBroken)
             return;
 
@@ -133,6 +162,10 @@ public sealed class Engagement
 
                 return;
             }
+        _initialSnapshots[division] =
+            ParticipantBattleSnapshot.Capture(division);
+
+        _joinHours[division] = currentHour;
 
         _participants.Add(division);
 
@@ -141,13 +174,22 @@ public sealed class Engagement
         division.JoinEngagement(this);
     }
 
-    internal void End(
-    Country? winnerCountry)
+    internal bool End(
+        Country? winnerCountry,
+        long currentHour)
     {
         if (!IsActive)
-            return;
+            return false;
+
+        if (currentHour < StartHour
+            || _joinHours.Values.Any(hour => hour > currentHour))
+        {
+            throw new ArgumentOutOfRangeException(nameof(currentHour));
+        }
 
         WinnerCountry = winnerCountry;
+        EndHour = currentHour;
         IsActive = false;
+        return true;
     }
 }

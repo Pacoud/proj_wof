@@ -46,7 +46,7 @@ public sealed class SimulationEngine
     {
         Clock.AdvanceOneHour();
 
-        Engagements.ProcessEngagements();
+        Engagements.ProcessEngagements(Clock.CurrentHour);
 
         var arrivals = new List<Division>();
 

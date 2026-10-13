@@ -3,6 +3,7 @@ using WoF.Simulation.World;
 using WoF.Simulation.Military.Combat.Power;
 using WoF.Simulation.Military.Combat.Fuel;
 using WoF.Simulation.Military.Combat.Losses;
+using WoF.Simulation.Military.Combat.History;
 
 namespace WoF.Simulation.Military.Combat;
 
@@ -18,6 +19,8 @@ public sealed class EngagementSystem
             _endedThisTick;
 
     private int _nextEngagementId = 1;
+
+    public BattleHistory History { get; } = new();
 
 
     public IReadOnlyList<Engagement> Engagements =>
@@ -101,7 +104,8 @@ public sealed class EngagementSystem
                 AddReinforcementsToProvinceEngagement(
                     existing,
                     divisionsHere,
-                    arrivalSet
+                    arrivalSet,
+                    currentHour
                 );
 
                 continue;
@@ -147,6 +151,7 @@ public sealed class EngagementSystem
             {
                 engagement.AddParticipant(
                     division,
+                    currentHour,
                     roles[division]
                 );
             }
@@ -220,7 +225,8 @@ public sealed class EngagementSystem
     private void AddReinforcementsToProvinceEngagement(
     Engagement engagement,
     IEnumerable<Division> divisions,
-    IReadOnlySet<Division> arrivals)
+    IReadOnlySet<Division> arrivals,
+    long currentHour)
     {
         foreach (var candidate in divisions)
         {
@@ -248,6 +254,7 @@ public sealed class EngagementSystem
                 );
                 engagement.AddParticipant(
                     candidate,
+                    currentHour,
                     role
                 );
             }
@@ -255,7 +262,8 @@ public sealed class EngagementSystem
     }
 
     private void AddReinforcementsToTransitEngagements(
-    IEnumerable<Division> candidates)
+    IEnumerable<Division> candidates,
+    long currentHour)
     {
         var meetings = ActiveEngagements
             .Where(engagement =>
@@ -312,7 +320,7 @@ public sealed class EngagementSystem
                 firstEncounter.ConnectionProgress!.Value
             );
 
-            firstEncounter.AddParticipant(candidate);
+            firstEncounter.AddParticipant(candidate, currentHour);
         }
     }
 
@@ -328,14 +336,14 @@ public sealed class EngagementSystem
             .ToList();
 
         // Priorité aux combats qui existaient déjà.
-        AddReinforcementsToTransitEngagements(candidates);
+        AddReinforcementsToTransitEngagements(candidates, currentHour);
 
         // Créer les nouvelles rencontres.
         DetectNewTransitEngagements(candidates, currentHour);
 
         // Une troisième division peut atteindre un combat
         // créé pendant ce même tick.
-        AddReinforcementsToTransitEngagements(candidates);
+        AddReinforcementsToTransitEngagements(candidates, currentHour);
     }
 
     public void DetectNewTransitEngagements(
@@ -407,11 +415,13 @@ public sealed class EngagementSystem
                     );
 
                 engagement.AddParticipant(
-                    first
+                    first,
+                    currentHour
                 );
 
                 engagement.AddParticipant(
-                    second
+                    second,
+                    currentHour
                 );
 
                 _engagements.Add(
@@ -444,14 +454,15 @@ public sealed class EngagementSystem
             );
     }
 
-    public void ProcessEngagements()
+    public void ProcessEngagements(long currentHour)
     {
         _endedThisTick.Clear();
         foreach (var engagement in
                 ActiveEngagements.ToList())
         {
             ProcessEngagementTick(
-                engagement
+                engagement,
+                currentHour
             );
         }
     }
@@ -507,7 +518,8 @@ public sealed class EngagementSystem
     }
 
     private void ProcessEngagementTick(
-    Engagement engagement)
+    Engagement engagement,
+    long currentHour)
     {
         var participants =
             engagement.Participants
@@ -524,7 +536,8 @@ public sealed class EngagementSystem
         {
             ResolveEngagementIfPossible(
                 engagement,
-                participants
+                participants,
+                currentHour
             );
 
             return;
@@ -825,7 +838,8 @@ public sealed class EngagementSystem
 
         ResolveEngagementIfPossible(
             engagement,
-            participants
+            participants,
+            currentHour
         );
     }
 
@@ -834,7 +848,8 @@ public sealed class EngagementSystem
 
     private void ResolveEngagementIfPossible(
     Engagement engagement,
-    IReadOnlyCollection<Division> participants)
+    IReadOnlyCollection<Division> participants,
+    long currentHour)
     {
         var combatCapableCountries =
             participants
@@ -866,8 +881,11 @@ public sealed class EngagementSystem
                 ? combatCapableCountries[0]
                 : null;
 
-        engagement.End(
-            winner
+        if (!engagement.End(winner, currentHour))
+            return;
+
+        History.Add(
+            BuildBattleReport(engagement)
         );
         
         _endedThisTick.Add(
@@ -1219,6 +1237,49 @@ public sealed class EngagementSystem
 
         return true;
     }
+
+    private static BattleReport BuildBattleReport(
+        Engagement engagement)
+    {
+        var participantReports =
+            engagement.Participants
+                .Select(division =>
+                    new ParticipantBattleReport(
+                        DivisionName: division.Name,
+                        CountryId: division.Country?.Id,
+                        CountryName:
+                            division.Country?.Name ?? "Unknown",
+                        Role: engagement.GetRole(division),
+                        JoinedAtHour:
+                            engagement.GetJoinHour(division),
+                        Initial:
+                            engagement.GetInitialSnapshot(division),
+                        Final:
+                            ParticipantBattleSnapshot.Capture(division)
+                    )
+                )
+                .ToArray();
+
+        string location =
+            engagement.Type == EngagementType.ProvinceBattle
+                ? engagement.Province?.Name ?? "Unknown"
+                : $"{engagement.ConnectionA?.Name}" +
+                $" ↔ {engagement.ConnectionB?.Name}";
+
+        return new BattleReport(
+            EngagementId: engagement.Id,
+            Type: engagement.Type,
+            Location: location,
+            Terrain: engagement.BattleTerrain,
+            StartHour: engagement.StartHour,
+            EndHour: engagement.EndHour
+                ?? throw new InvalidOperationException("Cannot report an active engagement."),
+            WinnerCountryId: engagement.WinnerCountry?.Id,
+            WinnerCountryName: engagement.WinnerCountry?.Name,
+            Participants: participantReports
+        );
+    }
+
 
 
 }
