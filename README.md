@@ -2190,3 +2190,18 @@ Une division peut donc temporairement posséder un transit terminé (`Progress =
 Une division proche de sa destination ne peut plus traverser une unité ennemie quittant cette destination pendant le même tick.
 
 Le point exact de rencontre déjà calculé par le moteur est utilisé pour synchroniser les deux formations avant la création du `MeetingEngagement`.
+
+
+# COMMIT dfecee58e228b3eb220d27f144a5dc4bed786a2d # 
+
+Un bug sur l'interface graphique avalonia faisait que l'UI de l'engagement divisions était tout en noir, rendant les valeurs invisibles, 
+un premier commit révélant certaines valeurs (terrain, pourcentage de l'avancée entre les deux terrains (interengagements))
+
+Egalement, en testant l'interface Avalonia, cela a révélé un bug coté code, lorsqu'un engagement avait lieu en 
+interprovince et qu'une division tierce croisait le chemin de cet engagement, elle ne s'engageait pas dans le combat en question, cela a été géré par 
+- AddReinforcementsToTransitEngagements() 
+
+Qui gère ce nouveau cas précisément 
+
+
+

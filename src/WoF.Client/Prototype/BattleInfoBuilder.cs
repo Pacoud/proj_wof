@@ -196,119 +196,57 @@ public static class BattleInfoBuilder
     }
 
 
-    private static Control BuildDivisionInfo(
-        Division division)
+private static Control BuildDivisionInfo(
+    Division division)
+{
+    var personnel = division.Composition.Manpower;
+    var tanks = division.Composition.Tanks;
+
+    var content = new StackPanel
     {
-        var personnel =
-            division.Composition.Manpower;
+        Spacing = 2
+    };
 
-        var tanks =
-            division.Composition.Tanks;
+    AddText(content, division.Name, bold: true);
 
+    AddText(
+        content,
+        $"Org : {division.Organization:F1} / " +
+        $"{division.MaxOrganization:F1}"
+    );
 
-        var content =
-            new StackPanel
-            {
-                Spacing = 2
-            };
+    AddText(content, $"Hommes : {personnel.Current:N0}");
 
+    AddText(
+        content,
+        $"Fuel : {division.Fuel:F1} / " +
+        $"{division.FuelCapacity:F1}"
+    );
 
-        content.Children.Add(
-        MakeText(division.Name, bold: true)
+    if (tanks.Authorized > 0)
+    {
+        AddText(
+            content,
+            $"Chars : {tanks.Operational} opérationnels, " +
+            $"{tanks.Damaged} endommagés"
         );
-                
-
-
-        content.Children.Add(
-            new TextBlock
-            {
-                Text =
-                    $"Org : " +
-                    $"{division.Organization:F1}" +
-                    $" / " +
-                    $"{division.MaxOrganization:F1}"
-            }
-        );
-
-
-        content.Children.Add(
-            new TextBlock
-            {
-                Text =
-                    $"Hommes : " +
-                    $"{personnel.Current:N0}"
-            }
-        );
-
-
-        content.Children.Add(
-            new TextBlock
-            {
-                Text =
-                    $"Fuel : " +
-                    $"{division.Fuel:F1}" +
-                    $" / " +
-                    $"{division.FuelCapacity:F1}"
-            }
-        );
-
-
-        if (tanks.Authorized > 0)
-        {
-            content.Children.Add(
-                new TextBlock
-                {
-                    Text =
-                        $"Chars : " +
-                        $"{tanks.Operational}" +
-                        $" opérationnels, " +
-                        $"{tanks.Damaged} endommagés"
-                }
-            );
-        }
-
-
-        content.Children.Add(
-            new TextBlock
-            {
-                Text =
-                    $"KIA : " +
-                    $"{personnel.KilledInAction:N0}" +
-                    $" | WIA : " +
-                    $"{personnel.WoundedUnavailable:N0}"
-            }
-        );
-
-
-        return new Border
-        {
-            Padding =
-                new Thickness(
-                    6
-                ),
-
-            Margin =
-                new Thickness(
-                    0,
-                    2
-                ),
-
-            BorderThickness =
-                new Thickness(
-                    0,
-                    0,
-                    0,
-                    1
-                ),
-
-            BorderBrush =
-                Brushes.DimGray,
-
-            Child =
-                content
-        };
     }
 
+    AddText(
+        content,
+        $"KIA : {personnel.KilledInAction:N0} | " +
+        $"WIA : {personnel.WoundedUnavailable:N0}"
+    );
+
+    return new Border
+    {
+        Padding = new Thickness(6),
+        Margin = new Thickness(0, 2),
+        BorderThickness = new Thickness(0, 0, 0, 1),
+        BorderBrush = Brushes.DimGray,
+        Child = content
+    };
+}
 
     private static TextBlock MakeText(
     string text,
