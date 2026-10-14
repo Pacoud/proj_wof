@@ -2458,7 +2458,7 @@ B2.3 : activation contrôlée de la source de ressources
 hiérarchique dans le combat, l'interface et le Battle Ledger.
 
 
-# COMMIT # 
+# COMMIT 7027cb69722585c358c712dfa26cb4fd413e7d52 # 
 
 ## Itération B2.2b — Hierarchical Tank Loss Accounting
 
@@ -2489,3 +2489,34 @@ B2.2c : pertes et renforts des équipements ordinaires.
 
 
 # COMMIT # 
+
+## Itération B2.2c — Hierarchical Equipment Loss Accounting
+
+### Objectif
+Introduire la comptabilité des pertes d'équipements
+ordinaires dans la hiérarchie militaire.
+
+### Fonctionnalités
+- Ajout de EquipmentLossReport.
+- Ajout de HierarchicalEquipmentLossApplier.
+- Répartition des pertes d'armes d'infanterie.
+- Répartition des pertes d'artillerie.
+- Répartition des pertes de camions.
+- Répartition proportionnelle et déterministe.
+- Validation de toutes les demandes avant mutation.
+- Conservation exacte des quantités entières.
+- Retour des allocations par compagnie.
+- Tests de cohérence et de non-régression.
+
+### Limites
+- Le service n'est pas connecté au combat actuel.
+- La répartition reste provisoirement proportionnelle.
+- Les renforts ne sont pas encore liés à une source physique.
+- Les stocks divisionnaires historiques restent actifs.
+- Pas encore de simulation tactique du matériel.
+
+### Suite
+B2.2d : gestion des renforts et transferts de ressources.
+
+B2.3 : raccordement de la comptabilité hiérarchique
+au moteur de combat, au Battle Ledger et à Avalonia.
