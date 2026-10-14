@@ -1,5 +1,7 @@
+using WoF.Simulation.Military.Composition;
 
 namespace WoF.Simulation.Military.Organization;
+
 
 public sealed class Company
 {
@@ -9,12 +11,15 @@ public sealed class Company
 
     public CompanyType Type { get; }
 
+    public CompanyComposition? Composition { get; }
+
     public Battalion? ParentBattalion { get; private set; }
 
     public Company(
         int id,
         string name,
-        CompanyType type)
+        CompanyType type,
+        CompanyComposition? composition = null)
     {
         if (id <= 0)
             throw new ArgumentOutOfRangeException(nameof(id));
@@ -24,9 +29,11 @@ public sealed class Company
                 "Company name cannot be empty.",
                 nameof(name));
 
+        composition?.ClaimOwnership();
         Id = id;
         Name = name;
         Type = type;
+        Composition = composition;
     }
 
     internal void AttachTo(Battalion battalion)

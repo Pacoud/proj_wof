@@ -504,4 +504,25 @@ public sealed class Division
     }
 
 
+        
+    public FormationResourceTotals GetHierarchicalResourceTotals()
+    {
+        if (_battalions.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "Division has no battalions.");
+        }
+
+        var totals = default(FormationResourceTotals);
+
+        foreach (var battalion in _battalions)
+        {
+            totals += battalion.GetResourceTotals();
+        }
+
+        return totals;
+    }
+
+
+
 }

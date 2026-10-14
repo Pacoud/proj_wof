@@ -1,6 +1,7 @@
 
 using System.Collections.ObjectModel;
 using WoF.Simulation.Military;
+using WoF.Simulation.Military.Composition;
 
 namespace WoF.Simulation.Military.Organization;
 
@@ -74,4 +75,33 @@ public sealed class Battalion
 
         ParentDivision = division;
     }
+
+
+    
+    public FormationResourceTotals GetResourceTotals()
+    {
+        if (_companies.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "Battalion has no companies.");
+        }
+
+        var totals = default(FormationResourceTotals);
+
+        foreach (var company in _companies)
+        {
+            if (company.Composition is null)
+            {
+                throw new InvalidOperationException(
+                    $"Company {company.Name} has no composition.");
+            }
+
+            totals += FormationResourceTotals.Capture(
+                company.Composition
+            );
+        }
+
+        return totals;
+    }
+
 }

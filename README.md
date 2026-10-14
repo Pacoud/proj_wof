@@ -2297,7 +2297,7 @@ ces valeurs indépendamment des pertes subies.
 - distinction des dommages matériels bruts et des variations de stock à développer ;
 - l'attribution précise des pertes infligées à une division ennemie n'est pas encore disponible.
 
-# COMMIT # 
+# COMMIT e7a472ad2297a80040d204f4d045fd2462ed8af3 # 
 
 ## Itération A — Fondations des nouvelles fondations d'architecture des troupes 
 
@@ -2346,3 +2346,34 @@ prévue dans l'itération B.
 - Pas de combat au niveau du bataillon.
 - Aucun benchmark de performance représentatif
   du futur moteur de combat.
+
+# COMMIT #
+## Itération B1 — Hierarchical Resource Accounting
+
+### Objectif
+Introduire les ressources physiques des compagnies et
+la comptabilité hiérarchique des formations militaires.
+
+### Fonctionnalités
+- Création de CompanyComposition.
+- Réutilisation des PersonnelPool, StrengthPool et TankPool.
+- Attribution de ressources propres aux compagnies.
+- Introduction de FormationResourceTotals.
+- Agrégation des ressources des compagnies vers les bataillons.
+- Agrégation des ressources des bataillons vers les divisions.
+- Captures de totaux immuables.
+- Protection contre le partage d'une composition physique.
+- Détection des compagnies sans composition renseignée.
+- Tests des pertes et de leur répercussion dans les totaux.
+
+### Limites
+- Comptabilité hiérarchique expérimentale.
+- DivisionComposition reste utilisée par le combat actuel.
+- Pas encore de migration des pertes de combat au niveau compagnie.
+- Aucun modèle de personnel par fonction militaire.
+- Aucun inventaire détaillé des armes.
+- Aucun benchmark de performance tactique.
+
+### Prochaine étape
+B2 : préparer la migration contrôlée des ressources
+divisionnaires vers la hiérarchie sans duplication.
