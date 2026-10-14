@@ -2378,7 +2378,7 @@ la comptabilité hiérarchique des formations militaires.
 B2 : préparer la migration contrôlée des ressources
 divisionnaires vers la hiérarchie sans duplication.
 
-# COMMIT #
+# COMMIT cc141c43834b9fc681abf56b31fd40e6fa98736c #
 ## Itération B2.1 — Unified Resource Reading
 
 ### Objectif
@@ -2412,3 +2412,48 @@ physique des ressources.
 
 B2.2 — Application des pertes et des modifications
 de ressources aux compagnies, sans duplication.
+
+# COMMIT #
+
+## Itération B2.2 — Hierarchical Personnel Loss Distribution
+
+### Objectif
+
+Permettre la répartition des pertes humaines calculées
+pour une division entre ses compagnies.
+
+### Fonctionnalités
+
+- Ajout de HierarchicalPersonnelLossApplier.
+- Répartition proportionnelle des pertes humaines.
+- Attribution séparée des KIA, WIA et disparus/capturés.
+- Gestion déterministe des arrondis.
+- Conservation exacte des pertes entières.
+- Validation globale avant toute mutation physique.
+- Rejet des pertes impossibles et des formations incomplètes.
+- Retour des allocations par bataillon et compagnie.
+- Tests de répartition, de cohérence et de non-régression.
+
+### Architecture
+
+Les pertes sont appliquées aux PersonnelPool des compagnies.
+
+Les totaux des bataillons et divisions sont recalculés
+par agrégation des ressources de leurs subordonnés.
+
+### Limites
+
+- Le service n'est pas encore connecté au combat actuel.
+- DivisionComposition reste la source active dans Avalonia.
+- La répartition proportionnelle est provisoire.
+- L'exposition tactique des compagnies n'est pas encore simulée.
+- Les pertes de chars et de matériel ne sont pas encore migrées.
+
+### Suite prévue
+
+B2.2b : répartition du matériel et des pertes de chars,
+avec conservation des accumulations fractionnaires.
+
+B2.3 : activation contrôlée de la source de ressources
+hiérarchique dans le combat, l'interface et le Battle Ledger.
+
