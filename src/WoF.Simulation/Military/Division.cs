@@ -2,6 +2,8 @@ using WoF.Simulation.World;
 using WoF.Simulation.Military.Combat;
 using WoF.Simulation.Military.Retreat;
 using WoF.Simulation.Military.Composition;
+using System.Collections.ObjectModel;
+using WoF.Simulation.Military.Organization;
 
 namespace WoF.Simulation.Military;
 
@@ -10,6 +12,10 @@ public sealed class Division
     public string Name { get; }
 
     public DivisionComposition Composition { get; }
+
+    private readonly List<Battalion> _battalions = new();
+
+    public IReadOnlyList<Battalion> Battalions { get; }
 
     public double Fuel { get; private set; }
     
@@ -95,7 +101,32 @@ public sealed class Division
         composition ?? PrototypeDivisionCompositionFactory.Create(
             type
         );
+
+        Battalions = _battalions.AsReadOnly();
     }
+
+    
+    public void AddBattalion(Battalion battalion)
+    {
+        ArgumentNullException.ThrowIfNull(battalion);
+
+        if (battalion.ParentDivision != null)
+        {
+            throw new InvalidOperationException(
+                "Battalion already belongs to a division.");
+        }
+
+        if (_battalions.Any(b => b.Id == battalion.Id))
+        {
+            throw new InvalidOperationException(
+                "Battalion ID already exists in this division.");
+        }
+
+        battalion.AttachTo(this);
+
+        _battalions.Add(battalion);
+    }
+
 
     public bool TryStartMovement(
         Province destination,

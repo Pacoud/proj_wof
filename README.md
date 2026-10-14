@@ -2204,7 +2204,7 @@ interprovince et qu'une division tierce croisait le chemin de cet engagement, el
 Qui gère ce nouveau cas précisément 
 
 
-# COMMIT #
+# COMMIT 2c5da9200ec1faad6abd78b065c10a3101efd62a #
 ## Itération — Battle Ledger : historique des batailles
 
 Cette itération introduit les premières fondations d'un registre historique des engagements militaires.
@@ -2296,3 +2296,53 @@ ces valeurs indépendamment des pertes subies.
 - pas encore de journal détaillé de chaque heure ;
 - distinction des dommages matériels bruts et des variations de stock à développer ;
 - l'attribution précise des pertes infligées à une division ennemie n'est pas encore disponible.
+
+# COMMIT # 
+
+## Itération A — Fondations des nouvelles fondations d'architecture des troupes 
+
+### Objectif
+
+Introduire une organisation militaire hiérarchique
+Division → Battalion → Company, en préparation du
+futur moteur de combat tactique.
+
+### Fonctionnalités
+
+- Création des classes Battalion et Company.
+- Classification des formations par BattalionType et CompanyType.
+- Rattachement de bataillons aux divisions.
+- Rattachement de compagnies aux bataillons.
+- Navigation dans la hiérarchie militaire.
+- Protection contre les rattachements multiples.
+- Vérification de l'unicité des identifiants au sein d'un parent.
+- Collections accessibles en lecture seule.
+- Tests de construction d'une hiérarchie de grande taille.
+
+### Architecture
+
+Division conserve les ordres stratégiques.
+
+Battalion constituera l'unité tactique principale.
+
+Company représentera les composantes du bataillon
+et recevra ultérieurement ses ressources physiques.
+
+### Compatibilité
+
+Le système de combat actuel reste inchangé.
+
+DivisionComposition demeure temporairement la source
+de vérité des ressources, jusqu'à la migration
+prévue dans l'itération B.
+
+### Limites
+
+- Aucun effectif attribué aux compagnies.
+- Aucun équipement attribué aux compagnies.
+- Pas encore de transfert de formations.
+- Pas de rattachement opérationnel temporaire.
+- Pas de déploiement tactique.
+- Pas de combat au niveau du bataillon.
+- Aucun benchmark de performance représentatif
+  du futur moteur de combat.
