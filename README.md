@@ -2488,7 +2488,7 @@ les compagnies sans perdre la comptabilité fractionnaire.
 B2.2c : pertes et renforts des équipements ordinaires.
 
 
-# COMMIT # 
+# COMMIT ee215f3694d496449419b3d57b9b06723e8ccd8f # 
 
 ## Itération B2.2c — Hierarchical Equipment Loss Accounting
 
@@ -2520,3 +2520,65 @@ B2.2d : gestion des renforts et transferts de ressources.
 
 B2.3 : raccordement de la comptabilité hiérarchique
 au moteur de combat, au Battle Ledger et à Avalonia.
+
+# COMMIT # 
+
+## Itération B2.2d — Reinforcement Resource Transfers
+
+### Objectif
+
+Introduire des renforts militaires provenant d'une réserve
+identifiée, sans création ni duplication de ressources.
+
+### Architecture
+
+Ajout du module Military/Reinforcements.
+
+- ReinforcementCargo : quantités transférables.
+- ReinforcementReserve : stock physique de renforts.
+- ReinforcementTransferService : validation et transfert.
+- ReinforcementTransferReceipt : bilan du transfert.
+
+### Fonctionnalités
+
+- Transfert de personnel vers une compagnie.
+- Transfert d'armes d'infanterie.
+- Transfert de pièces d'artillerie.
+- Transfert de chars opérationnels.
+- Transfert de camions.
+- Débit du stock de la réserve.
+- Contrôle de la capacité d'accueil de la compagnie.
+- Rejet des ressources insuffisantes.
+- Validation complète avant mutation des stocks.
+- Conservation des quantités transférées.
+- Tests des transferts et des demandes impossibles.
+
+### Principes
+
+Les ressources des compagnies restent la source de vérité
+du modèle hiérarchique.
+
+Un renfort reçu par une compagnie augmente automatiquement
+les totaux calculés de son bataillon et de sa division.
+
+Les compteurs historiques de pertes ne sont pas effacés
+lors d'un renforcement.
+
+### Limites
+
+- Transferts comptables immédiats uniquement.
+- Réserves non géolocalisées.
+- Pas de convois ni de délais de transport.
+- Pas encore de transferts directs entre compagnies.
+- Pas de production ni de recrutement de nouveaux stocks.
+- Aucun raccordement au système de combat actuel.
+- Pas de sauvegarde ou persistance des réserves.
+- Le moteur reste séquentiel pour les mutations de stocks.
+
+### Prochaine étape
+
+B2.3 — Activation contrôlée des ressources hiérarchiques
+dans le moteur de combat, le Battle Ledger et l'interface.
+
+Un seul modèle de stockage physique devra être actif
+pour chaque division.
