@@ -52,58 +52,95 @@ public readonly record struct TankTotals(
             a.Destroyed + b.Destroyed);
 }
 
-// Vue agrégée de toutes les ressources.
-public readonly record struct FormationResourceTotals(
-    PersonnelTotals Personnel,
-    StockTotals InfantryEquipment,
-    StockTotals Artillery,
-    TankTotals Tanks,
-    StockTotals Trucks)
-{
+    // Vue agrégée de toutes les ressources.
+
+    public readonly record struct FormationResourceTotals(
+        PersonnelTotals Personnel,
+        StockTotals InfantryEquipment,
+        StockTotals Artillery,
+        TankTotals Tanks,
+        StockTotals Trucks)
+    {
     public static FormationResourceTotals Capture(
         CompanyComposition composition)
     {
         ArgumentNullException.ThrowIfNull(composition);
 
-        var p = composition.Manpower;
-        var i = composition.InfantryEquipment;
-        var a = composition.Artillery;
-        var t = composition.Tanks;
-        var tr = composition.Trucks;
+        return CapturePools(
+            composition.Manpower,
+            composition.InfantryEquipment,
+            composition.Artillery,
+            composition.Tanks,
+            composition.Trucks
+        );
+    }
 
+    public static FormationResourceTotals Capture(
+        DivisionComposition composition)
+    {
+        ArgumentNullException.ThrowIfNull(composition);
+
+        return CapturePools(
+            composition.Manpower,
+            composition.InfantryEquipment,
+            composition.Artillery,
+            composition.Tanks,
+            composition.Trucks
+        );
+    }
+
+    private static FormationResourceTotals CapturePools(
+        PersonnelPool personnel,
+        StrengthPool infantry,
+        StrengthPool artillery,
+        TankPool tanks,
+        StrengthPool trucks)
+    {
         return new FormationResourceTotals(
             new PersonnelTotals(
-                p.Authorized,
-                p.Current,
-                p.WoundedUnavailable,
-                p.KilledInAction,
-                p.TotalWoundedInAction,
-                p.MissingOrCaptured),
+                personnel.Authorized,
+                personnel.Current,
+                personnel.WoundedUnavailable,
+                personnel.KilledInAction,
+                personnel.TotalWoundedInAction,
+                personnel.MissingOrCaptured
+            ),
 
             new StockTotals(
-                i.Authorized, i.Current),
+                infantry.Authorized,
+                infantry.Current
+            ),
 
             new StockTotals(
-                a.Authorized, a.Current),
+                artillery.Authorized,
+                artillery.Current
+            ),
 
             new TankTotals(
-                t.Authorized,
-                t.Operational,
-                t.Damaged,
-                t.Destroyed),
+                tanks.Authorized,
+                tanks.Operational,
+                tanks.Damaged,
+                tanks.Destroyed
+            ),
 
             new StockTotals(
-                tr.Authorized, tr.Current)
+                trucks.Authorized,
+                trucks.Current
+            )
         );
     }
 
     public static FormationResourceTotals operator +(
         FormationResourceTotals a,
         FormationResourceTotals b)
-        => new(
+    {
+        return new FormationResourceTotals(
             a.Personnel + b.Personnel,
             a.InfantryEquipment + b.InfantryEquipment,
             a.Artillery + b.Artillery,
             a.Tanks + b.Tanks,
-            a.Trucks + b.Trucks);
+            a.Trucks + b.Trucks
+        );
+    }
 }
+

@@ -523,6 +523,21 @@ public sealed class Division
         return totals;
     }
 
+    
+    public FormationResourceTotals GetCurrentResourceTotals()
+    {
+        // B2.1 : le modèle divisionnaire reste
+        // la source de vérité pour le combat actuel.
+        //
+        // B2.3 : cette méthode lira les ressources
+        // hiérarchiques une fois leur mode activé.
+
+        return FormationResourceTotals.Capture(
+            Composition
+        );
+    }
+
+
 
 
 }

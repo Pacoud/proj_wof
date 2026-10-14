@@ -17,7 +17,7 @@ Pour lancer les tests :
 dotnet test 
 
 
-# COMMIT --commit -- b7cabff7ed2690a999eb44053939ef7ce7dbca74 -- #   
+# COMMIT  b7cabff7ed2690a999eb44053939ef7ce7dbca74 -- #   
 pathfinding (arbres de graphes), le ravitaillement traverse plusieurs provinces 
 
 - Recherche automatique d’un chemin logistique entre un dépôt et une division.
@@ -2347,7 +2347,7 @@ prévue dans l'itération B.
 - Aucun benchmark de performance représentatif
   du futur moteur de combat.
 
-# COMMIT #
+# COMMIT 3e69e04e0daddca2ca2d3f12043165762585ed7a #
 ## Itération B1 — Hierarchical Resource Accounting
 
 ### Objectif
@@ -2377,3 +2377,38 @@ la comptabilité hiérarchique des formations militaires.
 ### Prochaine étape
 B2 : préparer la migration contrôlée des ressources
 divisionnaires vers la hiérarchie sans duplication.
+
+# COMMIT #
+## Itération B2.1 — Unified Resource Reading
+
+### Objectif
+
+Découpler les calculs militaires de l'emplacement
+physique des ressources.
+
+### Modifications
+
+- FormationResourceTotals accepte DivisionComposition
+  et CompanyComposition.
+- Mutualisation de la capture des ressources.
+- Ajout de Division.GetCurrentResourceTotals().
+- Adaptation du calcul de puissance militaire.
+- Adaptation du calcul de demande en carburant.
+- EngagementSystem utilise les ressources agrégées
+  pour les calculs de puissance et de carburant.
+- Conservation des coefficients existants.
+- Tests de compatibilité et de non-régression.
+
+### Limites
+
+- DivisionComposition reste la source physique active.
+- Les pertes de combat ne sont pas encore réparties
+  entre les compagnies.
+- Le Battle Ledger et l'UI utilisent encore les
+  accès existants qui seront migrés ensuite.
+- Pas encore d'activation du modèle hiérarchique.
+
+### Prochaine étape
+
+B2.2 — Application des pertes et des modifications
+de ressources aux compagnies, sans duplication.

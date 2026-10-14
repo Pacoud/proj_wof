@@ -4,6 +4,7 @@ using WoF.Simulation.Military.Combat.Power;
 using WoF.Simulation.Military.Combat.Fuel;
 using WoF.Simulation.Military.Combat.Losses;
 using WoF.Simulation.Military.Combat.History;
+using WoF.Simulation.Military.Composition;
 
 namespace WoF.Simulation.Military.Combat;
 
@@ -472,9 +473,12 @@ public sealed class EngagementSystem
     Division division,
     Engagement engagement)
     {
+        FormationResourceTotals resources =
+            division.GetCurrentResourceTotals();
+
         CombatPowerProfile physicalPower = 
         CompositionCombatPowerCalculator.Calculate(
-            division.Composition
+            resources
         );
 
         CombatPowerProfile terrainAdjustedPower =
@@ -485,7 +489,7 @@ public sealed class EngagementSystem
 
         CombatFuelDemandProfile fuelDemand = 
         CompositionCombatFuelCalculator.Calculate(
-            division.Composition
+            resources
         );
 
         double requestedFuel =
