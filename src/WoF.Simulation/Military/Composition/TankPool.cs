@@ -186,4 +186,33 @@ public sealed class TankPool
 
         return received;
     }
+
+    
+    public void ApplyResolvedLosses(TankLossResult losses)
+    {
+        ArgumentNullException.ThrowIfNull(losses);
+
+        if (losses.Damaged < 0 || losses.Destroyed < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(losses));
+        }
+
+        long total =
+            (long)losses.Damaged + losses.Destroyed;
+
+        if (total > Operational)
+        {
+            throw new InvalidOperationException(
+                "Tank losses exceed operational tanks.");
+        }
+
+        // Les pertes sont déjà entières :
+        // aucune accumulation fractionnaire ici.
+        Operational -= (int)total;
+
+        Damaged += losses.Damaged;
+        Destroyed += losses.Destroyed;
+    }
+
 }

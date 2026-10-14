@@ -2413,7 +2413,7 @@ physique des ressources.
 B2.2 — Application des pertes et des modifications
 de ressources aux compagnies, sans duplication.
 
-# COMMIT #
+# COMMIT 13a3a416e13f4e17edebe535d06c61b1129ef036 #
 
 ## Itération B2.2 — Hierarchical Personnel Loss Distribution
 
@@ -2457,3 +2457,35 @@ avec conservation des accumulations fractionnaires.
 B2.3 : activation contrôlée de la source de ressources
 hiérarchique dans le combat, l'interface et le Battle Ledger.
 
+
+# COMMIT # 
+
+## Itération B2.2b — Hierarchical Tank Loss Accounting
+
+### Objectif
+Permettre la répartition des pertes de chars entre
+les compagnies sans perdre la comptabilité fractionnaire.
+
+### Fonctionnalités
+- Ajout de TankPool.ApplyResolvedLosses().
+- Ajout de HierarchicalTankLossApplier.
+- Accumulation fractionnaire par division.
+- Conversion en pertes matérielles entières.
+- Répartition déterministe entre les compagnies.
+- Distinction chars opérationnels, endommagés et détruits.
+- Validation préalable des stocks et compositions.
+- Conservation des anciens systèmes de combat.
+- Tests d'accumulation et de conservation des ressources.
+
+### Limites
+- Service non connecté à EngagementSystem.
+- Politique de répartition provisoire.
+- Pas encore de sauvegarde de l'accumulateur fractionnaire.
+- Pas encore de pertes localisées selon l'exposition tactique.
+- Pas encore de répartition des autres équipements.
+
+### Prochaine étape
+B2.2c : pertes et renforts des équipements ordinaires.
+
+
+# COMMIT # 
