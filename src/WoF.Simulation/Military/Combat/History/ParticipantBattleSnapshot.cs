@@ -17,11 +17,15 @@ public sealed record ParticipantBattleSnapshot(
     public static ParticipantBattleSnapshot Capture(
         Division division)
     {
-        var personnel = division.Composition.Manpower;
-        var tanks = division.Composition.Tanks;
+        ArgumentNullException.ThrowIfNull(division);
+
+        var resources = division.GetCurrentResourceTotals();
+
+        var personnel = resources.Personnel;
+        var tanks = resources.Tanks;
 
         return new ParticipantBattleSnapshot(
-            Manpower: personnel.Current,
+            Manpower: personnel.Available,
             KilledInAction: personnel.KilledInAction,
             TotalWoundedInAction: personnel.TotalWoundedInAction,
             MissingOrCaptured: personnel.MissingOrCaptured,

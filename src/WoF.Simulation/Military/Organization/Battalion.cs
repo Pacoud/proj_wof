@@ -46,6 +46,13 @@ public sealed class Battalion
     {
         ArgumentNullException.ThrowIfNull(company);
 
+        if (ParentDivision?.ResourceMode ==
+        DivisionResourceMode.Hierarchical)
+        {
+            throw new InvalidOperationException(
+                "Cannot add companies after resource activation.");
+        }
+
         if (company.ParentBattalion != null)
         {
             throw new InvalidOperationException(

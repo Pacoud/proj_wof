@@ -2521,7 +2521,7 @@ B2.2d : gestion des renforts et transferts de ressources.
 B2.3 : raccordement de la comptabilité hiérarchique
 au moteur de combat, au Battle Ledger et à Avalonia.
 
-# COMMIT # 
+# COMMIT b46c4e4319d51b523afccc2db76fbb960948b04b # 
 
 ## Itération B2.2d — Reinforcement Resource Transfers
 
@@ -2582,3 +2582,53 @@ dans le moteur de combat, le Battle Ledger et l'interface.
 
 Un seul modèle de stockage physique devra être actif
 pour chaque division.
+
+# COMMIT # 
+
+## Itération B2.3 — Hierarchical Resources Integration
+
+### Objectif
+Activer la comptabilité hiérarchique dans le moteur
+de combat tout en préservant la compatibilité Legacy.
+
+### Fonctionnalités
+- DivisionResourceMode : Legacy et Hierarchical.
+- Activation explicite des ressources hiérarchiques.
+- Vérification de l'égalité des stocks à l'activation.
+- Lecture unifiée des ressources actives.
+- Application des pertes humaines à la source active.
+- Application des pertes de chars à la source active.
+- Conservation de l'accumulateur fractionnaire des chars.
+- Adaptation de EngagementSystem.
+- Adaptation de ParticipantBattleSnapshot.
+- Adaptation de l'affichage des ressources dans Avalonia.
+- Tests de combat entre divisions Legacy et Hierarchical.
+- Tests de non-modification des stocks inactifs.
+
+### Architecture
+Division centralise l'accès aux ressources actives.
+
+En mode Legacy :
+- DivisionComposition conserve les ressources physiques.
+
+En mode Hierarchical :
+- CompanyComposition détient les ressources physiques.
+- Battalion agrège les ressources des compagnies.
+- Division agrège les ressources des bataillons.
+
+### Limites
+- L'ancienne représentation demeure en mémoire.
+- Activation réservée à la préparation des scénarios.
+- La répartition des pertes reste proportionnelle.
+- Les pertes d'équipage ne ciblent pas encore
+  spécifiquement les compagnies blindées.
+- Le système de combat reste divisionnaire.
+- Les sauvegardes des accumulateurs ne sont pas prévues.
+- La composition historique détaillée reste à développer.
+- Les cas extrêmes de pertes nécessitent davantage de tests.
+
+### Suite
+Itération C : benchmarks à grande échelle.
+
+Mesurer les performances des hiérarchies militaires
+et identifier les coûts d'agrégation et de combat.

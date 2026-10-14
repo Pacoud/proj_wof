@@ -877,11 +877,11 @@ public partial class MainWindow : Window
                       $" ({division.Transit.Progress:P0})"
                     : "Inconnue";
 
+        var resources = division.GetCurrentResourceTotals();
 
-        var personnel =
-            division.Composition.Manpower;
+        var personnel = resources.Personnel;
 
-        var tanks = division.Composition.Tanks;
+        var tanks = resources.Tanks;
 
 
         DivisionInfoText.Text =
@@ -911,7 +911,7 @@ public partial class MainWindow : Window
 
             $"Personnel apte : " +
 
-            $"{personnel.Current:N0}\n" +
+            $"{personnel.Available:N0}\n" +
 
             $"KIA : " +
             $"{personnel.KilledInAction:N0}\n" +

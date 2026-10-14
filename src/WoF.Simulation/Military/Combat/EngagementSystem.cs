@@ -719,15 +719,16 @@ public sealed class EngagementSystem
                     / friendlyTargets
             );
 
+        FormationResourceTotals resources = division.GetCurrentResourceTotals();
+
+
         int crewedTanks =
             Math.Min(
-                division.Composition
+                resources
                     .Tanks
                     .Operational,
 
-                division.Composition
-                    .Manpower
-                    .Current
+                resources.Personnel.Available
                 / TankCrewCasualtyCalculator
                     .CrewSize
             );
@@ -742,9 +743,9 @@ public sealed class EngagementSystem
         int generalExposedManpower =
             Math.Max(
                 0,
-                division.Composition
-                    .Manpower
-                    .Current
+                resources
+                    .Personnel
+                    .Available
                 - crewPositions
             );
 
@@ -786,7 +787,7 @@ public sealed class EngagementSystem
 
         foreach (var pair in tankLossExpectations)
         {
-            tankLossResults[pair.Key] = pair.Key.Composition.Tanks.ApplyExpectedLosses(
+            tankLossResults[pair.Key] = pair.Key.ApplyExpectedTankLosses(
                 pair.Value
             );
         }
@@ -827,11 +828,8 @@ public sealed class EngagementSystem
                     + crewLosses.MissingOrCaptured
             );
 
-            division
-                .Composition
-                .Manpower
-                .ApplyCasualties(
-                    combinedLosses
+            division.ApplyPersonnelCasualties(
+                combinedLosses
                 );
         }
 

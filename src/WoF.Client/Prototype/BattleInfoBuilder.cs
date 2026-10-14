@@ -199,8 +199,10 @@ public static class BattleInfoBuilder
 private static Control BuildDivisionInfo(
     Division division)
 {
-    var personnel = division.Composition.Manpower;
-    var tanks = division.Composition.Tanks;
+    var resources = division.GetCurrentResourceTotals();
+
+    var personnel = resources.Personnel;
+    var tanks = resources.Tanks;
 
     var content = new StackPanel
     {
@@ -215,7 +217,7 @@ private static Control BuildDivisionInfo(
         $"{division.MaxOrganization:F1}"
     );
 
-    AddText(content, $"Hommes : {personnel.Current:N0}");
+    AddText(content, $"Hommes : {personnel.Available:N0}");
 
     AddText(
         content,

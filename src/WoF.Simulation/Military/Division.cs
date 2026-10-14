@@ -4,6 +4,7 @@ using WoF.Simulation.Military.Retreat;
 using WoF.Simulation.Military.Composition;
 using System.Collections.ObjectModel;
 using WoF.Simulation.Military.Organization;
+using WoF.Simulation.Military.Combat.Losses;
 
 namespace WoF.Simulation.Military;
 
@@ -52,6 +53,13 @@ public sealed class Division
 
     public RetreatPhase RetreatPhase { get; private set; }
     = RetreatPhase.None;
+
+    public DivisionResourceMode ResourceMode { get; private set; }
+    = DivisionResourceMode.Legacy;
+
+    // Cet accumulateur doit vivre aussi longtemps
+    // que la division utilise le modèle hiérarchique.
+    private HierarchicalTankLossApplier? _hierarchicalTankLosses;
 
     public bool IsRetreating =>
     RetreatPhase != RetreatPhase.None;
@@ -109,6 +117,13 @@ public sealed class Division
     public void AddBattalion(Battalion battalion)
     {
         ArgumentNullException.ThrowIfNull(battalion);
+
+        
+        if (ResourceMode == DivisionResourceMode.Hierarchical)
+        {
+            throw new InvalidOperationException(
+                "Cannot alter an active hierarchical organization.");
+        }
 
         if (battalion.ParentDivision != null)
         {
@@ -526,16 +541,98 @@ public sealed class Division
     
     public FormationResourceTotals GetCurrentResourceTotals()
     {
-        // B2.1 : le modèle divisionnaire reste
-        // la source de vérité pour le combat actuel.
-        //
-        // B2.3 : cette méthode lira les ressources
-        // hiérarchiques une fois leur mode activé.
+        return ResourceMode switch 
+        {
+            DivisionResourceMode.Legacy => FormationResourceTotals.Capture(Composition),
 
-        return FormationResourceTotals.Capture(
-            Composition
+        
+        DivisionResourceMode.Hierarchical => GetHierarchicalResourceTotals(),
+
+        _=> throw new InvalidOperationException("Unknown resource mode.")
+        };
+
+    }
+
+        
+    public void EnableHierarchicalResources()
+    {
+        if (ResourceMode != DivisionResourceMode.Legacy)
+        {
+            throw new InvalidOperationException(
+                "Hierarchical resources are already enabled.");
+        }
+
+        if (IsEngaged || IsInTransit || IsRetreating)
+        {
+            throw new InvalidOperationException(
+                "Cannot switch resources during military operations.");
+        }
+
+        // Vérifie aussi que tous les bataillons et
+        // compagnies possèdent une composition valide.
+        FormationResourceTotals hierarchical =
+            GetHierarchicalResourceTotals();
+
+        FormationResourceTotals legacy =
+            FormationResourceTotals.Capture(Composition);
+
+        // Pendant cette migration, aucune ressource
+        // ne doit apparaître ou disparaître à l'activation.
+        if (hierarchical != legacy)
+        {
+            throw new InvalidOperationException(
+                "Hierarchical and legacy resources do not match.");
+        }
+
+        _hierarchicalTankLosses =
+            new HierarchicalTankLossApplier(this);
+
+        ResourceMode = DivisionResourceMode.Hierarchical;
+    }
+
+
+    
+    internal void ApplyPersonnelCasualties(
+        PersonnelCasualtyReport casualties)
+    {
+        if (ResourceMode == DivisionResourceMode.Legacy)
+        {
+            Composition.Manpower.ApplyCasualties(casualties);
+            return;
+        }
+
+        HierarchicalPersonnelLossApplier.Apply(
+            this,
+            casualties
         );
     }
+
+    internal TankLossResult ApplyExpectedTankLosses(
+        TankLossExpectation expected)
+    {
+        if (ResourceMode == DivisionResourceMode.Legacy)
+        {
+            return Composition.Tanks.ApplyExpectedLosses(
+                expected
+            );
+        }
+
+        var applier = _hierarchicalTankLosses
+            ?? throw new InvalidOperationException(
+                "Hierarchical tank accounting is not initialized.");
+
+        var allocations = applier.Apply(expected);
+
+        return new TankLossResult(
+            Damaged: allocations.Sum(
+                a => a.Losses.Damaged),
+
+            Destroyed: allocations.Sum(
+                a => a.Losses.Destroyed)
+        );
+    }
+
+
 
 
 
