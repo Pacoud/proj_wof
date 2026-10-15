@@ -17,3 +17,6 @@ coverage.*
 # OS temporary files
 .DS_Store
 Thumbs.db
+
+# For Benchmarking results
+benchmark-results/

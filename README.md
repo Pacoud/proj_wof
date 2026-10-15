@@ -2633,7 +2633,7 @@ Itération C : benchmarks à grande échelle.
 Mesurer les performances des hiérarchies militaires
 et identifier les coûts d'agrégation et de combat.
 
-# COMMIT # 
+# COMMIT 86aa9cbdc263c1e31cb755ca0230680be57d752f # 
 
 ## Itération C1 — Large Scale Simulation Benchmark
 
@@ -2689,3 +2689,44 @@ des rencontres sur liaisons et du ravitaillement.
 
 Puis optimisation des goulots d'étranglement mesurés,
 avant l'introduction de la géométrie tactique hybride.
+
+# COMMIT #  
+
+## Itération C1.1 — Concentrated Combat Benchmarks
+
+### Objectif
+Étudier les effets de la concentration des forces
+sur les performances du moteur opérationnel WoF.
+
+### Fonctionnalités
+- Taille des engagements configurable.
+- Nombre total de divisions constant.
+- Répartition équilibrée entre pays adverses.
+- Échauffement avant les mesures.
+- Mesure individuelle des ticks.
+- Calcul de moyenne, médiane, p95 et p99.
+- Mesure des allocations mémoire par tick.
+- Suivi du nombre de combats actifs.
+- Export des résultats au format CSV.
+
+### Expériences
+- 500 divisions, 250 batailles de 2 divisions.
+- 500 divisions, 50 batailles de 10 divisions.
+- 500 divisions, 10 batailles de 50 divisions.
+- 500 divisions, 1 bataille de 500 divisions.
+
+### Limites
+- Combats divisionnaires uniquement.
+- Pas de déplacement ni de logistique dans ces scénarios.
+- Distribution synthétique des forces.
+- Pas de simulation tactique indépendante des bataillons.
+- Les états militaires évoluent pendant les mesures.
+- Les performances dépendent du matériel et du runtime.
+- Les percentiles courts doivent être interprétés prudemment.
+
+### Suite
+Identifier les coûts dominants du moteur à partir des
+mesures et d'un profilage CPU/mémoire.
+
+Ne procéder qu'à des optimisations ciblées et
+vérifiées par des benchmarks avant/après.

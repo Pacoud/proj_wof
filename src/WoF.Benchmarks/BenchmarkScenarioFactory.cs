@@ -17,16 +17,21 @@ public static class BenchmarkScenarioFactory
 
     public static SimulationEngine Create(
         int divisionCount,
-        bool combat)
+        bool combat,
+        int divisionsPerBattle = 2)
     {
         if (divisionCount <= 0)
             throw new ArgumentOutOfRangeException(
                 nameof(divisionCount));
 
-        if (combat && divisionCount % 2 != 0)
-            throw new ArgumentException(
-                "Combat requires an even division count.");
-
+        if (combat && (divisionsPerBattle < 2 ||
+                divisionsPerBattle % 2 != 0 ||
+                divisionCount % divisionsPerBattle != 0))
+                {
+                     throw new ArgumentException(
+                        "Combat requires even groups that divide the division count.");
+                }
+           
         var engine = new SimulationEngine();
 
         var france = new Country(1, "France");
@@ -46,12 +51,13 @@ public static class BenchmarkScenarioFactory
 
             if (combat)
             {
-                // Deux divisions ennemies par province.
-                if (i % 2 == 0)
+                int battleIndex = i / divisionsPerBattle;
+                
+                if (i % divisionsPerBattle == 0)
                 {
                     sharedProvince = new Province(
-                        i / 2 + 1,
-                        $"Battle Sector {i / 2 + 1}",
+                        battleIndex + 1,
+                        $"Battle Sector { battleIndex + 1}",
                         owner: france);
                 }
 
