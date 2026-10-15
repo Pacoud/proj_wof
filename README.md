@@ -2778,7 +2778,7 @@ dans EngagementSystem, après identification des coûts.
 Conserver les règles d'hostilité et l'application
 simultanée des pertes.
 
-# COMMIT #
+# COMMIT 10ad5f5523f3a648cd88d41845abb89598c719bc #
 
 - Remplace MeasuredTickEnd par MeasuredTickStop.
 - Déclare explicitement les opcodes Start/Stop et les tâches associées.
@@ -2790,3 +2790,77 @@ Ces changements rendent les traces PerfView plus faciles à analyser
 et évitent d’attribuer les allocations des marqueurs à la simulation.
 
 Aucune modification des règles de combat ni optimisation du moteur.
+
+
+# COMMIT # 
+
+## Itération C1.2b — Country Combat Aggregation
+
+### Objectif
+
+Réduire les calculs redondants lors des engagements
+concentrant de nombreuses divisions.
+
+### Architecture
+
+Optimisation localisée dans EngagementSystem.
+
+Ajout de CountryCombatSummary et de
+BuildCountryCombatSummaries().
+
+### Fonctionnement
+
+Pendant chaque tick d'engagement :
+
+1. Calcul des puissances individuelles.
+2. Regroupement des participants actifs par pays.
+3. Calcul unique des puissances hostiles par pays.
+4. Réutilisation des agrégats pour chaque division.
+5. Application des pertes selon le mécanisme existant.
+
+### Compatibilité
+
+- Conservation des règles diplomatiques.
+- Conservation du comptage des cibles amies.
+- Exclusion des divisions rompues.
+- Conservation des sommes et des arrondis.
+- Maintien des phases de calcul et d'application.
+- Recalcul des agrégats à chaque tick.
+- Aucun changement des stocks physiques.
+
+### Tests
+
+- Engagement entre deux pays.
+- Trois pays avec hostilités partielles.
+- Division ennemie rompue.
+- Renfort rejoignant une bataille active.
+- Tests de non-régression existants.
+- Comparaison des résultats militaires C1.2a/C1.2b.
+
+### Performance
+
+Comparer les scénarios C1.2a et C1.2b :
+
+- 500 divisions dans 250 duels.
+- 500 divisions dans un engagement unique.
+
+Mesurer les latences, allocations et états militaires.
+
+Les gains seront consignés après exécution réelle.
+
+### Limites
+
+- Le calcul conserve une liste temporaire par pays.
+- Les répartiteurs de pertes ne sont pas optimisés.
+- Les agrégations physiques restent répétées.
+- La détection et l'indexation des batailles sont inchangées.
+- Le comportement reste séquentiel.
+- Les batailles tactiques hybrides ne sont pas encore simulées.
+
+### Suite
+
+C1.2c : optimisation des allocations des répartiteurs
+de pertes humaines et de chars.
+
+Puis C1.2d : indexation des engagements actifs,
+si les benchmarks confirment son intérêt.

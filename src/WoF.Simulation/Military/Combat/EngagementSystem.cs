@@ -12,6 +12,17 @@ public sealed class EngagementSystem
 {
     private readonly DiplomacySystem _diplomacy;
 
+    
+    private readonly record struct CountryCombatSummary(
+        int FriendlyTargets,
+        int HostileDivisionCount,
+        double HostilePressure,
+        double HostileSmallArms,
+        double HostileArtillery,
+        double HostileArmored
+    );
+
+
     private readonly List<Engagement> _engagements = new();
 
     private readonly List<Engagement> _endedThisTick = new();
@@ -579,6 +590,16 @@ public sealed class EngagementSystem
                 );
         }
 
+                // Toutes les puissances ont été calculées.
+        // Aucun stock humain ou matériel n'a encore
+        // subi les pertes de ce tick.
+        var countrySummaries =
+            BuildCountryCombatSummaries(
+                participants,
+                combatPowers
+            );
+  
+
         // =========================================================
         // PHASE 2
         // Calcul de toutes les conséquences du combat.
@@ -615,109 +636,57 @@ public sealed class EngagementSystem
                 continue;
             }
 
-            var hostileDivisions =
-                participants
-                    .Where(
-                        other =>
-                            !other.IsBroken
-                            &&
-                            AreHostile(
-                                division,
-                                other
-                            )
-                    )
-                    .ToList();
+    
+    // Toutes les divisions actives d'un même pays
+    // partagent la même pression ennemie de départ.
+    CountryCombatSummary summary =
+        countrySummaries[division.Country.Id];
 
-            if (hostileDivisions.Count == 0)
-            {
-                organizationLosses[division] = 0;
+    // Aucun pays hostile actif :
+    if (summary.HostileDivisionCount == 0)
+    {
+        organizationLosses[division] = 0;
 
-                personnelLosses[division] =
-                    PersonnelCasualtyReport.None;
+        personnelLosses[division] =
+            PersonnelCasualtyReport.None;
 
-                continue;
-            }
+        continue;
+    }
 
-   
+    int friendlyTargets = summary.FriendlyTargets;
 
-            int friendlyTargets =
-                participants.Count(
-                    other =>
-                        !other.IsBroken
-                        &&
-                        other.Country != null
-                        &&
-                        other.Country.Id
-                            == division.Country.Id
-                );
+    if (friendlyTargets <= 0)
+    {
+        organizationLosses[division] = 0;
 
-            if (friendlyTargets <= 0)
-            {
-                organizationLosses[division] = 0;
+        personnelLosses[division] =
+            PersonnelCasualtyReport.None;
 
-                personnelLosses[division] = PersonnelCasualtyReport.None;
+        continue;
+    }
 
-                continue;
-            }
+    // Même formule qu'avant, mais pression
+    // ennemie calculée une seule fois par pays.
+    organizationLosses[division] = Math.Round(
+        summary.HostilePressure / friendlyTargets,
+        2
+    );
 
-                     double hostilePressure =
-                        hostileDivisions.Sum(
-                        other =>
-                           combatPowers[other].Total
-                            );
+    // Conserver séparément les composantes :
+    // elles interviennent différemment dans
+    // les pertes humaines et matérielles.
+    var hostilePowerPerTarget =
+        new CombatPowerProfile(
+            SmallArms:
+                summary.HostileSmallArms / friendlyTargets,
 
-            organizationLosses[division] =
-                Math.Round(
-                    hostilePressure
-                    / friendlyTargets,
-                    2
-                );
-        
+            Artillery:
+                summary.HostileArtillery / friendlyTargets,
 
-        // -----------------------------------------------------
-        // Conservation de la nature de la puissance ennemie.
-        //
-        // On ne veut surtout pas perdre l'information :
-        // SmallArms / Artillery / Armored.
-        // -----------------------------------------------------
-        double hostileSmallArms =
-            hostileDivisions.Sum(
-                other =>
-                    combatPowers[other]
-                        .SmallArms
-            );
+            Armored:
+                summary.HostileArmored / friendlyTargets
+        );
 
-        double hostileArtillery =
-            hostileDivisions.Sum(
-                other =>
-                    combatPowers[other]
-                        .Artillery
-            );
-
-        double hostileArmored =
-            hostileDivisions.Sum(
-                other =>
-                    combatPowers[other]
-                        .Armored
-            );
-
-        
-          // La puissance ennemie est répartie entre
-        // les formations amies actuellement engagées.
-        var hostilePowerPerTarget =
-            new CombatPowerProfile(
-                SmallArms:
-                    hostileSmallArms
-                    / friendlyTargets,
-
-                Artillery:
-                    hostileArtillery
-                    / friendlyTargets,
-
-                Armored:
-                    hostileArmored
-                    / friendlyTargets
-            );
 
         FormationResourceTotals resources = division.GetCurrentResourceTotals();
 
@@ -767,7 +736,9 @@ public sealed class EngagementSystem
                 crewedTanks
             );
 
-        }    
+        }
+
+
 
     // =========================================================
     // PHASE 3
@@ -1281,6 +1252,84 @@ public sealed class EngagementSystem
             Participants: participantReports
         );
     }
+
+
+        
+    private Dictionary<int, CountryCombatSummary> BuildCountryCombatSummaries(
+            IReadOnlyList<Division> participants,
+            IReadOnlyDictionary<Division, CombatPowerProfile>
+                combatPowers)
+    {
+        // Une division représentative par pays
+        // et le nombre de divisions non rompues.
+        var representatives = new Dictionary<int, Division>();
+        var friendlyCounts = new Dictionary<int, int>();
+
+        foreach (var division in participants)
+        {
+            if (division.IsBroken || division.Country == null)
+                continue;
+
+            int countryId = division.Country.Id;
+
+            if (friendlyCounts.TryGetValue(
+                countryId, out int count))
+            {
+                friendlyCounts[countryId] = count + 1;
+            }
+            else
+            {
+                friendlyCounts.Add(countryId, 1);
+                representatives.Add(countryId, division);
+            }
+        }
+
+        var summaries =
+            new Dictionary<int, CountryCombatSummary>(
+                friendlyCounts.Count);
+
+        // Ce calcul est effectué une fois par pays,
+        // et non une fois par division.
+        foreach (var pair in representatives)
+        {
+            int countryId = pair.Key;
+            Division representative = pair.Value;
+
+            // Conserve l'ordre original des participants
+            // et les règles diplomatiques existantes.
+            var hostileDivisions = participants
+                .Where(other =>
+                    !other.IsBroken &&
+                    AreHostile(representative, other))
+                .ToList();
+
+            // Important : conserver les mêmes opérations
+            // Sum que dans le code d'origine, notamment
+            // pour les effets des arrondis.
+            var summary = new CountryCombatSummary(
+                FriendlyTargets: friendlyCounts[countryId],
+
+                HostileDivisionCount: hostileDivisions.Count,
+
+                HostilePressure: hostileDivisions.Sum(
+                    other => combatPowers[other].Total),
+
+                HostileSmallArms: hostileDivisions.Sum(
+                    other => combatPowers[other].SmallArms),
+
+                HostileArtillery: hostileDivisions.Sum(
+                    other => combatPowers[other].Artillery),
+
+                HostileArmored: hostileDivisions.Sum(
+                    other => combatPowers[other].Armored)
+            );
+
+            summaries.Add(countryId, summary);
+        }
+
+        return summaries;
+    }
+
 
 
 
