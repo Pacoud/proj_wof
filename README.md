@@ -2865,7 +2865,7 @@ de pertes humaines et de chars.
 Puis C1.2d : indexation des engagements actifs,
 si les benchmarks confirment son intérêt.
 
-# COMMIT # 
+# COMMIT cb1a5b4e147f38a3323f929cdf8890bd2da43427 # 
 
 ## Itération C1.2c — Hierarchical Loss Allocation Optimization
 
@@ -2926,3 +2926,48 @@ par province et par liaison.
 
 Puis C2 : benchmarks opérationnels avec
 mouvements, ravitaillement et longues campagnes.
+
+# COMMIT # 
+
+## C1.2d — Active Engagement Indexing
+
+### Objectif
+Améliorer la recherche des engagements actifs
+sans modifier les règles de combat.
+
+### Modifications
+- Conservation de l'historique complet des engagements.
+- Ajout d'une liste ordonnée des engagements actifs.
+- Index des batailles actives par province.
+- Index des rencontres actives par liaison et sens.
+- Enregistrement centralisé des engagements.
+- Nettoyage des index lorsqu'un engagement se termine.
+- Recherche des renforts limitée aux liaisons concernées.
+
+### Invariants
+- Un engagement actif figure dans la liste active.
+- Une bataille de province active est indexée par sa province.
+- Une rencontre active est accessible depuis les deux sens.
+- Les engagements terminés quittent les index actifs.
+- Les engagements terminés restent dans l'historique.
+- Les identifiants et l'ordre des combats restent inchangés.
+- Les règles militaires et diplomatiques sont conservées.
+
+### Tests
+- Provinces distinctes partageant un identifiant numérique.
+- Batailles successives dans une même province.
+- Conservation des archives après la fin d'un engagement.
+- Renforts sur une liaison précise.
+- Suite complète de non-régression.
+
+### Limites
+- Les recherches de nouvelles rencontres entre divisions
+  mobiles ne sont pas encore indexées.
+- La suppression dans la liste active reste linéaire.
+- Les performances des campagnes longues restent
+  à mesurer avec un benchmark spécifique.
+
+### Suite
+C2 — Benchmarks de charge opérationnelle :
+mouvements, logistique, renforts, fins de batailles
+et accumulation d'historiques.

@@ -5,6 +5,7 @@ using WoF.Simulation.Military.Combat.Fuel;
 using WoF.Simulation.Military.Combat.Losses;
 using WoF.Simulation.Military.Combat.History;
 using WoF.Simulation.Military.Composition;
+using System.Runtime.CompilerServices;
 
 namespace WoF.Simulation.Military.Combat;
 
@@ -39,14 +40,54 @@ public sealed class EngagementSystem
         _engagements;
 
     public IEnumerable<Engagement> ActiveEngagements =>
-        _engagements.Where(
-            engagement => engagement.IsActive
-        );
+        _activeEngagementsView;
+
+            
+    private readonly List<Engagement> _activeEngagements = new();
+
+    private readonly IReadOnlyList<Engagement> _activeEngagementsView;
+
+    private readonly Dictionary<Province, Engagement> _activeProvinceEngagements =
+            new(ReferenceEqualityComparer.Instance);
+
+    // Une rencontre peut avoir lieu sur une liaison
+    // dans un sens ou dans l'autre.
+    private readonly Dictionary< (Province From, Province To),List<Engagement> > _activeMeetingEngagements =
+        new(new ProvincePairComparer());
+
+    // Les provinces sont comparées par identité,
+    // pas uniquement par leur identifiant numérique.
+    private sealed class ProvincePairComparer :
+        IEqualityComparer<(Province From, Province To)>
+    {
+        public bool Equals(
+            (Province From, Province To) x,
+            (Province From, Province To) y)
+        {
+            return ReferenceEquals(x.From, y.From)
+                && ReferenceEquals(x.To, y.To);
+        }
+
+        public int GetHashCode(
+            (Province From, Province To) key)
+        {
+            return HashCode.Combine(
+                RuntimeHelpers.GetHashCode(key.From),
+                RuntimeHelpers.GetHashCode(key.To)
+            );
+        }
+    }
+
 
     public EngagementSystem(
         DiplomacySystem diplomacy)
     {
-        _diplomacy = diplomacy;
+        _diplomacy = diplomacy ?? throw new ArgumentNullException(
+            nameof(diplomacy)
+        );
+
+        _activeEngagementsView = 
+            _activeEngagements.AsReadOnly();
     }
 
     private bool AreHostile(
@@ -96,19 +137,9 @@ public sealed class EngagementSystem
             var divisionsHere =
                 group.ToList();
 
-            // Existe-t-il déjà une bataille ici ?
-            Engagement? existing =
-                _engagements.FirstOrDefault(
-                    engagement =>
-                        engagement.IsActive
-                        &&
-                        engagement.Type
-                            == EngagementType.ProvinceBattle
-                        &&
-                        ReferenceEquals(
-                            engagement.Province,
-                            province
-                        )
+            _activeProvinceEngagements.TryGetValue(
+                province,
+                out Engagement? existing 
                 );
 
             if (existing != null)
@@ -168,9 +199,7 @@ public sealed class EngagementSystem
                 );
             }
 
-            _engagements.Add(
-                engagement
-            );
+            RegisterEngagement(engagement);
         }
     }
 
@@ -277,12 +306,6 @@ public sealed class EngagementSystem
     IEnumerable<Division> candidates,
     long currentHour)
     {
-        var meetings = ActiveEngagements
-            .Where(engagement =>
-                engagement.Type == EngagementType.MeetingEngagement)
-            .OrderBy(engagement => engagement.Id)
-            .ToList();
-
         foreach (Division candidate in candidates)
         {
             if (candidate.Transit == null
@@ -291,6 +314,21 @@ public sealed class EngagementSystem
             {
                 continue;
             }
+            
+            TransitState transit = candidate.Transit!;
+
+            var route = (
+                From: transit.Origin,
+                To: transit.Destination
+            );
+
+            if (!_activeMeetingEngagements.TryGetValue(
+                route,
+                out var meetings))
+            {
+                continue;
+            }
+
 
             Engagement? firstEncounter = null;
             double firstContactTime = double.PositiveInfinity;
@@ -436,9 +474,7 @@ public sealed class EngagementSystem
                     currentHour
                 );
 
-                _engagements.Add(
-                    engagement
-                );
+                RegisterEngagement(engagement);
             }
         }
     }
@@ -470,7 +506,7 @@ public sealed class EngagementSystem
     {
         _endedThisTick.Clear();
         foreach (var engagement in
-                ActiveEngagements.ToList())
+                _activeEngagements.ToArray())
         {
             ProcessEngagementTick(
                 engagement,
@@ -856,6 +892,8 @@ public sealed class EngagementSystem
 
         if (!engagement.End(winner, currentHour))
             return;
+        
+        UnregisterEndedEngagement(engagement);
 
         History.Add(
             BuildBattleReport(engagement)
@@ -1329,6 +1367,130 @@ public sealed class EngagementSystem
 
         return summaries;
     }
+
+    
+    private void RegisterEngagement(Engagement engagement)
+    {
+        if (!engagement.IsActive)
+            throw new InvalidOperationException(
+                "Cannot register an ended engagement.");
+
+        if (engagement.Type == EngagementType.ProvinceBattle)
+        {
+            Province province = engagement.Province
+                ?? throw new InvalidOperationException(
+                    "Province battle has no province.");
+
+            if (!_activeProvinceEngagements.TryAdd(
+                province, engagement))
+            {
+                throw new InvalidOperationException(
+                    "An active battle already exists here.");
+            }
+        }
+        else if (engagement.Type == EngagementType.MeetingEngagement)
+        {
+            Province a = engagement.ConnectionA
+                ?? throw new InvalidOperationException(
+                    "Meeting engagement has no origin.");
+
+            Province b = engagement.ConnectionB
+                ?? throw new InvalidOperationException(
+                    "Meeting engagement has no destination.");
+
+            AddMeetingToRoute(a, b, engagement);
+
+            if (!ReferenceEquals(a, b))
+                AddMeetingToRoute(b, a, engagement);
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "Unsupported engagement type.");
+        }
+
+        // Conserver l'historique intégral.
+        _engagements.Add(engagement);
+
+        // Les engagements restent dans l'ordre
+        // croissant de leur création.
+        _activeEngagements.Add(engagement);
+    }
+
+    private void AddMeetingToRoute(
+        Province from,
+        Province to,
+        Engagement engagement)
+    {
+        var key = (From: from, To: to);
+
+        if (!_activeMeetingEngagements.TryGetValue(
+            key, out var meetings))
+        {
+            meetings = new List<Engagement>();
+            _activeMeetingEngagements.Add(key, meetings);
+        }
+
+        meetings.Add(engagement);
+    }
+
+    private void UnregisterEndedEngagement(
+        Engagement engagement)
+    {
+        if (engagement.IsActive)
+            throw new InvalidOperationException(
+                "Cannot unregister an active engagement.");
+
+        if (!_activeEngagements.Remove(engagement))
+            throw new InvalidOperationException(
+                "Engagement missing from active list.");
+
+        if (engagement.Type == EngagementType.ProvinceBattle)
+        {
+            Province province = engagement.Province!;
+
+            if (!_activeProvinceEngagements.TryGetValue(
+                province, out var indexed)
+                || !ReferenceEquals(indexed, engagement))
+            {
+                throw new InvalidOperationException(
+                    "Province engagement index is inconsistent.");
+            }
+
+            _activeProvinceEngagements.Remove(province);
+        }
+        else if (engagement.Type == EngagementType.MeetingEngagement)
+        {
+            Province a = engagement.ConnectionA!;
+            Province b = engagement.ConnectionB!;
+
+            RemoveMeetingFromRoute(a, b, engagement);
+
+            if (!ReferenceEquals(a, b))
+                RemoveMeetingFromRoute(b, a, engagement);
+        }
+    }
+
+    private void RemoveMeetingFromRoute(
+        Province from,
+        Province to,
+        Engagement engagement)
+    {
+        var key = (From: from, To: to);
+
+        if (!_activeMeetingEngagements.TryGetValue(
+            key, out var meetings)
+            || !meetings.Remove(engagement))
+        {
+            throw new InvalidOperationException(
+                "Meeting engagement index is inconsistent.");
+        }
+
+        if (meetings.Count == 0)
+            _activeMeetingEngagements.Remove(key);
+    }
+
+
 
 
 
