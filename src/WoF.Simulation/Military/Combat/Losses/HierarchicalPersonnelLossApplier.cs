@@ -1,12 +1,8 @@
 
 using WoF.Simulation.Military;
-using WoF.Simulation.Military.Composition;
-using WoF.Simulation.Military.Organization;
 
 namespace WoF.Simulation.Military.Combat.Losses;
 
-// Bilan des pertes attribuées à une compagnie.
-// Les identifiants sont relatifs à la division.
 public sealed record CompanyCasualtyAllocation(
     int BattalionId,
     int CompanyId,
@@ -15,32 +11,34 @@ public sealed record CompanyCasualtyAllocation(
 
 public static class HierarchicalPersonnelLossApplier
 {
-    private sealed class Target
-    {
-        public Battalion Battalion { get; }
-        public Company Company { get; }
-        public PersonnelPool Pool { get; }
-
-        public int Remaining { get; set; }
-        public int Killed { get; set; }
-        public int Wounded { get; set; }
-        public int Missing { get; set; }
-
-        public Target(
-            Battalion battalion,
-            Company company,
-            PersonnelPool pool)
-        {
-            Battalion = battalion;
-            Company = company;
-            Pool = pool;
-            Remaining = pool.Current;
-        }
-    }
-
+    // API existante : retourne le détail par compagnie.
     public static IReadOnlyList<CompanyCasualtyAllocation> Apply(
         Division division,
         PersonnelCasualtyReport casualties)
+    {
+        return ApplyCore(
+            division,
+            casualties,
+            includeReport: true);
+    }
+
+    // Nouveau chemin rapide : application sans
+    // création de la liste des allocations détaillées.
+    internal static void ApplyInPlace(
+        Division division,
+        PersonnelCasualtyReport casualties)
+    {
+        ApplyCore(
+            division,
+            casualties,
+            includeReport: false);
+    }
+
+    private static IReadOnlyList<CompanyCasualtyAllocation>
+        ApplyCore(
+            Division division,
+            PersonnelCasualtyReport casualties,
+            bool includeReport)
     {
         ArgumentNullException.ThrowIfNull(division);
         ArgumentNullException.ThrowIfNull(casualties);
@@ -53,48 +51,21 @@ public static class HierarchicalPersonnelLossApplier
                 nameof(casualties));
         }
 
-        // PHASE 1 : recenser les compagnies.
-        // Aucun stock n'est modifié ici.
-        var targets = new List<Target>();
+        // En mode hiérarchique, l'index est réutilisé.
+        // Avant activation, il est reconstruit pour
+        // conserver les validations existantes.
+        var targets = division.GetLossTargets();
+        int count = targets.Length;
 
-        if (division.Battalions.Count == 0)
-        {
-            throw new InvalidOperationException(
-                "Division has no battalions.");
-        }
-
-        foreach (var battalion in division.Battalions
-                     .OrderBy(b => b.Id))
-        {
-            if (battalion.Companies.Count == 0)
-            {
-                throw new InvalidOperationException(
-                    $"Battalion {battalion.Name} has no companies.");
-            }
-
-            foreach (var company in battalion.Companies
-                         .OrderBy(c => c.Id))
-            {
-                var composition = company.Composition
-                    ?? throw new InvalidOperationException(
-                        $"Company {company.Name} has no composition.");
-
-                targets.Add(new Target(
-                    battalion,
-                    company,
-                    composition.Manpower
-                ));
-            }
-        }
-
-        // PHASE 2 : valider la capacité globale.
         long requested =
             (long)casualties.KilledInAction +
             casualties.WoundedInAction +
             casualties.MissingOrCaptured;
 
-        long available =
-            targets.Sum(t => (long)t.Remaining);
+        long available = 0;
+
+        foreach (var target in targets)
+            available += target.Personnel.Current;
 
         if (requested > available)
         {
@@ -103,74 +74,126 @@ public static class HierarchicalPersonnelLossApplier
         }
 
         if (requested == 0)
-        {
             return Array.Empty<CompanyCasualtyAllocation>();
-        }
 
-        // PHASE 3 : planifier les allocations.
-        // Les ressources physiques restent inchangées.
+        // Un stockage sur la pile pour les organisations
+        // ordinaires ; allocation managée de secours
+        // pour les formations exceptionnellement grandes.
+        const int StackLimit = 128;
+
+        Span<int> remaining = count <= StackLimit
+            ? stackalloc int[count]
+            : new int[count];
+
+        Span<int> killed = count <= StackLimit
+            ? stackalloc int[count]
+            : new int[count];
+
+        Span<int> wounded = count <= StackLimit
+            ? stackalloc int[count]
+            : new int[count];
+
+        Span<int> missing = count <= StackLimit
+            ? stackalloc int[count]
+            : new int[count];
+
+        Span<int> shares = count <= StackLimit
+            ? stackalloc int[count]
+            : new int[count];
+
+        Span<long> remainders = count <= StackLimit
+            ? stackalloc long[count]
+            : new long[count];
+
+        // stackalloc ne garantit pas l'initialisation
+        // à zéro : elle doit être explicite.
+        killed.Clear();
+        wounded.Clear();
+        missing.Clear();
+
+        for (int i = 0; i < count; i++)
+            remaining[i] = targets[i].Personnel.Current;
+
+        // Ordre historique des allocations :
+        // KIA, puis WIA, puis MIA/POW.
         Allocate(
             casualties.KilledInAction,
-            targets,
-            (t, amount) => t.Killed = amount);
+            remaining, killed, shares, remainders);
 
         Allocate(
             casualties.WoundedInAction,
-            targets,
-            (t, amount) => t.Wounded = amount);
+            remaining, wounded, shares, remainders);
 
         Allocate(
             casualties.MissingOrCaptured,
-            targets,
-            (t, amount) => t.Missing = amount);
+            remaining, missing, shares, remainders);
 
-        // PHASE 4 : appliquer les pertes validées.
-        var results = new List<CompanyCasualtyAllocation>();
+        // La liste n'est créée que pour l'API publique.
+        List<CompanyCasualtyAllocation>? reports =
+            includeReport
+                ? new List<CompanyCasualtyAllocation>()
+                : null;
 
-        foreach (var target in targets)
+        // Mutation des stocks seulement après avoir
+        // terminé toutes les répartitions.
+        for (int i = 0; i < count; i++)
         {
-            var report = new PersonnelCasualtyReport(
-                KilledInAction: target.Killed,
-                WoundedInAction: target.Wounded,
-                MissingOrCaptured: target.Missing
-            );
+            int total = killed[i] + wounded[i] + missing[i];
 
-            if (report.Total == 0)
+            if (total == 0)
                 continue;
 
-            target.Pool.ApplyCasualties(report);
+            var report = new PersonnelCasualtyReport(
+                KilledInAction: killed[i],
+                WoundedInAction: wounded[i],
+                MissingOrCaptured: missing[i]
+            );
 
-            results.Add(new CompanyCasualtyAllocation(
-                target.Battalion.Id,
-                target.Company.Id,
-                report
-            ));
+            targets[i].Personnel.ApplyCasualties(report);
+
+            if (reports is not null)
+            {
+                reports.Add(new CompanyCasualtyAllocation(
+                    targets[i].BattalionId,
+                    targets[i].CompanyId,
+                    report
+                ));
+            }
         }
 
-        return results.AsReadOnly();
+        if (reports is not null)
+            return reports.AsReadOnly();
+
+        return Array.Empty<CompanyCasualtyAllocation>();
     }
 
     private static void Allocate(
         int amount,
-        IReadOnlyList<Target> targets,
-        Action<Target, int> assign)
+        Span<int> remaining,
+        Span<int> allocation,
+        Span<int> shares,
+        Span<long> remainders)
     {
         if (amount == 0)
             return;
 
-        long total =
-            targets.Sum(t => (long)t.Remaining);
+        long total = 0;
 
-        var shares = new int[targets.Count];
-        var remainders = new long[targets.Count];
+        for (int i = 0; i < remaining.Length; i++)
+            total += remaining[i];
+
+        if (amount > total)
+        {
+            throw new InvalidOperationException(
+                "Losses exceed remaining personnel.");
+        }
 
         int allocated = 0;
 
-        // Répartition proportionnelle entière.
-        for (int i = 0; i < targets.Count; i++)
+        for (int i = 0; i < remaining.Length; i++)
         {
             long numerator =
-                (long)amount * targets[i].Remaining;
+                (long)amount * remaining[i];
 
             shares[i] = (int)(numerator / total);
             remainders[i] = numerator % total;
@@ -178,26 +201,37 @@ public static class HierarchicalPersonnelLossApplier
             allocated += shares[i];
         }
 
-        // Distribuer les unités restantes selon
-        // les plus grands restes.
-        int remaining = amount - allocated;
+        int toDistribute = amount - allocated;
 
-        var priority = Enumerable
-            .Range(0, targets.Count)
-            .OrderByDescending(i => remainders[i])
-            .ThenBy(i => i)
-            .Take(remaining);
-
-        foreach (int index in priority)
+        // Plus grands restes, avec priorité
+        // aux indices les plus petits en cas d'égalité.
+        // Chaque indice reçoit au plus une unité.
+        for (int r = 0; r < toDistribute; r++)
         {
-            shares[index]++;
+            int bestIndex = -1;
+            long bestRemainder = -1;
+
+            for (int i = 0; i < remaining.Length; i++)
+            {
+                if (remainders[i] > bestRemainder)
+                {
+                    bestRemainder = remainders[i];
+                    bestIndex = i;
+                }
+            }
+
+            if (bestIndex < 0)
+                throw new InvalidOperationException(
+                    "Invalid remainder allocation.");
+
+            shares[bestIndex]++;
+            remainders[bestIndex] = -1;
         }
 
-        // Mettre à jour uniquement le plan local.
-        for (int i = 0; i < targets.Count; i++)
+        for (int i = 0; i < remaining.Length; i++)
         {
-            assign(targets[i], shares[i]);
-            targets[i].Remaining -= shares[i];
+            allocation[i] = shares[i];
+            remaining[i] -= shares[i];
         }
     }
 }

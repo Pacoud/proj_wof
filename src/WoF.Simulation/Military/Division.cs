@@ -28,6 +28,8 @@ public sealed class Division
 
     public double Ammunition { get; private set; }
 
+    private HierarchicalLossTarget[]? _hierarchicalLossTargets;
+
     public Country? Country { get; }
 
     public Engagement? CurrentEngagement { get; private set; }
@@ -584,6 +586,12 @@ public sealed class Division
                 "Hierarchical and legacy resources do not match.");
         }
 
+        var targets = HierarchicalLossTargetIndex.Build(this);
+
+        // Les validations précédentes ont réussi.
+        // La structure sera verrouillée après activation.
+        _hierarchicalLossTargets = targets;
+
         _hierarchicalTankLosses =
             new HierarchicalTankLossApplier(this);
 
@@ -601,7 +609,7 @@ public sealed class Division
             return;
         }
 
-        HierarchicalPersonnelLossApplier.Apply(
+        HierarchicalPersonnelLossApplier.ApplyInPlace(
             this,
             casualties
         );
@@ -621,17 +629,25 @@ public sealed class Division
             ?? throw new InvalidOperationException(
                 "Hierarchical tank accounting is not initialized.");
 
-        var allocations = applier.Apply(expected);
-
-        return new TankLossResult(
-            Damaged: allocations.Sum(
-                a => a.Losses.Damaged),
-
-            Destroyed: allocations.Sum(
-                a => a.Losses.Destroyed)
-        );
+        return applier.ApplyToPools(expected);
     }
 
+
+        
+    internal HierarchicalLossTarget[] GetLossTargets()
+    {
+        if (ResourceMode == DivisionResourceMode.Hierarchical)
+        {
+            return _hierarchicalLossTargets
+                ?? throw new InvalidOperationException(
+                    "Hierarchical loss index is not initialized.");
+        }
+
+        // Compatibilité avec les tests et les divisions
+        // qui n'ont pas encore activé la hiérarchie.
+        // Leur structure peut encore être modifiée.
+        return HierarchicalLossTargetIndex.Build(this);
+    }
 
 
 

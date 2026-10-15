@@ -2792,7 +2792,7 @@ et évitent d’attribuer les allocations des marqueurs à la simulation.
 Aucune modification des règles de combat ni optimisation du moteur.
 
 
-# COMMIT # 
+# COMMIT 8ff92c9ba83eb5165bf40af0e0ff6e60329a690a # 
 
 ## Itération C1.2b — Country Combat Aggregation
 
@@ -2864,3 +2864,65 @@ de pertes humaines et de chars.
 
 Puis C1.2d : indexation des engagements actifs,
 si les benchmarks confirment son intérêt.
+
+# COMMIT # 
+
+## Itération C1.2c — Hierarchical Loss Allocation Optimization
+
+### Objectif
+Réduire les allocations temporaires des répartiteurs
+de pertes humaines et de chars.
+
+### Architecture
+- Ajout de HierarchicalLossTargetIndex.
+- Références des compagnies conservées après
+  activation de la hiérarchie.
+- Stocks physiques toujours relus dynamiquement.
+- Aucun cache permanent des effectifs disponibles.
+
+### Pertes humaines
+- Conservation de la répartition proportionnelle.
+- Conservation des règles de départage.
+- Utilisation de Span<T> et stackalloc.
+- Suppression des objets Target temporaires.
+- Ajout de ApplyInPlace() pour le moteur.
+- Conservation de Apply() pour les rapports détaillés.
+
+### Pertes de chars
+- Utilisation de l'index stable des compagnies.
+- Chemin rapide sans char opérationnel.
+- Chemin rapide sans perte entière.
+- Conservation des fractions entre ticks.
+- Conservation des priorités de destruction.
+- Ajout de ApplyToPools() pour le moteur.
+- Conservation de Apply() pour les rapports détaillés.
+
+### Compatibilité
+- Aucune modification des coefficients de combat.
+- Aucune modification des règles de répartition.
+- Aucune modification de la diplomatie.
+- Conservation des états historiques des ressources.
+- Aucun changement du Battle Ledger.
+
+### Tests
+- Comparaison entre API détaillée et API rapide.
+- Validation des pertes humaines par compagnie.
+- Validation des fractions de pertes blindées.
+- Validation des divisions sans chars.
+- Vérification du cache structurel.
+- Suite complète de non-régression.
+
+### Performances
+Comparer C1.2b et C1.2c :
+- Durées moyenne et médiane des ticks.
+- p95 et maximum.
+- Allocations par tick.
+- Collections Gen0/Gen1/Gen2.
+- États militaires aux bornes des simulations.
+
+### Suite
+C1.2d : étudier l'indexation des engagements actifs
+par province et par liaison.
+
+Puis C2 : benchmarks opérationnels avec
+mouvements, ravitaillement et longues campagnes.

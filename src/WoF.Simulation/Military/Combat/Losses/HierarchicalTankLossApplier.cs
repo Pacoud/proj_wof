@@ -1,6 +1,5 @@
 
 using WoF.Simulation.Military;
-using WoF.Simulation.Military.Composition;
 
 namespace WoF.Simulation.Military.Combat.Losses;
 
@@ -12,27 +11,35 @@ public sealed record CompanyTankLossAllocation(
 
 public sealed class HierarchicalTankLossApplier
 {
-    private sealed record Target(
-        int BattalionId,
-        int CompanyId,
-        TankPool Pool
-    );
-
     private readonly Division _division;
 
-    // Restes fractionnaires de la division.
     private double _pendingDestroyed;
     private double _pendingDamaged;
 
     public HierarchicalTankLossApplier(Division division)
     {
         _division = division
-            ?? throw new ArgumentNullException(
-                nameof(division));
+            ?? throw new ArgumentNullException(nameof(division));
     }
 
     public IReadOnlyList<CompanyTankLossAllocation> Apply(
         TankLossExpectation expected)
+    {
+        return ApplyCore(expected, includeReport: true).Allocations;
+    }
+
+    internal TankLossResult ApplyToPools(
+        TankLossExpectation expected)
+    {
+        return ApplyCore(expected, includeReport: false).Result;
+    }
+
+    private (
+        TankLossResult Result,
+        IReadOnlyList<CompanyTankLossAllocation> Allocations
+    ) ApplyCore(
+        TankLossExpectation expected,
+        bool includeReport)
     {
         ArgumentNullException.ThrowIfNull(expected);
 
@@ -45,11 +52,14 @@ public sealed class HierarchicalTankLossApplier
                 nameof(expected));
         }
 
-        // PHASE 1 : recenser les stocks physiques.
-        var targets = GetTargets();
+        // Les références sont réutilisées lorsque
+        // la hiérarchie est activée.
+        var targets = _division.GetLossTargets();
 
-        long totalOperational =
-            targets.Sum(t => (long)t.Pool.Operational);
+        long totalOperational = 0;
+
+        foreach (var target in targets)
+            totalOperational += target.Tanks.Operational;
 
         if (totalOperational > int.MaxValue)
         {
@@ -59,16 +69,20 @@ public sealed class HierarchicalTankLossApplier
 
         int operational = (int)totalOperational;
 
+        // Chemin rapide : aucun char disponible.
+        // On conserve la règle d'effacement
+        // des fractions accumulées.
         if (operational == 0)
         {
             _pendingDestroyed = 0;
             _pendingDamaged = 0;
 
-            return Array.Empty<CompanyTankLossAllocation>();
+            return (
+                new TankLossResult(0, 0),
+                Array.Empty<CompanyTankLossAllocation>()
+            );
         }
 
-        // PHASE 2 : résoudre les fractions au
-        // niveau de la division, une seule fois.
         double rawDestroyed =
             _pendingDestroyed + expected.Destroyed;
 
@@ -82,8 +96,7 @@ public sealed class HierarchicalTankLossApplier
                 "Tank loss accumulation overflow.");
         }
 
-        // Priorité aux destructions, comme dans
-        // le TankPool existant.
+        // Les destructions sont prioritaires.
         int destroyed = (int)Math.Min(
             Math.Floor(rawDestroyed),
             operational
@@ -94,49 +107,72 @@ public sealed class HierarchicalTankLossApplier
             operational - destroyed
         );
 
-        // PHASE 3 : répartir les pertes entières
-        // selon les chars opérationnels.
-        int[] capacities = targets
-            .Select(t => t.Pool.Operational)
-            .ToArray();
+        // Les fractions restent stockées au niveau
+        // divisionnaire tant qu'il reste des chars.
+        if (destroyed == 0 && damaged == 0)
+        {
+            _pendingDestroyed = rawDestroyed;
+            _pendingDamaged = rawDamaged;
+
+            return (
+                new TankLossResult(0, 0),
+                Array.Empty<CompanyTankLossAllocation>()
+            );
+        }
+
+        int count = targets.Length;
+
+        // Ces tableaux ne sont désormais créés
+        // que si au moins un char est réellement touché.
+        var capacities = new int[count];
+
+        for (int i = 0; i < count; i++)
+            capacities[i] = targets[i].Tanks.Operational;
 
         int[] destroyedShares =
             Distribute(destroyed, capacities);
 
-        int[] remainingCapacities = capacities
-            .Select((capacity, i) =>
-                capacity - destroyedShares[i])
-            .ToArray();
+        var remainingCapacities = new int[count];
+
+        for (int i = 0; i < count; i++)
+        {
+            remainingCapacities[i] =
+                capacities[i] - destroyedShares[i];
+        }
 
         int[] damagedShares =
             Distribute(damaged, remainingCapacities);
 
-        // PHASE 4 : appliquer les pertes.
-        var results =
-            new List<CompanyTankLossAllocation>();
+        List<CompanyTankLossAllocation>? reports =
+            includeReport
+                ? new List<CompanyTankLossAllocation>()
+                : null;
 
-        for (int i = 0; i < targets.Count; i++)
+        for (int i = 0; i < count; i++)
         {
-            var loss = new TankLossResult(
-                Damaged: damagedShares[i],
-                Destroyed: destroyedShares[i]
-            );
+            int companyDamaged = damagedShares[i];
+            int companyDestroyed = destroyedShares[i];
 
-            if (loss.Total == 0)
+            if (companyDamaged == 0 && companyDestroyed == 0)
                 continue;
 
-            targets[i].Pool.ApplyResolvedLosses(loss);
+            var loss = new TankLossResult(
+                Damaged: companyDamaged,
+                Destroyed: companyDestroyed
+            );
 
-            results.Add(new CompanyTankLossAllocation(
-                targets[i].BattalionId,
-                targets[i].CompanyId,
-                loss
-            ));
+            targets[i].Tanks.ApplyResolvedLosses(loss);
+
+            if (reports is not null)
+            {
+                reports.Add(new CompanyTankLossAllocation(
+                    targets[i].BattalionId,
+                    targets[i].CompanyId,
+                    loss
+                ));
+            }
         }
 
-        // PHASE 5 : conserver les fractions restantes.
-        // Comme dans TankPool, les restes sont perdus
-        // lorsque tous les chars sont indisponibles.
         if (operational - destroyed - damaged == 0)
         {
             _pendingDestroyed = 0;
@@ -151,46 +187,21 @@ public sealed class HierarchicalTankLossApplier
                 Math.Max(0, rawDamaged - damaged);
         }
 
-        return results.AsReadOnly();
+        var result = new TankLossResult(
+            Damaged: damaged,
+            Destroyed: destroyed
+        );
+
+        if (reports is not null)
+            return (result, reports.AsReadOnly());
+
+        return (
+            result,
+            Array.Empty<CompanyTankLossAllocation>()
+        );
     }
 
-    private List<Target> GetTargets()
-    {
-        if (_division.Battalions.Count == 0)
-        {
-            throw new InvalidOperationException(
-                "Division has no battalions.");
-        }
-
-        var targets = new List<Target>();
-
-        foreach (var battalion in _division.Battalions
-                     .OrderBy(b => b.Id))
-        {
-            if (battalion.Companies.Count == 0)
-            {
-                throw new InvalidOperationException(
-                    "Battalion has no companies.");
-            }
-
-            foreach (var company in battalion.Companies
-                         .OrderBy(c => c.Id))
-            {
-                var composition = company.Composition
-                    ?? throw new InvalidOperationException(
-                        "Company has no composition.");
-
-                targets.Add(new Target(
-                    battalion.Id,
-                    company.Id,
-                    composition.Tanks
-                ));
-            }
-        }
-
-        return targets;
-    }
-
+    // Algorithme de répartition historique conservé.
     private static int[] Distribute(
         int amount,
         int[] capacities)
@@ -231,9 +242,7 @@ public sealed class HierarchicalTankLossApplier
             .Take(remaining);
 
         foreach (int index in priority)
-        {
             shares[index]++;
-        }
 
         return shares;
     }
