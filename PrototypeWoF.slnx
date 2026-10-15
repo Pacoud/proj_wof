@@ -3,6 +3,7 @@
     <Project Path="src/WoF.Client/WoF.Client.csproj" />
     <Project Path="src/WoF.Prototype/WoF.Prototype.csproj" />
     <Project Path="src/WoF.Simulation/WoF.Simulation.csproj" />
+    <Project Path="src/WoF.Benchmarks/WoF.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/WoF.Simulation.Tests/WoF.Simulation.Tests.csproj" />

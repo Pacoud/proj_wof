@@ -2583,7 +2583,7 @@ dans le moteur de combat, le Battle Ledger et l'interface.
 Un seul modèle de stockage physique devra être actif
 pour chaque division.
 
-# COMMIT # 
+# COMMIT 2f7138aad35f171ee61f2dd3eb6c7a2a122ebde5 # 
 
 ## Itération B2.3 — Hierarchical Resources Integration
 
@@ -2632,3 +2632,60 @@ Itération C : benchmarks à grande échelle.
 
 Mesurer les performances des hiérarchies militaires
 et identifier les coûts d'agrégation et de combat.
+
+# COMMIT # 
+
+## Itération C1 — Large Scale Simulation Benchmark
+
+### Objectif
+
+Mesurer les performances du moteur WoF avec plusieurs
+centaines ou milliers de divisions et bataillons.
+
+### Architecture
+
+Nouveau projet autonome : WoF.Benchmarks.
+
+Il référence WoF.Simulation sans dépendance Avalonia.
+
+### Scénarios
+
+- Stationary : formations au repos.
+- Combat : engagements simultanés par paires
+  dans des provinces distinctes.
+
+### Organisation générée
+
+- 12 bataillons par division.
+- 4 compagnies par bataillon.
+- 10 000 hommes théoriques par division.
+- Comptabilité hiérarchique activée.
+- Ressources réparties exactement entre les compagnies.
+
+### Métriques
+
+- Temps de construction.
+- Allocations de construction.
+- Empreinte mémoire managée estimée.
+- Temps d'agrégation des ressources.
+- Temps moyen par tick.
+- Allocations par tick.
+- Collections du GC.
+- Nombre d'engagements actifs.
+
+### Limites
+
+- Organisation militaire fictive et régulière.
+- Pas encore de mouvement massif.
+- Pas de simulation de logistique complexe.
+- Pas de carte tactique hybride.
+- Mesures dépendantes du matériel et du runtime.
+- Aucune garantie de performances en simulation V2.
+
+### Prochaine étape
+
+C2 : benchmark des mouvements simultanés,
+des rencontres sur liaisons et du ravitaillement.
+
+Puis optimisation des goulots d'étranglement mesurés,
+avant l'introduction de la géométrie tactique hybride.
