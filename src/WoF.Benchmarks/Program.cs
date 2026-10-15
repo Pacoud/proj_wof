@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Runtime;
 using System.Runtime.InteropServices;
 using WoF.Benchmarks;
+using System.Text.Json;
 
 if (args.Length < 3 || args.Length > 5 ||
     (args[0] != "combat" && args[0] != "stationary") ||
@@ -47,6 +48,16 @@ if (warmupHours < 0 ||
 int expectedBattles = combat
     ? divisionCount / divisionsPerBattle
     : 0;
+
+
+    DateTime runStartedUtc = DateTime.UtcNow;
+
+    #if DEBUG
+    const string buildConfiguration = "Debug";
+    #else
+    const string buildConfiguration = "Release";
+    #endif
+
 
 Console.WriteLine("=== WoF C1.1 Benchmark ===");
 Console.WriteLine($"Mode: {args[0]}");
@@ -125,11 +136,17 @@ if (combat)
     }
 }
 
+var stateBeforeWarmup =
+    BenchmarkMilitaryState.Capture(engine);
+
 // 3. Échauffement : non chronométré.
 for (int i = 0; i < warmupHours; i++)
 {
     engine.Tick();
 }
+
+var stateAfterWarmup =
+    BenchmarkMilitaryState.Capture(engine);
 
 int activeAfterWarmup =
     engine.Engagements.ActiveEngagements.Count();
@@ -171,16 +188,33 @@ Console.WriteLine($"Checksum: {checksum}");
 var tickTimes = new double[measuredHours];
 var tickAllocated = new long[measuredHours];
 var activeBattles = new int[measuredHours];
+var combatCapableParticipants = new int[measuredHours];
+var brokenDivisions = new int[measuredHours];
+
+var gen0PerTick = new int[measuredHours];
+var gen1PerTick = new int[measuredHours];
+var gen2PerTick = new int[measuredHours];
 
 int gc0Before = GC.CollectionCount(0);
 int gc1Before = GC.CollectionCount(1);
 int gc2Before = GC.CollectionCount(2);
 
+
 // 6. Mesurer chaque tick individuellement.
+
 for (int i = 0; i < measuredHours; i++)
 {
+    // Compteurs avant le tick.
+    int gc0Start = GC.CollectionCount(0);
+    int gc1Start = GC.CollectionCount(1);
+    int gc2Start = GC.CollectionCount(2);
+
     long bytesBefore =
         GC.GetAllocatedBytesForCurrentThread();
+
+    // Seul engine.Tick() est chronométré.
+
+    BenchmarkEventSource.Log.MeasuredTickStart(i + 1);
 
     long start = Stopwatch.GetTimestamp();
 
@@ -188,25 +222,57 @@ for (int i = 0; i < measuredHours; i++)
 
     long end = Stopwatch.GetTimestamp();
 
+    BenchmarkEventSource.Log.MeasuredTickEnd(i + 1);
+
     long bytesAfter =
         GC.GetAllocatedBytesForCurrentThread();
 
     tickTimes[i] =
         (end - start) * 1000.0 / Stopwatch.Frequency;
 
-    tickAllocated[i] = bytesAfter - bytesBefore;
+    tickAllocated[i] =
+        bytesAfter - bytesBefore;
 
-    // Contrôle de la charge, hors chronométrage.
+    // Compteurs du GC, lus après le chronométrage.
+    gen0PerTick[i] =
+        GC.CollectionCount(0) - gc0Start;
+
+    gen1PerTick[i] =
+        GC.CollectionCount(1) - gc1Start;
+
+    gen2PerTick[i] =
+        GC.CollectionCount(2) - gc2Start;
+
+    // Diagnostics militaires hors chronométrage.
     activeBattles[i] =
         engine.Engagements.ActiveEngagements.Count();
 
-    if (activeBattles[i] != expectedBattles)
+    int capable = 0;
+    int broken = 0;
+
+    foreach (var division in engine.Divisions)
     {
-        throw new InvalidOperationException(
-            $"Battle count changed at measured tick {i + 1}: " +
-            $"{activeBattles[i]} instead of {expectedBattles}.");
+        if (division.IsBroken)
+            broken++;
+
+        if (division.IsEngaged && !division.IsBroken)
+            capable++;
     }
+
+    combatCapableParticipants[i] = capable;
+    brokenDivisions[i] = broken;
 }
+
+// Capturer immédiatement les compteurs de fin
+// avant les calculs statistiques et les exports.
+int gc0After = GC.CollectionCount(0);
+int gc1After = GC.CollectionCount(1);
+int gc2After = GC.CollectionCount(2);
+
+// Photographie complète hors chronométrage.
+var stateAfterMeasurement =
+    BenchmarkMilitaryState.Capture(engine);
+
 
 // 7. Calculer les statistiques.
 double average = tickTimes.Average();
@@ -238,27 +304,84 @@ Console.WriteLine(
 
 Console.WriteLine(
     $"Gen0/1/2: " +
-    $"{GC.CollectionCount(0) - gc0Before}/" +
-    $"{GC.CollectionCount(1) - gc1Before}/" +
-    $"{GC.CollectionCount(2) - gc2Before}");
+    $"{gc0After - gc0Before}/" +
+    $"{gc1After - gc1Before}/" +
+    $"{gc2After - gc2Before}");
 
 Console.WriteLine($"Active battles at end: {activeBattles[^1]}");
+
+
+
+int expectedCapable = combat ? divisionCount : 0;
+
+bool battleCountsValid =
+    activeBattles.All(x => x == expectedBattles);
+
+bool combatantsValid =
+    combatCapableParticipants.All(
+        x => x == expectedCapable);
+
+bool noBrokenDivisions =
+    brokenDivisions.All(x => x == 0);
+
+bool scenarioComparable =
+    battleCountsValid &&
+    combatantsValid &&
+    noBrokenDivisions &&
+    stateAfterWarmup.ActiveBattles == expectedBattles &&
+    stateAfterWarmup.CombatCapableParticipants ==
+        expectedCapable &&
+    stateAfterWarmup.BrokenDivisions == 0;
+
+Console.WriteLine();
+Console.WriteLine("--- Military validity ---");
+Console.WriteLine($"Comparable: {scenarioComparable}");
+
+Console.WriteLine(
+    $"Combat-capable at end: " +
+    $"{combatCapableParticipants[^1]}");
+
+Console.WriteLine(
+    $"Broken divisions at end: " +
+    $"{brokenDivisions[^1]}");
+
+Console.WriteLine(
+    $"Personnel at end: " +
+    $"{stateAfterMeasurement.AvailablePersonnel:N0}");
+
+Console.WriteLine(
+    $"Total fuel at end: " +
+    $"{stateAfterMeasurement.TotalFuel:F2}");
+
+if (!scenarioComparable)
+{
+    Console.WriteLine(
+        "WARNING: Military workload changed. " +
+        "Review the diagnostics before comparing results.");
+}
 
 // 8. Export CSV APRÈS la mesure.
 string resultsDirectory = "benchmark-results";
 Directory.CreateDirectory(resultsDirectory);
 
+
+string runId =
+    $"{runStartedUtc:yyyyMMdd_HHmmss_fff}" +
+    $"_p{Environment.ProcessId}";
+
 string filename = Path.Combine(
     resultsDirectory,
-    $"C1_1_{args[0]}_d{divisionCount}" +
-    $"_g{divisionsPerBattle}_" +
-    $"{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.csv"
+    $"C1_2a_{args[0]}_d{divisionCount}" +
+    $"_g{divisionsPerBattle}_{runId}.csv"
 );
 
 using (var writer = new StreamWriter(filename))
 {
     writer.WriteLine(
-        "Tick,Milliseconds,AllocatedBytes,ActiveBattles");
+        "Tick,Milliseconds,AllocatedBytes," +
+        "ActiveBattles,CombatCapableParticipants," +
+        "BrokenDivisions,Gen0,Gen1,Gen2"
+    );
 
     for (int i = 0; i < measuredHours; i++)
     {
@@ -267,20 +390,125 @@ using (var writer = new StreamWriter(filename))
             tickTimes[i].ToString(
                 "F6", CultureInfo.InvariantCulture) + "," +
             $"{tickAllocated[i]}," +
-            $"{activeBattles[i]}");
+            $"{activeBattles[i]}," +
+            $"{combatCapableParticipants[i]}," +
+            $"{brokenDivisions[i]}," +
+            $"{gen0PerTick[i]}," +
+            $"{gen1PerTick[i]}," +
+            $"{gen2PerTick[i]}"
+        );
     }
 }
 
-Console.WriteLine();
 Console.WriteLine($"CSV written: {filename}");
+
+
+
+string? gitRevision =
+    GetGitOutput("rev-parse", "HEAD");
+
+string? gitStatus =
+    GetGitOutput(
+        "status",
+        "--porcelain",
+        "--untracked-files=normal"
+    );
+
+var metadata = new
+{
+    BenchmarkVersion = "C1.2a",
+    StartedUtc = runStartedUtc,
+    FinishedUtc = DateTime.UtcNow,
+
+    Source = new
+    {
+        GitRevision = gitRevision,
+        WorkingTreeDirty = gitStatus is null
+            ? (bool?)null
+            : gitStatus.Length > 0
+    },
+
+    Environment = new
+    {
+        BuildConfiguration = buildConfiguration,
+        Framework = RuntimeInformation.FrameworkDescription,
+        OperatingSystem = RuntimeInformation.OSDescription,
+        Architecture =
+            RuntimeInformation.ProcessArchitecture.ToString(),
+        LogicalProcessors = System.Environment.ProcessorCount,
+        ServerGC = GCSettings.IsServerGC,
+        TieredPGOOverride =
+            System.Environment.GetEnvironmentVariable(
+                "DOTNET_TieredPGO")
+    },
+
+    Scenario = new
+    {
+        Mode = args[0],
+        Divisions = divisionCount,
+        DivisionsPerBattle = divisionsPerBattle,
+        ExpectedBattles = expectedBattles,
+        WarmupHours = warmupHours,
+        MeasuredHours = measuredHours
+    },
+
+    MilitaryStates = new
+    {
+        BeforeWarmup = stateBeforeWarmup,
+        AfterWarmup = stateAfterWarmup,
+        AfterMeasurement = stateAfterMeasurement
+    },
+
+    Validation = new
+    {
+        Comparable = scenarioComparable,
+        BattleCountsValid = battleCountsValid,
+        CombatantsValid = combatantsValid,
+        NoBrokenDivisions = noBrokenDivisions
+    },
+
+    Performance = new
+    {
+        AverageMilliseconds = average,
+        MedianMilliseconds = median,
+        P95Milliseconds = Percentile(sorted, 0.95),
+        P99Milliseconds = Percentile(sorted, 0.99),
+        MaximumMilliseconds = sorted[^1],
+        AverageAllocatedBytes =
+            (double)totalAllocated / measuredHours
+    },
+
+    GarbageCollector = new
+    {
+        Gen0Collections = gc0After - gc0Before,
+        Gen1Collections = gc1After - gc1Before,
+        Gen2Collections = gc2After - gc2Before
+    },
+
+    CsvFile = Path.GetFileName(filename)
+};
+
+string jsonFilename =
+    Path.ChangeExtension(filename, ".json");
+
+File.WriteAllText(
+    jsonFilename,
+    JsonSerializer.Serialize(
+        metadata,
+        new JsonSerializerOptions
+        {
+            WriteIndented = true
+        }
+    )
+);
+
+Console.WriteLine($"Metadata written: {jsonFilename}");
 
 GC.KeepAlive(engine);
 
 static double ToMiB(long bytes)
     => bytes / (1024.0 * 1024.0);
 
-// Percentile au rang supérieur (nearest-rank).
-// Le tableau doit déjà être trié.
 static double Percentile(double[] sorted, double fraction)
 {
     int index = Math.Clamp(
@@ -297,4 +525,45 @@ static void PrintUsage()
     Console.WriteLine(
         "Usage: <stationary|combat> <divisions> <hours> " +
         "[divisionsPerBattle] [warmupHours]");
+}
+
+static string? GetGitOutput(params string[] arguments)
+{
+    try
+    {
+        var startInfo = new ProcessStartInfo("git")
+        {
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        foreach (string argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(startInfo);
+
+        if (process is null)
+            return null;
+
+        string output = process.StandardOutput.ReadToEnd();
+
+        if (!process.WaitForExit(3000))
+        {
+            process.Kill();
+            return null;
+        }
+
+        return process.ExitCode == 0
+            ? output.Trim()
+            : null;
+    }
+    catch
+    {
+        // Le benchmark doit rester utilisable
+        // même si Git n'est pas installé.
+        return null;
+    }
 }

@@ -2690,7 +2690,7 @@ des rencontres sur liaisons et du ravitaillement.
 Puis optimisation des goulots d'étranglement mesurés,
 avant l'introduction de la géométrie tactique hybride.
 
-# COMMIT #  
+# COMMIT 5c574f35cf61762c165cc2f28347d3d55b55b951 #  
 
 ## Itération C1.1 — Concentrated Combat Benchmarks
 
@@ -2730,3 +2730,50 @@ mesures et d'un profilage CPU/mémoire.
 
 Ne procéder qu'à des optimisations ciblées et
 vérifiées par des benchmarks avant/après.
+
+# COMMIT # 
+
+## Itération C1.2a — Benchmark Instrumentation and Profiling
+
+### Objectif
+Fiabiliser les benchmarks de combat et identifier
+les véritables sources de surcoût CPU et mémoire.
+
+### Fonctionnalités
+- Nouveau BenchmarkMilitaryState.
+- Photographies militaires avant/après échauffement
+  et après simulation mesurée.
+- Suivi des participants capables de combattre.
+- Suivi des divisions rompues.
+- Comptabilité des effectifs, pertes et carburant.
+- Nombre d'engagements actifs et archivés.
+- Collections GC par tick.
+- Export CSV enrichi.
+- Export JSON avec configuration et révision Git.
+- Marqueurs EventSource pour les ticks mesurés.
+- Profilage externe avec dotnet-trace.
+
+### Méthodologie
+- Mesures en Release.
+- Répartition des forces inchangée.
+- Pas de modification des règles de combat.
+- Diagnostics militaires complets hors chronométrage.
+- Exécutions sans profileur pour les références.
+- Traces collectées séparément pour identifier
+  les fonctions coûteuses.
+- Comparaison des résultats militaires et techniques.
+
+### Limites
+- Le GC peut intervenir entre deux ticks.
+- Les allocations restent mesurées sur le thread courant.
+- Les profils d'échantillonnage sont approximatifs.
+- Les scénarios sont synthétiques et évolutifs.
+- Les mesures courtes ne caractérisent pas les
+  performances d'une campagne longue.
+
+### Suite
+C1.2b : optimiser les agrégations de combat par pays
+dans EngagementSystem, après identification des coûts.
+
+Conserver les règles d'hostilité et l'application
+simultanée des pertes.
