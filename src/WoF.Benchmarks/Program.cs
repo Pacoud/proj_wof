@@ -202,9 +202,14 @@ int gc2Before = GC.CollectionCount(2);
 
 // 6. Mesurer chaque tick individuellement.
 
+
+BenchmarkEventSource.Log.MeasurementStart();
+
 for (int i = 0; i < measuredHours; i++)
 {
-    // Compteurs avant le tick.
+    BenchmarkEventSource.Log.MeasuredTickStart(i + 1);
+
+    // Diagnostics préparatoires, hors chronométrage.
     int gc0Start = GC.CollectionCount(0);
     int gc1Start = GC.CollectionCount(1);
     int gc2Start = GC.CollectionCount(2);
@@ -212,28 +217,22 @@ for (int i = 0; i < measuredHours; i++)
     long bytesBefore =
         GC.GetAllocatedBytesForCurrentThread();
 
-    // Seul engine.Tick() est chronométré.
-
-    BenchmarkEventSource.Log.MeasuredTickStart(i + 1);
-
     long start = Stopwatch.GetTimestamp();
 
     engine.Tick();
 
     long end = Stopwatch.GetTimestamp();
 
-    BenchmarkEventSource.Log.MeasuredTickEnd(i + 1);
-
     long bytesAfter =
         GC.GetAllocatedBytesForCurrentThread();
 
+    // Seul engine.Tick() est chronométré.
     tickTimes[i] =
         (end - start) * 1000.0 / Stopwatch.Frequency;
 
     tickAllocated[i] =
         bytesAfter - bytesBefore;
 
-    // Compteurs du GC, lus après le chronométrage.
     gen0PerTick[i] =
         GC.CollectionCount(0) - gc0Start;
 
@@ -243,7 +242,9 @@ for (int i = 0; i < measuredHours; i++)
     gen2PerTick[i] =
         GC.CollectionCount(2) - gc2Start;
 
-    // Diagnostics militaires hors chronométrage.
+    BenchmarkEventSource.Log.MeasuredTickStop(i + 1);
+
+    // Contrôle militaire hors chronométrage.
     activeBattles[i] =
         engine.Engagements.ActiveEngagements.Count();
 
@@ -262,6 +263,8 @@ for (int i = 0; i < measuredHours; i++)
     combatCapableParticipants[i] = capable;
     brokenDivisions[i] = broken;
 }
+
+BenchmarkEventSource.Log.MeasurementStop();
 
 // Capturer immédiatement les compteurs de fin
 // avant les calculs statistiques et les exports.

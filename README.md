@@ -2731,7 +2731,7 @@ mesures et d'un profilage CPU/mémoire.
 Ne procéder qu'à des optimisations ciblées et
 vérifiées par des benchmarks avant/après.
 
-# COMMIT # 
+# COMMIT b63ec2a449354437241b4f861a9573476c87e4cb # 
 
 ## Itération C1.2a — Benchmark Instrumentation and Profiling
 
@@ -2777,3 +2777,16 @@ dans EngagementSystem, après identification des coûts.
 
 Conserver les règles d'hostilité et l'application
 simultanée des pertes.
+
+# COMMIT #
+
+- Remplace MeasuredTickEnd par MeasuredTickStop.
+- Déclare explicitement les opcodes Start/Stop et les tâches associées.
+- Ajoute MeasurementStart/MeasurementStop pour délimiter les 72 ticks mesurés.
+- Place les marqueurs hors des intervalles de mesure du temps et des allocations.
+- Conserve les diagnostics militaires entre les ticks, hors chronométrage.
+
+Ces changements rendent les traces PerfView plus faciles à analyser
+et évitent d’attribuer les allocations des marqueurs à la simulation.
+
+Aucune modification des règles de combat ni optimisation du moteur.
