@@ -6,6 +6,13 @@ using System.Runtime.InteropServices;
 using WoF.Benchmarks;
 using System.Text.Json;
 
+if (args.Length > 0 && args[0] == "history")
+{
+    HistoryBenchmark.Run(args.Skip(1).ToArray());
+    return;
+}
+
+
 if (args.Length < 3 || args.Length > 5 ||
     (args[0] != "combat" && args[0] != "stationary") ||
     !int.TryParse(args[1], out int divisionCount) ||
