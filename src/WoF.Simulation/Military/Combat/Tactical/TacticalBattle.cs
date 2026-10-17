@@ -10,6 +10,26 @@ public sealed class TacticalBattle
     private readonly Dictionary<Company, CompanyDeployment>
         _byCompany = new(ReferenceEqualityComparer.Instance);
 
+    private readonly Dictionary<Division, TacticalDeploymentPlan>
+        _appliedPlans = new(ReferenceEqualityComparer.Instance);
+
+    internal IEnumerable<TacticalDeploymentPlan> AppliedPlans =>
+        _appliedPlans.Values;
+
+    internal bool HasAppliedPlan(Division division) =>
+        _appliedPlans.ContainsKey(division);
+
+    internal void RecordAppliedPlan(TacticalDeploymentPlan plan)
+    {
+        if (!ReferenceEquals(plan.Battle, this))
+            throw new InvalidOperationException(
+                "The plan belongs to another tactical battle.");
+
+        if (!_appliedPlans.TryAdd(plan.Division, plan))
+            throw new InvalidOperationException(
+                "An applied plan already exists for this division.");
+    }
+
     public Engagement Engagement { get; }
 
     public TacticalBattlefield Battlefield { get; }

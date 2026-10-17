@@ -4,16 +4,26 @@ using WoF.Simulation.Military.Organization;
 
 namespace WoF.Simulation.Military.Combat.Tactical;
 
+public enum TacticalAssignmentReason
+{
+    PriorityObjective,
+    SecondaryObjective,
+    DivisionReserve
+}
+
 public sealed record TacticalCompanyAssignment(
     Company Company,
     BattleSector Sector,
-    CompanyDeploymentRole Role);
+    CompanyDeploymentRole Role,
+    TacticalAssignmentReason Reason);
 
 public sealed class TacticalDeploymentPlan
 {
     public TacticalBattle Battle { get; }
 
     public Division Division { get; }
+
+    public DivisionTacticalOrder Order { get; }
 
     public IReadOnlyList<TacticalCompanyAssignment> Assignments
     {
@@ -22,11 +32,12 @@ public sealed class TacticalDeploymentPlan
 
     internal TacticalDeploymentPlan(
         TacticalBattle battle,
-        Division division,
+        DivisionTacticalOrder order,
         IEnumerable<TacticalCompanyAssignment> assignments)
     {
         Battle = battle;
-        Division = division;
+        Order = order;
+        Division = order.Division;
 
         Assignments = assignments.ToList().AsReadOnly();
     }
@@ -130,17 +141,25 @@ public static class TacticalCommandSystem
                             order.Posture,
                             j);
 
+                TacticalAssignmentReason reason =
+                    wholeBattalionInReserve
+                        ? TacticalAssignmentReason.DivisionReserve
+                        : ReferenceEquals(assignedSector, order.PrioritySector)
+                            ? TacticalAssignmentReason.PriorityObjective
+                            : TacticalAssignmentReason.SecondaryObjective;
+
                 assignments.Add(
                     new TacticalCompanyAssignment(
                         company,
                         assignedSector,
-                        role));
+                        role,
+                        reason));
             }
         }
 
         return new TacticalDeploymentPlan(
             battle,
-            order.Division,
+            order,
             assignments);
     }
 
@@ -212,6 +231,10 @@ public static class TacticalCommandSystem
 
         ValidateDivision(battle, plan.Division);
 
+        if (battle.HasAppliedPlan(plan.Division))
+            throw new InvalidOperationException(
+                "An applied order already exists for this division.");
+
         var seen = new HashSet<Company>(
             ReferenceEqualityComparer.Instance);
 
@@ -264,6 +287,9 @@ public static class TacticalCommandSystem
                     assignment.Sector,
                     assignment.Role));
         }
+
+        // The provenance is recorded only after the full plan is applied.
+        battle.RecordAppliedPlan(plan);
 
         return created.AsReadOnly();
     }

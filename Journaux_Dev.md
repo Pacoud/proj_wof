@@ -3035,7 +3035,7 @@ C2.1b :
 - Affectation des compagnies aux secteurs.
 - Gestion des réserves et des priorités tactiques.
 
-# COMMIT # 
+# COMMIT d2695a28bb67909354d2c15a34a60e90dd3c53fb # 
 
 ## C2.1b — Commandement tactique automatisé
 
@@ -3089,3 +3089,100 @@ automatiques de bataillons et de compagnies.
 C2.1c : instantanés tactiques permettant à l'interface
 de visualiser secteurs, bataillons, compagnies,
 postures et réserves.
+
+# COMMIT # 
+### C2.1c — Observation des décisions tactiques
+
+### Objectif
+
+Conserver et restituer les décisions réellement appliquées
+par le commandement tactique, sans inventer leur justification
+dans la future interface.
+
+### Architecture
+
+TacticalAssignmentReason : raison d'affectation d'une compagnie.
+
+TacticalDeploymentPlan conserve l'ordre divisionnaire source.
+
+TacticalBattle conserve les plans effectivement appliqués.
+
+TacticalBattleSnapshotBuilder capture un instantané détaché
+des objets vivants du moteur.
+
+TacticalBattleReportFormatter produit un rapport textuel
+à partir de cet instantané.
+
+### Fonctionnement
+
+Distinction entre objectif prioritaire, objectif secondaire
+et réserve divisionnaire.
+
+Enregistrement du plan après son application complète.
+
+Refus d'un second plan appliqué pour une même division.
+
+Capture des secteurs, terrains, liaisons et ordres.
+
+Observation des compagnies, de leurs bataillons, rôles,
+effectifs disponibles et chars opérationnels ou endommagés.
+
+Identification locale des divisions par ParticipantIndex,
+sans supposer leurs noms ou les identifiants des compagnies
+uniques dans toute la bataille.
+
+Un déploiement manuel conserve une origine non documentée.
+
+### Invariants
+
+Un plan simplement calculé n'est pas présenté comme appliqué.
+
+Les raisons exposées proviennent des affectations enregistrées.
+
+Les instantanés produits ne conservent pas de références
+vivantes vers les unités, secteurs ou stocks physiques.
+
+Les valeurs déjà capturées restent indépendantes des
+modifications ultérieures du moteur.
+
+Les ressources physiques restent dans les compositions :
+les instantanés en copient les valeurs sans créer
+une seconde comptabilité.
+
+### Tests ajoutés
+
+Restitution des ordres et des affectations automatiques.
+
+Absence de décision appliquée avant ApplyPlan.
+
+Conservation des effectifs capturés après modification
+des stocks physiques.
+
+Absence de justification inventée pour un déploiement manuel.
+
+Distinction de participants partageant des identifiants
+de compagnie identiques.
+
+Résultats d'exécution à renseigner après validation locale.
+
+### Intégration
+
+Script Python ponctuel pour adapter TacticalCommandSystem
+et TacticalBattle ; aucune dépendance Python à l'exécution.
+
+Correction du nom de fichier :
+TacticalBatlle.cs devient TacticalBattle.cs.
+
+### Limites
+
+Aucun calcul d'affrontement tactique ni déplacement local.
+
+Aucun raccordement automatique à SimulationEngine.Tick().
+
+Aucun affichage tactique dans Avalonia à ce stade.
+
+Les raisons décrivent la politique de répartition existante,
+pas un raisonnement fondé sur les doctrines ou le matériel.
+
+Les renseignements des deux camps sont exposés pour
+le diagnostic, sans filtrage du brouillard de guerre.
