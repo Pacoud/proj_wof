@@ -3187,7 +3187,7 @@ pas un raisonnement fondé sur les doctrines ou le matériel.
 Les renseignements des deux camps sont exposés pour
 le diagnostic, sans filtrage du brouillard de guerre.
 
-# COMMIT # 
+# COMMIT aaef01e41fde4757278b829b32cdfdee42f3d0db # 
 ### C2.1d — Inspection tactique dans Avalonia
 
 Objectif :
@@ -3235,3 +3235,95 @@ Prochaine étape :
 C2.2 — Identification des interactions locales
 entre compagnies et premiers modèles d'exposition
 au terrain.
+
+# COMMIT #  
+
+## C2.2a — Détection des contacts tactiques potentiels
+
+## Objectif
+
+Introduire un premier système capable d'identifier les
+compagnies adverses susceptibles d'interagir au sein
+d'une bataille tactique.
+
+Cette itération prépare les futurs calculs d'exposition,
+de visibilité et de résolution des affrontements.
+
+## Architecture
+
+Nouveau composant :
+TacticalContactDetector
+
+Structures introduites :
+- TacticalContactCandidate
+- TacticalContactTopology
+
+Deux topologies sont reconnues :
+- SameSector : compagnies dans le même secteur.
+- ConnectedSectors : compagnies présentes dans deux
+  secteurs reliés par une connexion tactique.
+
+Ces relations décrivent une proximité topologique,
+et non une capacité de tir confirmée.
+
+## Règles initiales
+
+- Seules les compagnies en première ligne participent
+  à la détection des contacts directs.
+- Les compagnies sans personnel disponible sont exclues.
+- Les deux formations doivent appartenir à des pays
+  actuellement en guerre.
+- Les réserves et soutiens n'interviennent pas encore
+  comme participants directs.
+- Les secteurs doivent être identiques ou directement
+  connectés.
+- Aucune relation n'est dupliquée.
+
+## Choix de conception
+
+Le détecteur reçoit explicitement le système diplomatique.
+
+Les unités sont regroupées localement par secteur,
+afin d'éviter une comparaison exhaustive entre toutes
+les compagnies de la bataille.
+
+Les objets de contact référencent les déploiements
+existants et ne créent aucune nouvelle ressource.
+
+La détection ne modifie pas l'état militaire.
+
+## Limites
+
+- Aucun calcul de tir.
+- Aucune perte de personnel ou de matériel.
+- Aucun effet de suppression ou d'organisation.
+- Pas de ligne de vue effective.
+- Pas de portée des armes.
+- Pas de position individuelle des compagnies
+  à l'intérieur des secteurs.
+- Pas encore de mécanisme d'appui tactique.
+- Pas de synchronisation avec les ticks stratégiques.
+- Pas encore d'affichage des contacts dans Avalonia.
+
+## Validation attendue des tests 
+
+Huit tests couvrent :
+- Contacts dans un même secteur.
+- Contacts entre secteurs connectés.
+- Absence de contact entre secteurs éloignés.
+- Exclusion des soutiens et réserves.
+- Absence de doublons.
+- Vérification de l'état de guerre.
+- Exclusion des compagnies sans personnel.
+- Conservation de l'état militaire.
+
+## Suite envisagée — C2.2b
+
+Introduire une représentation de l'exposition,
+des positions tactiques et de la visibilité.
+
+Distinguer les contacts possibles des contacts
+effectivement exploitables pour un engagement.
+
+Étudier les conditions d'intervention des unités
+de soutien et des armes à portée indirecte.
