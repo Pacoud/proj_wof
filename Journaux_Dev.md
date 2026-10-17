@@ -3236,7 +3236,7 @@ C2.2 — Identification des interactions locales
 entre compagnies et premiers modèles d'exposition
 au terrain.
 
-# COMMIT #  
+# COMMIT e29c41d4353fdf649bea2e958818b3a2390da761 #  
 
 ## C2.2a — Détection des contacts tactiques potentiels
 
@@ -3327,3 +3327,73 @@ effectivement exploitables pour un engagement.
 
 Étudier les conditions d'intervention des unités
 de soutien et des armes à portée indirecte.
+
+# COMMIT # 
+
+## C2.2b.1 — Fondations de la géométrie tactique locale
+
+### Objectif
+
+Ajouter une représentation spatiale simplifiée
+aux batailles tactiques de WoF.
+
+### Nouvelles structures
+
+- TacticalPoint : coordonnées locales X/Y et altitude.
+- SectorGeometry : centre et rayon approximatif
+  d'un secteur.
+- CompanyTacticalPosition : position, orientation
+  et largeur de front d'une compagnie.
+- TacticalGeometryMap : gestion des géométries
+  et positions associées à une bataille.
+- TacticalSpatialRelation : distances et angles
+  relatifs entre deux formations.
+
+### Fonctionnement
+
+- Repère local en mètres.
+- X vers l'est, Y vers le nord.
+- Orientation : 0° nord, 90° est.
+- Position unique par déploiement.
+- Validation des limites approximatives du secteur.
+- Distance horizontale entre compagnies.
+- Différence d'altitude signée.
+- Distance spatiale en ligne droite.
+- Direction absolue et relative des formations.
+
+### Invariants
+
+- Aucune duplication de compagnie.
+- Aucun nouveau stock de personnel ou de matériel.
+- Une position référence un déploiement existant.
+- Les coordonnées invalides sont rejetées.
+- Les déploiements étrangers sont rejetés.
+- Les opérations géométriques ne modifient pas
+  les ressources militaires.
+
+### Limites
+
+- Secteurs approximés par des cercles.
+- Aucun obstacle géométrique.
+- Aucun calcul de ligne de vue.
+- Pas de portée d'arme.
+- Pas de mouvement tactique.
+- Pas de contrôle des chevauchements de fronts.
+- Pas encore de placement spatial automatisé.
+- Pas encore de raccordement au détecteur C2.2a.
+- Pas encore d'affichage des positions dans Avalonia.
+
+### Tests prévus
+
+- Validation des coordonnées et des secteurs.
+- Vérification des appartenances géographiques.
+- Unicité des positions.
+- Exclusion des déploiements étrangers.
+- Calcul des distances et orientations.
+- Conservation de l'état militaire.
+
+### Prochaine étape : C2.2b.2
+
+Ajouter des obstacles géométriques simplifiés
+et déterminer si un corridor d'observation est
+bloqué par le relief ou par un obstacle connu.
