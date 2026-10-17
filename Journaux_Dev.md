@@ -2985,3 +2985,107 @@ Conclusion :
 Objectif d'indexation atteint.
 C1.2d clôturée, passage à C2.
 
+
+# COMMIT 9bac427097cca77b08598e0616ffe3ef05bf0d43 # 
+
+## C2.1a — Fondations du combat tactique hybride
+
+### Objectif
+Introduire la représentation locale d'une bataille,
+sans modifier la résolution stratégique existante.
+
+### Architecture
+- TacticalBattle référence un Engagement existant.
+- TacticalBattlefield représente un graphe de secteurs.
+- BattleSector décrit le terrain dominant, l'altitude
+  et certaines caractéristiques secondaires.
+- SectorConnection décrit les liaisons et distances.
+- CompanyDeployment référence une véritable Company.
+- Les bataillons sont retrouvés à partir des compagnies.
+
+### Invariants
+- Aucun stock de personnel ou de matériel dupliqué.
+- Une compagnie n'a qu'un déploiement par bataille.
+- Seules les divisions participantes peuvent
+  fournir des compagnies à une bataille.
+- Les secteurs appartiennent à un champ de bataille.
+- Les identifiants de secteur sont uniques
+  à l'intérieur d'un champ de bataille.
+- Les compagnies conservent leurs parents physiques.
+- Les déploiements sont initialement immuables.
+
+### Tests
+- Terrains hétérogènes et connexions.
+- Rejet des connexions et secteurs invalides.
+- Identité et appartenance des compagnies.
+- Conservation des ressources physiques.
+- Rejet des déploiements multiples et étrangers.
+
+### Limites volontaires
+- Aucun calcul de combat tactique.
+- Aucun déplacement tactique.
+- Aucun commandement automatique pour l'instant.
+- Pas encore d'intégration à SimulationEngine.Tick().
+- Aucun affichage tactique dans Avalonia.
+
+### Prochaine étape
+C2.1b :
+- Ordres divisionnaires.
+- Répartition automatique des bataillons.
+- Affectation des compagnies aux secteurs.
+- Gestion des réserves et des priorités tactiques.
+
+# COMMIT # 
+
+## C2.1b — Commandement tactique automatisé
+
+### Objectif
+Transformer un ordre divisionnaire en déploiements
+automatiques de bataillons et de compagnies.
+
+### Architecture
+- DivisionTacticalOrder : ordre donné à la division.
+- TacticalPosture : attaque ou défense.
+- TacticalCommandSystem : planification automatique.
+- TacticalDeploymentPlan : plan inspectable et validable.
+- TacticalCompanyAssignment : affectation prévue
+  d'une compagnie à un secteur et à un rôle.
+
+### Fonctionnement
+- Bataillons traités dans l'ordre de leurs identifiants.
+- Répartition sur les secteurs désignés.
+- Renforcement du secteur prioritaire.
+- Réservation possible de bataillons entiers.
+- Répartition des compagnies en première ligne,
+  soutien et réserve selon la posture.
+- Planification sans mutation des ressources.
+- Validation préalable à l'application du plan.
+
+### Invariants
+- Seules les divisions participantes sont admises.
+- Aucun bataillon ni aucune compagnie n'est dupliqué.
+- Les ressources physiques restent dans CompanyComposition.
+- Les objectifs doivent appartenir au champ de bataille.
+- Un plan périmé est rejeté avant son application.
+
+### Tests
+- Répartition selon les priorités.
+- Réserves divisionnaires.
+- Différence entre attaque et défense.
+- Déterminisme de la planification.
+- Ordres invalides et plans périmés.
+
+### Limites
+- Politique de déploiement provisoire.
+- Pas encore de prise en compte détaillée des doctrines.
+- Pas encore de sélection fondée sur le matériel.
+- Pas de capacité maximale des secteurs.
+- Pas de déplacement ou de redéploiement tactique.
+- Pas de calcul d'affrontements locaux.
+- Pas encore de déclenchement automatique depuis
+  SimulationEngine.Tick().
+
+### Prochaine étape
+C2.1c : instantanés tactiques permettant à l'interface
+de visualiser secteurs, bataillons, compagnies,
+postures et réserves.
