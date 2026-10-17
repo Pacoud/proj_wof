@@ -761,6 +761,19 @@ public partial class MainWindow : Window
         LoadScenario();
     }
 
+    
+    private void OnTacticalDemoClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        var snapshot = TacticalDemoScenario.CreateSnapshot();
+
+        var window = new TacticalBattleWindow(snapshot);
+
+        window.Show(this);
+    }
+
+
 
     private void OnDivisionSelectionChanged(
         object? sender,

@@ -3090,7 +3090,7 @@ C2.1c : instantanés tactiques permettant à l'interface
 de visualiser secteurs, bataillons, compagnies,
 postures et réserves.
 
-# COMMIT # 
+# COMMIT 233ec28aa655556a4f9b16a2e6dc2ed99d251f06 # 
 ### C2.1c — Observation des décisions tactiques
 
 ### Objectif
@@ -3186,3 +3186,52 @@ pas un raisonnement fondé sur les doctrines ou le matériel.
 
 Les renseignements des deux camps sont exposés pour
 le diagnostic, sans filtrage du brouillard de guerre.
+
+# COMMIT # 
+### C2.1d — Inspection tactique dans Avalonia
+
+Objectif :
+Permettre l'observation graphique des déploiements
+automatiques produits par le commandement divisionnaire.
+
+## Architecture
+
+TacticalDemoScenario construit une bataille de démonstration
+indépendante de la simulation stratégique principale.
+
+Les déploiements sont produits par TacticalCommandSystem.
+
+TacticalBattleSnapshotBuilder capture l'état tactique.
+
+TacticalBattleWindow affiche uniquement cet instantané.
+
+MainWindow propose un bouton « Démo Tactique »
+
+pour ouvrir la fenêtre d'inspection.
+Fonctionnalités :
+- Fenêtre d'inspection tactique indépendante.
+- Sélection des secteurs.
+- Affichage des terrains et connexions.
+- Regroupement des compagnies par bataillon.
+- Identification des divisions et des camps.
+- Affichage des rôles : première ligne,
+  soutien et réserve.
+- Explication des affectations automatiques.
+- Lecture exclusive de TacticalBattleSnapshot.
+
+Scénario de validation :
+Deux divisions hiérarchiques participent à une
+bataille de démonstration indépendante.
+
+Limites :
+- Pas encore de combat tactique calculé.
+- Pas encore d'intégration aux batailles
+  stratégiques réellement simulées.
+- Pas de mouvement tactique.
+- Pas de filtre de renseignement ennemi.
+- Interface d'inspection, non interface finale.
+
+Prochaine étape :
+C2.2 — Identification des interactions locales
+entre compagnies et premiers modèles d'exposition
+au terrain.

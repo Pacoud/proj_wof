@@ -44,6 +44,9 @@
                 <Button
                     Content="Reset"
                     Click="OnResetClick"/>
+                <Button 
+                Content = "Démo Tactique"
+                Click = "OnTacticalDemoClick" />
 
             </StackPanel>
 
