@@ -3398,7 +3398,7 @@ Ajouter des obstacles géométriques simplifiés
 et déterminer si un corridor d'observation est
 bloqué par le relief ou par un obstacle connu.
 
-# COMMIT #  
+# COMMIT 37cedb3a4d1c0f74f9ba39731f031d43f15d25e5 #  
 ## Obstacles géométriques et corridors d'observation
 
 ### Contexte

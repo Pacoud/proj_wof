@@ -84,6 +84,8 @@ public sealed class TacticalGeometryMap
 {
     private readonly TacticalBattle _battle;
 
+    internal TacticalBattle Battle => _battle;
+
     private readonly List<SectorGeometry> _sectorGeometries =
         new();
 
