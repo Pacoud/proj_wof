@@ -3550,3 +3550,101 @@ Pour chaque contact candidat :
 
 Ce raccordement ne déclenchera pas encore
 d'échanges de tirs ni de pertes.
+
+# COMMIT 6048732741c6f01e0fe3822cdaa3fe3b67b5ecb0 # 
+
+## C2.2b.3 — Évaluation géométrique des contacts tactiques
+
+### Fonctionnalités
+- Raccordement de la détection des contacts (C2.2a)
+  aux positions et obstacles géométriques (C2.2b).
+- Calcul des distances, altitudes et orientations
+  relatives entre compagnies adverses.
+- Évaluation des corridors d'observation dans les
+  deux directions (A → B et B → A).
+- Identification des obstacles bloquants.
+- Conservation des contacts dont la géométrie
+  est inconnue, sans supposer de visibilité.
+- Aucune modification des ressources militaires.
+
+### Architecture
+- `TacticalContactEvaluator` : orchestre la détection
+  et l'évaluation spatiale.
+- `TacticalEvaluatedContact` : regroupe le contact
+  initial, la relation spatiale et les deux résultats
+  d'observation.
+- `TacticalGeometryMap.Battle` : vérifie l'appartenance
+  de la géométrie à la bataille évaluée.
+- Réutilisation des composants existants sans modifier
+  leurs responsabilités.
+
+### Validation
+- 10 nouveaux tests réussis.
+- Suite de tests validée.
+- Aucun calcul de tir ou de pertes introduit.
+
+### Limites
+- Corridor dégagé ≠ ennemi effectivement détecté.
+- Portée des armes, camouflage et reconnaissance
+  non encore pris en compte.
+- Pas encore d'intégration aux ticks stratégiques.
+
+### Prochaine étape
+Introduire la perception tactique des formations :
+distinguer les positions connues du moteur des
+informations réellement accessibles aux unités.
+
+# COMMIT fbcb68ff3aa9e8c90751d46084e5f5e99f6bced3 # 
+
+## C2.2c.1 — Première mémoire de perception tactique
+
+### Fonctionnalités
+- Acquisition provisoire de contacts ennemis selon
+  la distance, l'orientation et les obstacles connus.
+- Observation indépendante dans chaque direction.
+- Mémoire des dernières positions observées.
+- Conservation des contacts perdus sous forme de
+  pistes périmées, avec heure de dernière observation.
+- Réacquisition d'une cible sans créer de nouvelle piste.
+- Pas de partage automatique entre compagnies.
+
+### Architecture
+- `TacticalObservationProfile` : paramètres
+  de portée et de champ de vision.
+- `TacticalPerceptionSystem` : exploite les
+  contacts géométriques et actualise la perception.
+- `TacticalPerceptionState` : conserve les pistes
+  séparément pour chaque compagnie observatrice.
+- `TacticalEnemyContactReport` : expose uniquement
+  un identifiant de piste, une dernière position
+  connue, une heure et un état d'observation.
+- Les références aux véritables cibles restent
+  internes à la mémoire du moteur.
+- Aucun changement au moteur de combat existant.
+
+### Tests — intérêt
+- Orientation et observation réciproque :
+  empêchent de supposer qu'un contact est
+  automatiquement connu des deux camps.
+- Portée, obstacles et géométrie manquante :
+  vérifient qu'aucune information n'est inventée.
+- Perte et réacquisition de contact :
+  vérifient la conservation temporelle des pistes.
+- Isolation des observateurs et des batailles :
+  empêchent les échanges involontaires de données.
+- Déterminisme et conservation des ressources :
+  garantissent une observation sans effets militaires.
+
+### Limites
+- Règles d'observation déterministes et provisoires.
+- Camouflage, météo, reconnaissance et identification
+  détaillée non implémentés.
+- Détection limitée aux candidats de première ligne.
+- Pas de partage de renseignements entre unités.
+- Pas d'intégration automatique aux ticks.
+- Pas encore de filtrage des informations dans Avalonia.
+
+### Suite
+Introduire des règles de détection plus approfondies,
+puis les mécanismes contrôlés de transmission des
+renseignements entre formations.
