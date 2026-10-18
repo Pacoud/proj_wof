@@ -3648,3 +3648,79 @@ informations réellement accessibles aux unités.
 Introduire des règles de détection plus approfondies,
 puis les mécanismes contrôlés de transmission des
 renseignements entre formations.
+
+# COMMIT 2f0a56759a2bfa9c1b7bc1b0cec17a46c3d60c1e # 
+
+
+## C2.2c.2 — Connaissance progressive des contacts ennemis
+
+### Fonctionnalités
+- Introduction de trois niveaux de renseignement : `Suspected`, `Located` et `Identified`.
+- Une simple suspicion peut exister sans position précise.
+- Une localisation possède une position estimée et une marge d'incertitude.
+- Une identification peut contenir une catégorie militaire estimée, éventuellement erronée.
+- Conservation du meilleur renseignement connu même après réception d'informations moins précises.
+- Distinction entre dernière activité observée et dernière position localisée.
+- Maintien des pistes périmées et possibilité de réacquisition.
+
+### Architecture
+- Nouveau `TacticalKnowledgeLevel` pour représenter la progression des renseignements.
+- Extension de `TacticalObservationEvent` avec niveau de connaissance, incertitude et catégorie estimée.
+- Extension de `TacticalPerceptionState` et `TacticalEnemyContactReport` sans exposer les références réelles aux unités ennemies.
+- Conservation des responsabilités de `TacticalPerceptionSystem`, qui continue à fournir des contacts localisés.
+- Aucun changement au système de combat ou aux ressources physiques.
+
+### Tests — objectifs
+- **Progression des renseignements :** vérifier les transitions et la stabilité des identifiants de piste.
+- **Informations limitées :** empêcher qu'une suspicion révèle automatiquement la position ou la véritable catégorie ennemie.
+- **Cohérence temporelle :** empêcher qu'un signal récent actualise artificiellement une ancienne localisation.
+- **Isolation :** garantir l'indépendance des renseignements entre observateurs et batailles.
+- **Intégrité :** rejeter les observations invalides sans modifier l'état militaire.
+- **Compatibilité :** vérifier que l'ancien système de perception continue de fonctionner.
+
+### Limites et suite
+- Pas encore de calcul réel de camouflage ou de fiabilité probabiliste.
+- Incertitude spatiale fournie explicitement, pas encore estimée par un capteur.
+- Pas de dégradation automatique des renseignements avec le temps.
+- Prochaine étape : capacités de détection, dissimulation et signatures d'activité des unités.
+
+
+# COMMIT # 
+## C2.2c.3 — Signatures d'activité et détection tactique
+
+### Fonctionnalités
+- Détectabilité visuelle influencée par l'activité : immobilité, mouvement, tirs.
+- Introduction de trois niveaux de dissimulation.
+- Augmentation de la détectabilité lors des tirs.
+- Détection visuelle soumise à la portée, à l'orientation et aux obstacles.
+- Détection acoustique des tirs pouvant générer une suspicion malgré un obstacle visuel.
+- Localisation visuelle approximative avec une marge d'incertitude.
+- Conservation et péremption des contacts dans la mémoire tactique.
+
+### Architecture
+- `TacticalUnitSignature` : activité et dissimulation d'une compagnie.
+- `TacticalSignatureFrame` : état des signatures pour une passe d'évaluation.
+- `TacticalDetectionProfile` : paramètres des capacités d'observation.
+- `TacticalDetectionSystem` : calcule les observations visuelles et acoustiques puis alimente `TacticalPerceptionState`.
+- Réutilisation de `TacticalContactEvaluator` et des niveaux de connaissance existants.
+- Aucun changement au modèle physique des unités ou à la résolution des combats.
+
+### Tests — intérêt
+- **Camouflage et activité :** vérifier que bouger ou tirer influence effectivement la détectabilité.
+- **Vision et acoustique :** distinguer localisation visuelle et simple suspicion sonore.
+- **Portée et orientation :** empêcher les détections hors des conditions prévues.
+- **Qualité du renseignement :** éviter la divulgation automatique de coordonnées exactes.
+- **Mémoire :** vérifier l'obsolescence des contacts après cessation des signaux.
+- **Isolation et intégrité :** empêcher le partage involontaire et les modifications des ressources militaires.
+
+### Limites
+- Coefficients de détection provisoires, non calibrés historiquement.
+- Activités fournies manuellement, pas encore produites par les mouvements et tirs réels.
+- Acoustique simplifiée, sans propagation ni estimation directionnelle.
+- Évaluation encore limitée aux contacts de première ligne.
+- Pas de détection probabiliste, de météo ou d'identification automatique.
+
+### Suite
+Améliorer la production des signatures et préparer
+la transmission contrôlée des renseignements
+entre compagnies, bataillons et divisions.
