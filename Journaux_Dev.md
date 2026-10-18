@@ -3235,7 +3235,7 @@ Prochaine étape :
 C2.2 — Identification des interactions locales
 entre compagnies et premiers modèles d'exposition
 au terrain.
-
+ 
 # COMMIT e29c41d4353fdf649bea2e958818b3a2390da761 #  
 
 ## C2.2a — Détection des contacts tactiques potentiels
@@ -3328,7 +3328,7 @@ effectivement exploitables pour un engagement.
 Étudier les conditions d'intervention des unités
 de soutien et des armes à portée indirecte.
 
-# COMMIT # 
+# COMMIT 89469af37589d04224826905e15504b8aa22cb86  # 
 
 ## C2.2b.1 — Fondations de la géométrie tactique locale
 
@@ -3397,3 +3397,156 @@ aux batailles tactiques de WoF.
 Ajouter des obstacles géométriques simplifiés
 et déterminer si un corridor d'observation est
 bloqué par le relief ou par un obstacle connu.
+
+# COMMIT #  
+## Obstacles géométriques et corridors d'observation
+
+### Contexte
+
+La phase C2 développe un moteur de combat tactique
+hybride, fondé sur des secteurs et des compagnies.
+
+C2.2a a introduit la détection de contacts potentiels.
+C2.2b.1 a ajouté les positions géométriques locales
+des compagnies, leurs orientations et les distances.
+
+C2.2b.2 permet d'évaluer si un obstacle géométrique
+connu masque un corridor entre deux positions.
+
+## Objectifs
+
+- Représenter les premiers obstacles spatiaux.
+- Identifier leur intersection avec un corridor.
+- Tenir compte des altitudes des observateurs.
+- Déterminer si l'obstacle masque ce corridor.
+- Identifier l'obstacle bloquant le plus proche.
+- Conserver un système sans mutation militaire.
+
+## Nouvelles structures
+
+### TacticalLineObstacle
+
+Obstacle modélisé par un segment horizontal
+avec une altitude supérieure absolue.
+
+Types initialement prévus :
+- Ridge : crête ou obstacle topographique.
+- Wall : mur ou structure opaque.
+
+Les coordonnées sont exprimées en mètres,
+dans le repère local de la bataille.
+
+### TacticalSightEvaluator
+
+Effectue l'évaluation géométrique entre deux
+déploiements possédant des positions spatiales.
+
+Résultats possibles :
+
+- Unknown
+- ClearOfKnownObstacles
+- BlockedByObstacle
+
+Le calcul distingue l'absence d'obstacle connu
+de la visibilité réelle d'un adversaire.
+
+### TacticalSightResult
+
+Conserve :
+- Le statut géométrique du corridor.
+- La distance horizontale entre les formations.
+- L'obstacle bloquant, lorsqu'il existe.
+- Sa distance depuis l'observateur.
+
+## Fonctionnement géométrique
+
+La ligne d'observation relie deux points situés
+au-dessus du sol, à une hauteur configurable.
+
+La hauteur de la ligne est interpolée
+entre l'observateur et la cible.
+
+Les obstacles sont examinés pour déterminer
+leur intersection avec cette trajectoire.
+
+Lorsqu'un obstacle atteint ou dépasse
+la hauteur du corridor, ce dernier est bloqué.
+
+Les segments colinéaires sont également traités.
+
+En cas de plusieurs obstructions, la plus proche
+de l'observateur est retenue.
+
+## Choix architecturaux
+
+La géométrie reste indépendante des stocks
+de personnel et de matériel.
+
+Les obstacles sont associés à une
+TacticalGeometryMap existante.
+
+Le détecteur de contacts tactiques C2.2a
+n'est pas encore modifié.
+
+L'évaluation reste un calcul géométrique pur
+et ne provoque aucun tir ni aucune perte.
+
+## Limites du modèle
+
+Les crêtes sont représentées par des segments
+de hauteur constante, non par des profils
+topographiques complets.
+
+Les coordonnées des obstacles sont explicites :
+elles ne sont pas encore générées automatiquement.
+
+Les attributs de terrain d'un secteur ne créent
+pas automatiquement des obstacles.
+
+La végétation et les bâtiments complexes
+ne possèdent pas encore de géométrie volumique.
+
+Une compagnie est représentée par un point
+d'observation, pas par chaque soldat.
+
+Aucun modèle de météo, fumée, camouflage,
+éclairage ou reconnaissance n'est appliqué.
+
+L'orientation des compagnies ne limite pas
+encore l'observation.
+
+ClearOfKnownObstacles ne signifie pas que
+l'adversaire est effectivement visible.
+
+Le calcul n'est pas encore intégré aux contacts
+candidats de C2.2a.
+
+Aucun résultat n'est encore affiché dans Avalonia.
+
+## Tests prévus
+
+- Crête bloquant un corridor.
+- Obstacle trop bas pour masquer la cible.
+- Obstacle situé hors trajectoire.
+- Identification de l'obstacle le plus proche.
+- Interpolation sur terrain en pente.
+- Obstacle colinéaire.
+- Positions manquantes ou confondues.
+- Validation des obstacles et hauteurs.
+- Déterminisme et conservation des ressources.
+
+## Prochaine itération — C2.2b.3
+
+Raccorder TacticalSightEvaluator
+à TacticalContactDetector.
+
+Pour chaque contact candidat :
+- Identifier les positions géométriques.
+- Mesurer les distances.
+- Évaluer les obstacles connus.
+- Produire une relation tactique enrichie.
+- Distinguer les corridors bloqués des corridors
+  potentiellement exploitables.
+
+Ce raccordement ne déclenchera pas encore
+d'échanges de tirs ni de pertes.

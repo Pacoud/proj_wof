@@ -98,6 +98,18 @@ public sealed class TacticalGeometryMap
         CompanyTacticalPosition>
         _byDeployment = new(ReferenceEqualityComparer.Instance);
 
+
+    private readonly List<TacticalLineObstacle> _lineObstacles =
+        new();
+
+    private readonly Dictionary<int, TacticalLineObstacle> _obstaclesById = new();
+
+    public IReadOnlyList<TacticalLineObstacle> LineObstacles
+    {
+        get;
+    }
+
+
     public IReadOnlyList<SectorGeometry> SectorGeometries
     {
         get;
@@ -107,6 +119,7 @@ public sealed class TacticalGeometryMap
     {
         get;
     }
+
 
     public TacticalGeometryMap(TacticalBattle battle)
     {
@@ -120,6 +133,7 @@ public sealed class TacticalGeometryMap
 
         SectorGeometries = _sectorGeometries.AsReadOnly();
         CompanyPositions = _positions.AsReadOnly();
+        LineObstacles = _lineObstacles.AsReadOnly();
     }
 
     /// <summary>
@@ -182,6 +196,21 @@ public sealed class TacticalGeometryMap
                 ? geometry
                 : null;
     }
+
+        
+    public void AddLineObstacle(TacticalLineObstacle obstacle)
+    {
+        ArgumentNullException.ThrowIfNull(obstacle);
+
+        EnsureActive();
+
+        if (!_obstaclesById.TryAdd(obstacle.Id, obstacle))
+            throw new InvalidOperationException(
+                "Obstacle ID already exists in this geometry map.");
+
+        _lineObstacles.Add(obstacle);
+    }
+
 
     /// <summary>
     /// Place une compagnie déjà déployée
