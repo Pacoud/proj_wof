@@ -3685,7 +3685,7 @@ renseignements entre formations.
 - Prochaine étape : capacités de détection, dissimulation et signatures d'activité des unités.
 
 
-# COMMIT # 
+# COMMIT 4e7af8510e992a1055c70e11a6a447ae1cff1c7e # 
 ## C2.2c.3 — Signatures d'activité et détection tactique
 
 ### Fonctionnalités
@@ -3724,3 +3724,100 @@ renseignements entre formations.
 Améliorer la production des signatures et préparer
 la transmission contrôlée des renseignements
 entre compagnies, bataillons et divisions.
+
+# COMMIT e1a14f0ca7f7ce0f7178080a8c02a69d7d704b07 # 
+
+## C2.2c.4 — Transmission hiérarchique des renseignements
+
+### Fonctionnalités
+- Transmission progressive compagnie → bataillon → division.
+- Délais configurables pour chaque échelon.
+- Aucune transmission instantanée à la hiérarchie.
+- Conservation des renseignements d'origine et de leurs dates.
+- Actualisation des rapports supérieurs uniquement
+  après réception d'un nouveau message.
+- Rapports de compagnies différentes conservés séparément.
+- Aucun partage automatique entre bataillons voisins.
+- Aucun transfert de renseignement vers l'adversaire.
+
+### Architecture
+- `TacticalCommunicationDelays` : configuration des délais.
+- `TacticalIntelligenceRelay` : gestion des messages
+  en transit à l'aide d'une PriorityQueue.
+- `TacticalRelayedContactReport` : copie de renseignement
+  indiquant sa provenance et son heure de réception.
+- Mémoires de renseignement distinctes par bataillon
+  et par division.
+- Réutilisation de `TacticalPerceptionState` comme source.
+- Aucun changement aux classes Company, Battalion, Division.
+
+### Tests — intérêt
+- Délais : vérifient la progression réelle des messages.
+- Mise à jour : empêchent la connaissance instantanée
+  d'un renseignement amélioré.
+- Obsolescence : conservent les dates d'observation.
+- Sources multiples : évitent les fusions incorrectes.
+- Isolation : empêchent les partages non autorisés
+  entre formations.
+- Intégrité : préviennent doublons, erreurs temporelles
+  et modifications des ressources physiques.
+
+### Limites
+- Délais horaires fixes, sans moyens radio/téléphone.
+- Aucun risque de perte ou d'interception des messages.
+- Pas encore de fusion des renseignements entre observateurs.
+- Pas de transmission descendante ni latérale.
+- Publication explicite après la mise à jour de perception.
+- Pas encore d'intégration automatique à SimulationEngine.
+
+### Suite
+Introduire la qualité des communications et préparer
+la fusion contrôlée des renseignements entre sources.
+
+# COMMIT # 
+
+## C2.2c.5a — Réseau et routage des communications
+
+### Fonctionnalités
+- Réseau de communication orienté entre compagnies,
+  bataillons et divisions.
+- Liaisons radio, téléphoniques et par messager.
+- Délais de transmission exprimés en minutes.
+- Recherche de l'itinéraire le plus rapide.
+- Transmissions événementielles, liaison par liaison.
+- Interruption des messages si une liaison devient
+  indisponible avant leur réception.
+- Partage explicite entre bataillons voisins.
+
+### Architecture
+- `TacticalCommunicationNetwork` : graphe des liaisons.
+- `TacticalMessageRouter` : Dijkstra avec cache versionné.
+- `TacticalNetworkIntelligenceRelay` : file d'événements
+  et mémoires distinctes par échelon.
+- Conservation de l'ancien relais pendant la migration.
+- Publication explicite des nouvelles observations,
+  sans balayage global des compagnies à chaque tick.
+- Compteurs de routage et de messages pour le profilage.
+
+### Tests — intérêt
+- Routage et cache : vérifier le meilleur chemin et
+  éviter les recalculs inutiles.
+- Délais : préserver l'ordre des réceptions, même
+  lors de sauts temporels.
+- Liaisons coupées : empêcher les messages fantômes.
+- Partage : garantir une diffusion volontaire et
+  séparée entre formations.
+- Intégrité : éviter les fuites de renseignement et
+  toute modification des ressources militaires.
+
+### Limites
+- Les équipements physiques ne conditionnent pas
+  encore les liaisons.
+- Messages interrompus non réessayés automatiquement.
+- Pas encore de brouillage ou de congestion.
+- Pas de fusion automatique des rapports.
+- Connexion au moteur principal encore à réaliser.
+
+### Suite
+C2.2c.5b : relier les communications aux stocks
+de radios, aux unités de transmissions et à leurs pertes.
