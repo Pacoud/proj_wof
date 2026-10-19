@@ -3774,7 +3774,7 @@ entre compagnies, bataillons et divisions.
 Introduire la qualité des communications et préparer
 la fusion contrôlée des renseignements entre sources.
 
-# COMMIT # 
+# COMMIT a802e04c68fa3afbc89114720018cdd436c9e35a # 
 
 ## C2.2c.5a — Réseau et routage des communications
 

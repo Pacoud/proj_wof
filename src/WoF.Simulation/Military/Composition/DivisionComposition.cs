@@ -12,18 +12,22 @@ public sealed class DivisionComposition
 
     public StrengthPool Trucks { get; }
 
+    public StrengthPool Radios {get; }
+
     public DivisionComposition(
         int manpower,
         int infantryEquipment,
         int artillery,
         int tanks,
-        int trucks = 0)
+        int trucks = 0,
+        int radios = 0)
         : this(
             new PersonnelPool(manpower),
             new StrengthPool(infantryEquipment),
             new StrengthPool(artillery),
             new TankPool(tanks),
-            new StrengthPool(trucks)
+            new StrengthPool(trucks),
+            new StrengthPool(radios)
         )
     {
     }
@@ -33,7 +37,8 @@ public sealed class DivisionComposition
         StrengthPool infantryEquipment,
         StrengthPool artillery,
         TankPool tanks,
-        StrengthPool? trucks = null)
+        StrengthPool? trucks = null,
+        StrengthPool? radios = null)
     {
         Manpower =
             manpower
@@ -62,6 +67,8 @@ public sealed class DivisionComposition
         Trucks = 
             trucks
             ?? new StrengthPool(0);
+
+        Radios = radios ?? new StrengthPool(0);
             
     }
 }

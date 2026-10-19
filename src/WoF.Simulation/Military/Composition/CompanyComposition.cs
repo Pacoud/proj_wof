@@ -13,6 +13,8 @@ public sealed class CompanyComposition
 
     public StrengthPool Trucks { get; }
 
+    public StrengthPool Radios {get; }
+
     private bool _assigned;
 
     internal void ClaimOwnership()
@@ -31,7 +33,8 @@ public sealed class CompanyComposition
         int infantryEquipment = 0,
         int artillery = 0,
         int tanks = 0,
-        int trucks = 0)
+        int trucks = 0,
+        int radios = 0)
     {
         Manpower = new PersonnelPool(manpower);
 
@@ -43,5 +46,7 @@ public sealed class CompanyComposition
         Tanks = new TankPool(tanks);
 
         Trucks = new StrengthPool(trucks);
+
+        Radios = new StrengthPool(radios);
     }
 }

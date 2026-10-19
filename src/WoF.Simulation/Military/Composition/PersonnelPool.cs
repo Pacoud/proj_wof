@@ -5,6 +5,8 @@ namespace WoF.Simulation.Military.Composition;
 
 public sealed class PersonnelPool
 {
+    public event Action? Changed;
+
     public int Authorized { get; }
 
     public int Current { get; private set; }
@@ -83,6 +85,9 @@ public sealed class PersonnelPool
 
         MissingOrCaptured +=
             casualties.MissingOrCaptured;
+
+        if (casualties.Total > 0)
+            Changed?.Invoke();
     }
 
     public int ReturnWoundedToDuty(
@@ -112,6 +117,9 @@ public sealed class PersonnelPool
 
         Current +=
             returned;
+        
+        if (returned> 0)
+        Changed?.Invoke(); 
 
         return returned;
     }
@@ -134,6 +142,10 @@ public sealed class PersonnelPool
 
         Current +=
             received;
+
+        if (received > 0)
+        
+        Changed?.Invoke();
 
         return received;
     }

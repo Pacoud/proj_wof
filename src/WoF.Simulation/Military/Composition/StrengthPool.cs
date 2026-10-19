@@ -2,6 +2,8 @@ namespace WoF.Simulation.Military.Composition;
 
 public sealed class StrengthPool
 {
+    public event Action? Changed;
+
     public int Authorized { get; }
 
     public int Current { get; private set; }
@@ -61,7 +63,8 @@ public sealed class StrengthPool
 
         Current -=
             actualLoss;
-
+        if (actualLoss> 0)
+        Changed?.Invoke();
         return actualLoss;
     }
 
@@ -83,6 +86,9 @@ public sealed class StrengthPool
 
         Current +=
             actualReinforcement;
+
+        if (actualReinforcement > 0)
+            Changed?.Invoke();
 
         return actualReinforcement;
     }

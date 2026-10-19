@@ -61,6 +61,9 @@ public readonly record struct TankTotals(
         TankTotals Tanks,
         StockTotals Trucks)
     {
+
+    public StockTotals Radios {get; init; }
+
     public static FormationResourceTotals Capture(
         CompanyComposition composition)
     {
@@ -71,7 +74,8 @@ public readonly record struct TankTotals(
             composition.InfantryEquipment,
             composition.Artillery,
             composition.Tanks,
-            composition.Trucks
+            composition.Trucks,
+            composition.Radios
         );
     }
 
@@ -85,7 +89,8 @@ public readonly record struct TankTotals(
             composition.InfantryEquipment,
             composition.Artillery,
             composition.Tanks,
-            composition.Trucks
+            composition.Trucks,
+            composition.Radios
         );
     }
 
@@ -94,7 +99,8 @@ public readonly record struct TankTotals(
         StrengthPool infantry,
         StrengthPool artillery,
         TankPool tanks,
-        StrengthPool trucks)
+        StrengthPool trucks,
+        StrengthPool radios)
     {
         return new FormationResourceTotals(
             new PersonnelTotals(
@@ -127,7 +133,13 @@ public readonly record struct TankTotals(
                 trucks.Authorized,
                 trucks.Current
             )
-        );
+        )
+        {
+            Radios = new StockTotals(
+                radios.Authorized,
+                radios.Current
+            )
+        };
     }
 
     public static FormationResourceTotals operator +(
@@ -140,7 +152,10 @@ public readonly record struct TankTotals(
             a.Artillery + b.Artillery,
             a.Tanks + b.Tanks,
             a.Trucks + b.Trucks
-        );
+        )
+        {
+            Radios = a.Radios + b.Radios
+        };
     }
 }
 

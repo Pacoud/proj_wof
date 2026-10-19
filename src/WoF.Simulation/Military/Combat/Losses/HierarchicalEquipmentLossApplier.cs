@@ -26,7 +26,8 @@ public static class HierarchicalEquipmentLossApplier
 
         if (losses.InfantryEquipment < 0 ||
             losses.Artillery < 0 ||
-            losses.Trucks < 0)
+            losses.Trucks < 0 ||
+            losses.Radios < 0)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(losses));
@@ -57,6 +58,12 @@ public static class HierarchicalEquipmentLossApplier
             t => t.Composition.Trucks.Current
         );
 
+        int[] radioShares = Distribute(
+            losses.Radios,
+            targets,
+            t => t.Composition.Radios.Current
+        );
+
         // PHASE 3 :
         // Toutes les demandes sont valides.
         // Nous pouvons maintenant appliquer les pertes.
@@ -70,7 +77,8 @@ public static class HierarchicalEquipmentLossApplier
             var allocation = new EquipmentLossReport(
                 infantryShares[i],
                 artilleryShares[i],
-                truckShares[i]
+                truckShares[i],
+                radioShares[i]
             );
 
             if (allocation == default)
@@ -84,6 +92,10 @@ public static class HierarchicalEquipmentLossApplier
 
             composition.Trucks.ApplyLoss(
                 allocation.Trucks);
+
+            composition.Radios.ApplyLoss(
+                allocation.Radios
+            );
 
             results.Add(new CompanyEquipmentLossAllocation(
                 targets[i].BattalionId,

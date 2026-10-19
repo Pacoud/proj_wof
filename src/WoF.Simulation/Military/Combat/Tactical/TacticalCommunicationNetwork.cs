@@ -65,7 +65,7 @@ public sealed class TacticalCommunicationLink
 /// Graphe oriente des liaisons de communication.
 /// Le reseau appartient a une unique bataille.
 /// </summary>
-public sealed class TacticalCommunicationNetwork
+public sealed partial class TacticalCommunicationNetwork : IDisposable
 {
     private readonly TacticalBattle _battle;
 
@@ -240,10 +240,12 @@ public sealed class TacticalCommunicationNetwork
 
     internal bool IsAvailable(TacticalCommunicationLink link)
     {
+        ArgumentNullException.ThrowIfNull(link);
         ValidateNode(link.From);
 
         return _adjacency[link.From].Contains(link)
-            && link.IsOperational;
+            && link.IsOperational
+            && IsPhysicallyAvailable(link);
     }
 
     internal void ValidateNode(TacticalCommunicationNode node)
@@ -273,5 +275,10 @@ public sealed class TacticalCommunicationNetwork
             _ => throw new InvalidOperationException(
                 "Unsupported communication node.")
         };
+    }
+
+    public bool CanUse(TacticalCommunicationLink link)
+    {
+        return IsAvailable(link);
     }
 }
