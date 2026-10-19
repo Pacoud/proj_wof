@@ -773,6 +773,14 @@ public partial class MainWindow : Window
         window.Show(this);
     }
 
+    private void OnIntelligenceDemoClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        var window = new TacticalIntelligenceDemoWindow();
+        window.Show(this);
+    }
+
 
 
     private void OnDivisionSelectionChanged(

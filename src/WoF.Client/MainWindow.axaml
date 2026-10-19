@@ -47,7 +47,9 @@
                 <Button 
                 Content = "Démo Tactique"
                 Click = "OnTacticalDemoClick" />
-
+                 <Button
+                    Content="Démo Reconaissance"
+                    Click="OnIntelligenceDemoClick"/>
             </StackPanel>
 
         </Border>

@@ -3821,3 +3821,60 @@ la fusion contrôlée des renseignements entre sources.
 ### Suite
 C2.2c.5b : relier les communications aux stocks
 de radios, aux unités de transmissions et à leurs pertes.
+
+# COMMIT 79028fc564d973ebb4b2ce9fb474babaf178ca1a #
+
+## C2.2c.5b — Communications et ressources physiques
+
+### Fonctionnalités
+- Introduction des radios comme équipements physiques.
+- Prise en compte des pertes et renforcements radio.
+- Indisponibilité des communications lorsque les
+  radios ou les opérateurs nécessaires sont absents.
+- Dépendance possible de plusieurs QG à une compagnie
+  spécialisée Signals.
+- Recalcul des itinéraires en cas de rupture ou
+  de rétablissement d'une capacité de communication.
+- Maintien des alternatives par messager ou téléphone.
+
+### Architecture
+- Ajout de Radios dans CompanyComposition,
+  DivisionComposition et FormationResourceTotals.
+- Intégration des pertes radio dans
+  HierarchicalEquipmentLossApplier.
+- Événements Changed sur StrengthPool et PersonnelPool.
+- TacticalRadioReadiness rattache les nœuds du réseau
+  aux compagnies fournissant leurs moyens radio.
+- Invalidation du cache uniquement lors d'un changement
+  effectif de disponibilité.
+- Abonnements libérés par Dispose().
+- Conservation du routeur et du relais événementiel.
+
+### Tests — intérêt
+- Disponibilité : vérifier qu'une liaison radio nécessite
+  du matériel et du personnel utilisables.
+- Pertes : empêcher qu'une radio détruite reste active.
+- Compagnies Signals : mesurer leurs conséquences
+  sur plusieurs liaisons dépendantes.
+- Cache : éviter les recherches répétées lorsque la
+  capacité de communication ne change pas.
+- Ressources : conserver le comptage physique unique.
+- Transmission : empêcher la livraison par une liaison
+  devenue indisponible.
+- Intégrité : éviter les affectations invalides et
+  les abonnements conservés inutilement.
+
+### Limites
+- Une radio disponible suffit à autoriser une liaison :
+  pas encore de capacité simultanée ni de congestion.
+- Moyens radio affectés explicitement aux nœuds.
+- Téléphone et messager sans ressources physiques dédiées.
+- Messages interrompus non réacheminés automatiquement.
+- Pas encore de brouillage ni de restrictions de portée.
+- Le moteur principal ne génère pas encore automatiquement
+  toutes les signatures et transmissions.
+
+### Suite
+Pause d'intégration Avalonia : démonstration des
+renseignements, réseaux de communication, ruptures
+et mesures des performances en situation simulée.
