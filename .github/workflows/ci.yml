@@ -9,9 +9,14 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Compilation et tests Linux
-    runs-on: ubuntu-24.04
+    name: Compilation et tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
 
     steps:
       - name: Recuperer le code
