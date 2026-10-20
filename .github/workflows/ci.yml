@@ -1,0 +1,32 @@
+name: WoF CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Compilation et tests Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Recuperer le code
+        uses: actions/checkout@v7
+
+      - name: Installer le SDK .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restaurer les dependances
+        run: dotnet restore PrototypeWoF.slnx
+
+      - name: Compiler en Release
+        run: dotnet build PrototypeWoF.slnx --configuration Release --no-restore
+
+      - name: Executer les tests
+        run: dotnet test PrototypeWoF.slnx --configuration Release --no-build --no-restore
