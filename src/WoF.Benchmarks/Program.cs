@@ -6,6 +6,14 @@ using System.Runtime.InteropServices;
 using WoF.Benchmarks;
 using System.Text.Json;
 
+if (args.Length > 0 && args[0] == "tactical")
+{
+    TacticalPerformanceBenchmark.Run(
+        args.Skip(1).ToArray());
+
+    return;
+}
+
 if (args.Length > 0 && args[0] == "history")
 {
     HistoryBenchmark.Run(args.Skip(1).ToArray());

@@ -3878,3 +3878,57 @@ de radios, aux unités de transmissions et à leurs pertes.
 Pause d'intégration Avalonia : démonstration des
 renseignements, réseaux de communication, ruptures
 et mesures des performances en situation simulée.
+
+# COMMIT 247904d9994e53ca59c6c7fb28dcc5f7c7d87815 # 
+
+## C2.3a — Laboratoire d'intégration tactique Avalonia
+
+### Objectifs
+- Revenir au client après les itérations C2.2.
+- Vérifier visuellement la cohérence des systèmes
+  de perception et de transmission.
+- Conserver la démonstration tactique existante.
+
+### Fonctionnalités
+- Scénario expérimental à événements chronologiques.
+- Visualisation des positions physiques en mode développeur.
+- Vues compagnie française, bataillon, division
+  et compagnie allemande.
+- Contacts suspectés et localisés représentés selon
+  les renseignements effectivement disponibles.
+- Simulation d'une coupure des transmissions radio.
+- Acheminement alternatif de renseignements par messager.
+- Réinitialisation du scénario.
+- Premiers compteurs de performances.
+
+### Architecture
+- TacticalIntelligenceDemoScenario orchestre les
+  systèmes existants sans modifier SimulationEngine.
+- TacticalIntelligenceDemoWindow affiche les informations
+  selon le point de vue sélectionné.
+- Réutilisation de TacticalDetectionSystem,
+  TacticalPerceptionState, TacticalCommunicationNetwork
+  et TacticalNetworkIntelligenceRelay.
+- Aucun nouveau moteur de combat ni double comptage
+  des ressources.
+
+### Vérifications
+- Brouillard de guerre : empêcher l'affichage
+  de positions ennemies inconnues.
+- Communications : respecter les délais et les coupures.
+- Mémoire : préserver les dates d'observation.
+- Hiérarchie : distinguer les informations de chaque QG.
+- Diagnostic : afficher les compteurs réseau et les
+  durées de traitement des systèmes.
+
+### Limites
+- Activités de tir scénarisées, sans résolution balistique.
+- Formations et positions fixes pendant la démonstration.
+- Pas encore d'intégration automatique au moteur stratégique.
+- Affichage destiné au diagnostic, non au jeu définitif.
+- Profilage à compléter sur des scénarios plus importants.
+
+### Suite
+Corriger les anomalies observées dans Avalonia,
+puis réaliser des benchmarks à différentes échelles
+avant de reprendre le développement du combat tactique.

@@ -5,11 +5,15 @@ using Avalonia.Controls.Shapes;
 using Avalonia.Layout;
 using Avalonia.Media;
 using WoF.Simulation.Military.Combat.Tactical;
+using System.Diagnostics;
 
 namespace WoF.Client.Prototype;
 
 public sealed class TacticalIntelligenceDemoWindow : Window
 {
+
+    private double _previousUiRefreshMs;
+
     private TacticalIntelligenceDemoScenario _scenario = new();
 
     private readonly Canvas _map = new()
@@ -220,8 +224,12 @@ public sealed class TacticalIntelligenceDemoWindow : Window
 
         var reports = VisibleReports();
 
+        long uiStart = Stopwatch.GetTimestamp();
         RenderMap(developer, reports);
         RenderDetails(developer, reports);
+
+        _previousUiRefreshMs =
+        Stopwatch.GetElapsedTime(uiStart).TotalMilliseconds;
     }
 
     private static double MapX(TacticalPoint point) =>
@@ -385,6 +393,8 @@ public sealed class TacticalIntelligenceDemoWindow : Window
             _details.Children.Add(new Separator());
 
             _details.Children.Add(Text(
+                $"Reconstruction UI précédente : " +
+                $"{_previousUiRefreshMs:F3} ms\n" +
                 $"Radios compagnie Signals : " +
                 $"{_scenario.SignalsCompany.Composition!.Radios.Current}\n" +
                 $"Compagnie → Bataillon : " +
