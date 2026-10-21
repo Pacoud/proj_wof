@@ -384,14 +384,18 @@ public static class TacticalPerformanceBenchmark
 
     public static void Run(string[] args)
     {
-        if (args.Length != 4
+
+        bool waitForProfiler =
+            args.Length == 5 &&
+            args[4] == "--wait-for-profiler";
+        if (args.Length != 4 && !waitForProfiler
             || !int.TryParse(args[0], out int perSide)
             || !int.TryParse(args[1], out int sectors)
             || !int.TryParse(args[2], out int repetitions)
             || !int.TryParse(args[3], out int warmup)
             || perSide < 1 || perSide > 512
             || sectors < 1 || sectors > 32
-            || repetitions < 5 || repetitions > 500
+            || repetitions < 5 || repetitions > 2000
             || warmup < 1 || warmup > 50)
         {
             Console.WriteLine(
@@ -441,6 +445,18 @@ public static class TacticalPerformanceBenchmark
 
         for (int i = 1; i <= warmup; i++)
             scenario.RunPass(i);
+
+        if (waitForProfiler)
+        {
+            Console.WriteLine(
+                $"PROFILE_READY PID={Environment.ProcessId}");
+
+            Console.WriteLine(
+                "Démarre dotnet-trace dans un autre terminal, " +
+                "puis appuie sur Entrée ici.");
+
+            Console.ReadLine();
+        }
 
         int gc0Before = GC.CollectionCount(0);
         int gc1Before = GC.CollectionCount(1);

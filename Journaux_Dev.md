@@ -3932,3 +3932,44 @@ et mesures des performances en situation simulée.
 Corriger les anomalies observées dans Avalonia,
 puis réaliser des benchmarks à différentes échelles
 avant de reprendre le développement du combat tactique.
+
+# COMMIT 71aeb44358abc258970beda4862e1f796e93b02f # 
+## C2.3b — Profilage du moteur tactique
+
+### Objectifs
+- Mesurer les performances avant toute optimisation.
+- Vérifier le passage à l'échelle des mécaniques tactiques.
+- Séparer le coût du moteur et celui du client Avalonia.
+
+### Instrumentation
+- Nouveau mode `tactical` dans `WoF.Benchmarks`.
+- Mesure de la détection, de la publication et des transmissions.
+- Médiane, P95 et allocations mémoire par passe.
+- Compteurs de recherches de routes et de réutilisation du cache.
+- Comparaison de scénarios concentrés et répartis.
+- Exports CSV et JSON reproductibles.
+
+### Contrôles de validité
+- Nombre de contacts potentiels documenté.
+- Nombre de rapports publiés constant par passe.
+- Réception attendue des rapports au QG divisionnaire.
+- Vérification du repli vers les messagers après perte radio.
+- Réchauffement avant les mesures.
+- Scénarios de charge identiques entre les passes.
+
+### Performance du client
+- Instrumentation de la reconstruction de l'interface.
+- Distinction explicite entre calcul, construction UI et rendu réel.
+- Profilage graphique approfondi prévu après le benchmark moteur.
+
+### Limites
+- Charges synthétiques, sans résolution tactique des tirs.
+- Pas encore de météo, de déplacements ou de congestion réseau.
+- Résultats sensibles au matériel et aux paramètres .NET.
+- Performances à interpréter uniquement après exécution réelle.
+
+### Suite
+Analyser les résultats, localiser les goulots d'étranglement
+et n'optimiser que les parties dont le coût est démontré.
+** Implémentation d'une pipeline githubactions CI pour la compilation et les tests ** 
+(COMMITS 39c44634e8afd0ad2d0ac4ad39b27bb0efc18fbd & 19ca01670e7411ea8e98eda80584195b8f1e57cf)
