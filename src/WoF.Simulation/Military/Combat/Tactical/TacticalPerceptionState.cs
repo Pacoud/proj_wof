@@ -399,4 +399,32 @@ public sealed class TacticalPerceptionState
                 "A located contact is not yet identified.");
         }
     }
+
+
+    /// <summary>
+    /// Verifie qu'un observateur possede une localisation
+    /// ACTUELLE de cette cible, sans exposer l'identite
+    /// reelle de la cible dans un rapport public.
+    /// </summary>
+    internal bool HasCurrentLocalization(
+        CompanyDeployment observer,
+        CompanyDeployment target,
+        long currentHour)
+    {
+        if (!_battle.ContainsDeployment(observer)
+            || !_battle.ContainsDeployment(target))
+        {
+            return false;
+        }
+
+        return _tracks.TryGetValue(observer, out var contacts)
+            && contacts.TryGetValue(target, out var track)
+            && track.CurrentlyObserved
+            && track.LastObservedHour == currentHour
+            && track.LastLocatedHour == currentHour
+            && track.CurrentObservationLevel
+                >= TacticalKnowledgeLevel.Located
+            && track.Position is not null;
+    }
+
 }

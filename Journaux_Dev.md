@@ -3976,7 +3976,8 @@ et n'optimiser que les parties dont le coût est démontré.
 (COMMITS 39c44634e8afd0ad2d0ac4ad39b27bb0efc18fbd & 19ca01670e7411ea8e98eda80584195b8f1e57cf)
 
 
-# COMMIT # 
+# COMMIT e70bba554acdc6a7bdf91bad517f4d81dc2c7bb7 # 
+
 ## C2.3c.1 — Optimisation des validations d'appartenance
 
 ### Objectif
@@ -4017,3 +4018,89 @@ Après validation et mesure, reprendre le développement
 des mécanismes de combat tactique. Les optimisations
 des allocations et de l'indexation spatiale restent
 reportées jusqu'à un nouveau besoin démontré.
+
+# COMMIT #
+
+# C2.4a — Autorisation des tirs directs
+
+## Objectif
+
+Introduire les premières conditions d'ouverture du feu
+tactique entre compagnies, en réutilisant les systèmes
+existants de perception, géométrie, terrain et ressources.
+
+
+## Fonctionnalités
+
+- Profil de tir direct : portée et secteur angulaire.
+- Vérification de l'appartenance à la bataille.
+- Vérification de l'état de guerre entre les formations.
+- Restrictions aux unités de première ligne.
+- Vérification du personnel et de l'équipement d'infanterie.
+- Acquisition obligatoire d'une localisation actuelle.
+- Refus des contacts simplement suspectés ou périmés.
+- Vérification de la portée et de l'orientation.
+- Vérification des obstacles bloquant la ligne de vue.
+- Résultat explicite indiquant la cause d'un refus.
+
+## Architecture
+
+- TacticalDirectFireEvaluator : décision pure de tir.
+- TacticalDirectFireProfile : paramètres provisoires.
+- TacticalPerceptionState.HasCurrentLocalization :
+  consultation interne des pistes existantes.
+- Aucune seconde base de données des unités ennemies.
+- Aucun nouveau stock de ressources.
+- Aucune mutation de la simulation pendant l'évaluation.
+
+## Tests
+
+- Détection réelle suivie d'une autorisation de tir.
+- Contacts inconnus, suspectés et périmés.
+- Portée et secteur angulaire.
+- Obstacle entre le tireur et sa cible.
+- Pertes de personnel et d'équipement.
+- Tirs amis, réserve et auto-ciblage.
+- Déploiements étrangers et positions inconnues.
+- Validation des paramètres de tir.
+
+## Limites
+
+- Tir direct aux armes d'infanterie uniquement.
+- Aucun projectile, aucune munition consommée.
+- Aucun dégât ni perte appliquée.
+- Pas encore de cadence de tir ni de rechargement.
+- Pas de modélisation individuelle des armes.
+- Pas de tirs indirects, suppression ou ciblage de zone.
+- Pas de commandes de tir exposées à l'interface joueur.
+
+## Suite
+
+C2.4b : introduire les premiers événements de tir,
+l'affectation d'armes et la consommation de munitions,
+puis préparer une résolution reproductible des impacts.
+```
+
+Ajoute également au README principal :
+
+<CodeBlock language="markdown" editable>
+### Combat tactique — C2.4a
+
+Le moteur dispose d'un premier évaluateur des conditions
+d'ouverture du feu direct.
+
+Une compagnie doit disposer d'hommes et d'équipement,
+avoir une cible ennemie actuellement localisée, être
+à portée et dans son secteur de tir, avec une ligne
+de vue suffisamment dégagée.
+
+L'évaluation est déterministe et ne modifie aucun stock.
+La résolution des tirs, les munitions et les pertes seront
+introduites dans les itérations suivantes.
+
+Tests ciblés :
+
+```bash
+dotnet test -c Release \
+  --filter FullyQualifiedName~TacticalDirectFireTests
+```
