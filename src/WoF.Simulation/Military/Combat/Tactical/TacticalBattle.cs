@@ -128,6 +128,21 @@ public sealed class TacticalBattle
             : null;
     }
 
+        /// <summary>
+    /// Verifie que le deploiement exact appartient
+    /// a cette bataille, sans parcourir la liste.
+    /// </summary>
+    internal bool ContainsDeployment(
+        CompanyDeployment deployment)
+    {
+        ArgumentNullException.ThrowIfNull(deployment);
+
+        return _byCompany.TryGetValue(
+                deployment.Company,
+                out var registered)
+            && ReferenceEquals(registered, deployment);
+    }
+
     public IReadOnlyList<CompanyDeployment>
         GetBattalionDeployments(Battalion battalion)
     {

@@ -3934,6 +3934,7 @@ puis réaliser des benchmarks à différentes échelles
 avant de reprendre le développement du combat tactique.
 
 # COMMIT 71aeb44358abc258970beda4862e1f796e93b02f # 
+
 ## C2.3b — Profilage du moteur tactique
 
 ### Objectifs
@@ -3973,3 +3974,46 @@ Analyser les résultats, localiser les goulots d'étranglement
 et n'optimiser que les parties dont le coût est démontré.
 ** Implémentation d'une pipeline githubactions CI pour la compilation et les tests ** 
 (COMMITS 39c44634e8afd0ad2d0ac4ad39b27bb0efc18fbd & 19ca01670e7411ea8e98eda80584195b8f1e57cf)
+
+
+# COMMIT # 
+## C2.3c.1 — Optimisation des validations d'appartenance
+
+### Objectif
+Réduire le coût CPU des validations répétées observé
+lors du profilage C2.3c, sans modifier les règles
+tactiques ni la mémoire des renseignements.
+
+### Modifications
+- Ajout de TacticalBattle.ContainsDeployment().
+- Réutilisation de l'index existant Company → CompanyDeployment.
+- Suppression des recherches linéaires ciblées dans
+  TacticalPerceptionState et TacticalSignatureFrame.
+- Uniformisation de la validation dans
+  TacticalCommunicationNetwork.ForCompany().
+- Aucune modification du détecteur de contacts,
+  de la géométrie ou du routage.
+
+### Garanties conservées
+- Vérification par identité de référence.
+- Rejet des déploiements étrangers à la bataille.
+- Rejet des objets de déploiement non enregistrés.
+- Validation complète avant mutation de la perception.
+- Conservation des exceptions et des contrats publics.
+
+### Tests
+- Quatre nouveaux tests de non-régression.
+- Exécution de la suite xUnit complète.
+- Vérification CI sous Linux et Windows.
+
+### Mesures
+- Comparaison avec les références C2.3b.
+- Scénarios à 192 compagnies concentrées et réparties.
+- Médiane, P95, allocations et GC.
+- Aucun gain annoncé avant les mesures.
+
+### Suite
+Après validation et mesure, reprendre le développement
+des mécanismes de combat tactique. Les optimisations
+des allocations et de l'indexation spatiale restent
+reportées jusqu'à un nouveau besoin démontré.

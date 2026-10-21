@@ -95,7 +95,7 @@ public sealed partial class TacticalCommunicationNetwork : IDisposable
     {
         ArgumentNullException.ThrowIfNull(deployment);
 
-        if (!_battle.Deployments.Contains(deployment))
+        if (!_battle.ContainsDeployment(deployment))
             throw new InvalidOperationException(
                 "Company deployment is outside this battle.");
 

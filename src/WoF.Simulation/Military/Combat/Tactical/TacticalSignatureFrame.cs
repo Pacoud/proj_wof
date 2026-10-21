@@ -73,7 +73,7 @@ public sealed class TacticalSignatureFrame
             throw new InvalidOperationException(
                 "Cannot update signatures of an ended battle.");
 
-        if (!_battle.Deployments.Contains(deployment))
+        if (!_battle.ContainsDeployment(deployment))
             throw new InvalidOperationException(
                 "Deployment belongs to another battle.");
 
@@ -86,7 +86,7 @@ public sealed class TacticalSignatureFrame
     {
         ArgumentNullException.ThrowIfNull(deployment);
 
-        if (!_battle.Deployments.Contains(deployment))
+        if (!_battle.ContainsDeployment(deployment))
             throw new InvalidOperationException(
                 "Deployment belongs to another battle.");
 

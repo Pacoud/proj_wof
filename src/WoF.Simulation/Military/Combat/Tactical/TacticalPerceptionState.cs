@@ -218,7 +218,7 @@ public sealed class TacticalPerceptionState
     {
         ArgumentNullException.ThrowIfNull(observer);
 
-        if (!_battle.Deployments.Contains(observer))
+        if (!_battle.ContainsDeployment(observer))
         {
             throw new InvalidOperationException(
                 "Observer does not belong to this battle.");
@@ -331,8 +331,8 @@ public sealed class TacticalPerceptionState
             || observation.Target is null
             || ReferenceEquals(
                 observation.Observer, observation.Target)
-            || !_battle.Deployments.Contains(observation.Observer)
-            || !_battle.Deployments.Contains(observation.Target))
+            || !_battle.ContainsDeployment(observation.Observer)
+            || !_battle.ContainsDeployment(observation.Target))
         {
             throw new InvalidOperationException(
                 "Invalid observation participants.");
