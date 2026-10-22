@@ -45,6 +45,17 @@ internal sealed class TacticalDirectFireSystem
         private set;
     }
 
+    private TacticalPersonnelEffectsPhaseResult? _appliedEffectsSource;
+
+    /// <summary>
+    /// Dernier bilan de pertes effectivement appliquees.
+    /// </summary>
+    internal TacticalCasualtyPhaseResult? LastCasualtyPhase
+    {
+        get;
+        private set;
+    }
+
 
     internal TacticalFirePhaseResult? LastPhase { get; private set; }
 
@@ -656,7 +667,119 @@ internal sealed class TacticalDirectFireSystem
         _effectsResolvedSource = contacts;
         LastPersonnelEffectsPhase = result;
 
+        _appliedEffectsSource = null;
+        LastCasualtyPhase = null;
+
         return result;
     }
+
+
+    /// <summary>
+    /// Applique une seule fois les pertes tactiques
+    /// de la derniere phase de consequences.
+    ///
+    /// Ne recalcule ni tirs ni blessures.
+    /// </summary>
+    internal TacticalCasualtyPhaseResult
+        ApplyPersonnelEffectsLastPhase()
+    {
+        var phase = LastPhase
+            ?? throw new InvalidOperationException(
+                "No fire phase has been executed.");
+
+        var contacts = LastPersonnelPhase
+            ?? throw new InvalidOperationException(
+                "No personnel contacts have been resolved.");
+
+        var effects = LastPersonnelEffectsPhase
+            ?? throw new InvalidOperationException(
+                "No personnel effects have been resolved.");
+
+        // L'ensemble de la chaine doit correspondre
+        // a une seule et meme phase de tir.
+        if (!ReferenceEquals(_personnelResolvedSource, phase)
+            || !ReferenceEquals(_effectsResolvedSource, contacts)
+            || contacts.Hour != phase.Hour
+            || effects.Hour != phase.Hour)
+        {
+            throw new InvalidOperationException(
+                "Personnel effects do not match the current fire phase.");
+        }
+
+        if (ReferenceEquals(_appliedEffectsSource, effects))
+        {
+            throw new InvalidOperationException(
+                "Personnel casualties already applied.");
+        }
+
+        if (_lastSnapshots.Length != phase.Events.Count)
+        {
+            throw new InvalidOperationException(
+                "Fire snapshots do not match the current phase.");
+        }
+
+        // Reconstruire les effectifs au moment du tir
+        // a partir des instantanes deja captures.
+        //
+        // Une compagnie attaquee par plusieurs tireurs
+        // n'a qu'un seul effectif d'origine.
+        var availableAtFire =
+            new Dictionary<CompanyDeployment, int>(
+                ReferenceEqualityComparer.Instance);
+
+        for (int i = 0; i < _lastSnapshots.Length; i++)
+        {
+            var snapshot = _lastSnapshots[i];
+
+            if (!ReferenceEquals(
+                    snapshot.FireEvent,
+                    phase.Events[i]))
+            {
+                throw new InvalidOperationException(
+                    "Fire snapshot does not match its event.");
+            }
+
+            var target = snapshot.RealTarget;
+
+            if (target is null
+                || !_battle.ContainsDeployment(target))
+            {
+                throw new InvalidOperationException(
+                    "Snapshot target is outside this battle.");
+            }
+
+            int original =
+                snapshot.TargetPersonnel.Total;
+
+            if (availableAtFire.TryGetValue(
+                target, out int existing))
+            {
+                if (existing != original)
+                {
+                    throw new InvalidOperationException(
+                        "Inconsistent original manpower for target.");
+                }
+            }
+            else
+            {
+                availableAtFire.Add(target, original);
+            }
+        }
+
+        // Valide les pertes et les applique directement
+        // aux compositions physiques des compagnies.
+        var application =
+            TacticalPersonnelCasualtyApplier.Apply(
+                _battle,
+                effects,
+                availableAtFire);
+
+        // Le marquage n'intervient qu'apres succes.
+        _appliedEffectsSource = effects;
+        LastCasualtyPhase = application;
+
+        return application;
+    }
+
 
 }

@@ -4622,7 +4622,7 @@ combattants, distinguer les effets physiques et
 appliquer les pertes aux véritables PersonnelPool,
 sans double comptage avec le combat opérationnel.
 
-# COMMIT # 
+# COMMIT 6bd7da475c3200c8684f50d3b5ef57b1b83a0b02 # 
 
 ## C2.4c.5 — Conséquences des tirs sur les combattants
 
