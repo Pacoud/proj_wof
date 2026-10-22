@@ -4717,3 +4717,173 @@ C2.4c.6 : appliquer les pertes humaines aux
 compagnies, protéger la résolution contre les
 doublons et préparer la transition avec le moteur
 de combat opérationnel.
+
+# COMMIT 9f1e7f233e73765107435feed6f43e16f22d97e0 # 
+
+## C2.4c.6 — Application des pertes tactiques
+
+### Objectif
+Appliquer les morts et blessés calculés par le combat
+tactique aux véritables effectifs des compagnies,
+puis faire remonter les résultats jusqu'aux divisions.
+
+### Fonctionnalités
+- Application directe des pertes aux PersonnelPool.
+- Comptabilisation des tués et blessés indisponibles.
+- Validation complète avant modification des effectifs.
+- Vérification des effectifs présents au moment du tir.
+- Application unique des conséquences d'une phase.
+- Refus des bilans dupliqués ou incohérents.
+- Compte rendu des pertes réellement appliquées.
+- Mise à jour des totaux des bataillons et divisions.
+- Compatibilité avec le retour des blessés au service.
+- Invalidation des anciennes répartitions d'exposition.
+- Aucune redistribution artificielle des pertes.
+
+### Architecture
+- TacticalPersonnelCasualtyApplier :
+  valide les bilans et applique les pertes directement
+  aux compositions physiques des compagnies.
+
+- TacticalCompanyCasualtyApplication :
+  décrit les pertes appliquées et les effectifs
+  avant et après la phase.
+
+- TacticalCasualtyPhaseResult :
+  conserve le compte rendu d'application d'une phase.
+
+- TacticalDirectFireSystem :
+  vérifie l'origine des conséquences et empêche
+  la double application de la dernière phase.
+
+- PersonnelPool :
+  reste la source unique des effectifs disponibles,
+  morts et blessés au niveau de la compagnie.
+
+- Battalion / Division :
+  agrègent les ressources de leurs subordonnés
+  sans recalculer ni redistribuer les pertes.
+
+### Tests
+- Remontée hiérarchique des pertes.
+- Protection contre la double application.
+- Validation des phases sans victime.
+- Vérification de l'ordre des traitements.
+- Rejet des résultats dont les effectifs sont périmés.
+- Absence de mutation partielle sur bilan invalide.
+- Refus des bilans dupliqués.
+- Compatibilité avec le retour des blessés.
+- Prise en compte des pertes dans la phase suivante.
+
+### Limites actuelles
+- Application tactique encore déclenchée explicitement.
+- Combat opérationnel historique toujours actif.
+- Pas encore de sélection exclusive du moteur de combat.
+- Pas de transaction complète face aux exceptions externes.
+- Conservation du dernier compte rendu seulement.
+- Exposition des survivants à reconfigurer après pertes.
+- Blessures encore fondées sur des paramètres provisoires.
+- Aucun effet automatique sur le moral ou la retraite.
+- Pas d'intégration complète au tick de simulation.
+
+### Suite
+C2.4c.7 : rendre le moteur tactique responsable
+des pertes d'un engagement, supprimer le risque de
+double calcul opérationnel et préparer la migration
+définitive vers un moteur de combat tactique unique.
+
+# COMMIT # 
+
+## C2.4c.7 — Responsabilité unique du combat par engagement
+
+### Objectif
+Empêcher le calcul simultané des pertes par le moteur
+opérationnel historique et le nouveau moteur tactique.
+
+Préparer la migration vers un moteur de combat unique,
+dans lequel les conséquences sont produites au niveau
+des compagnies puis agrégées aux divisions.
+
+### Fonctionnalités
+- Mode de résolution défini par engagement.
+- Enregistrement explicite des batailles tactiques.
+- Attribution exclusive de la responsabilité du combat.
+- Interdiction du changement de moteur en cours de bataille.
+- Contournement des calculs opérationnels historiques
+  pour les engagements pris en charge tactiquement.
+- Conservation temporaire du moteur historique pour
+  les engagements non encore migrés.
+- Validation des phases tactiques avant chaque tick.
+- Refus des heures tactiques incomplètes ou répétées.
+- Prise en compte des divisions engagées non déployées.
+- Blocage de l'avancement de l'horloge si une phase manque.
+- Conservation de la résolution opérationnelle des
+  engagements et de l'historique des batailles.
+- Nettoyage des références tactiques à la fin des combats.
+
+### Architecture
+- EngagementCombatMode :
+  distingue les engagements historiques et tactiques.
+
+- EngagementSystem :
+  enregistre les batailles tactiques, contrôle les modes,
+  valide les heures et dirige le traitement des engagements.
+
+- TacticalBattle :
+  conserve le modèle tactique et ses compagnies déployées.
+
+- TacticalDirectFireSystem :
+  produit et applique les conséquences physiques
+  des tirs aux compagnies.
+
+- SimulationEngine :
+  vérifie la disponibilité des phases tactiques
+  avant de faire avancer l'horloge.
+
+- CompanyComposition / PersonnelPool :
+  restent les sources physiques des effectifs.
+
+- Battalion / Division :
+  agrègent les pertes des compagnies sans
+  nouvelle répartition ni nouveau calcul aléatoire.
+
+### Tests
+- Mode de combat par défaut.
+- Enregistrement tactique exclusif.
+- Refus des engagements étrangers.
+- Refus des phases tactiques manquantes.
+- Absence de calcul opérationnel sur une phase vide.
+- Absence de double application après des pertes tactiques.
+- Protection contre le retraitement d'une même heure.
+- Obligation de terminer les phases successives.
+- Interdiction de migrer une bataille déjà traitée
+  par le moteur opérationnel historique.
+- Protection de l'horloge générale.
+
+### Limites actuelles
+- Deux modes coexistent temporairement.
+- La responsabilité tactique doit être enregistrée
+  explicitement avant le premier tick de combat historique.
+- L'exécution tactique horaire reste orchestrée manuellement.
+- Pas encore de génération automatique des ordres de tir.
+- Les pertes d'organisation ne sont pas encore produites
+  par le moteur tactique.
+- Le combat tactique ne produit pas encore de dégâts
+  sur les chars ou les autres matériels.
+- La résolution de la victoire ne découle pas encore
+  directement d'un modèle de cohésion tactique.
+- Les engagements tactiques restent soumis aux règles
+  opérationnelles existantes de fin de bataille.
+- Les valeurs de létalité restent expérimentales.
+- L'application des pertes conserve les limites
+  transactionnelles du modèle monothread actuel.
+
+### Suite
+Créer l'orchestrateur horaire du combat tactique :
+actualisation des observations, préparation des ordres,
+exécution des salves, résolution des conséquences,
+application des pertes et synchronisation opérationnelle.
+
+Poursuivre ensuite la migration des effets militaires
+vers le moteur tactique, afin de supprimer définitivement
+les calculs de combat historiques.

@@ -6,12 +6,39 @@ using WoF.Simulation.Military.Combat.Losses;
 using WoF.Simulation.Military.Combat.History;
 using WoF.Simulation.Military.Composition;
 using System.Runtime.CompilerServices;
+using WoF.Simulation.Military.Combat.Tactical;
 
 namespace WoF.Simulation.Military.Combat;
 
 public sealed class EngagementSystem
 {
     private readonly DiplomacySystem _diplomacy;
+
+    // Batailles tactiques actuellement actives.
+    // La cle est l'objet Engagement, pas son numero.
+    private readonly Dictionary<Engagement, TacticalBattle>
+        _activeTacticalBattles =
+            new(ReferenceEqualityComparer.Instance);
+
+    // Historique leger du mode choisi.
+    // On conserve le fait qu'un engagement termine
+    // avait utilise le moteur tactique.
+    private readonly HashSet<Engagement>
+        _tacticalEngagements =
+            new(ReferenceEqualityComparer.Instance);
+
+    // Interdit de migrer un engagement ayant deja
+    // ete traite par le calcul operationnel historique.
+    private readonly HashSet<Engagement>
+        _legacyProcessedEngagements =
+            new(ReferenceEqualityComparer.Instance);
+
+    // Protection contre le retraitement d'une
+    // meme heure tactique.
+    private readonly Dictionary<Engagement, long>
+        _lastTacticalProcessedHour =
+            new(ReferenceEqualityComparer.Instance);
+
 
     
     private readonly record struct CountryCombatSummary(
@@ -503,17 +530,54 @@ public sealed class EngagementSystem
     }
 
     public void ProcessEngagements(long currentHour)
+   {
+    // Validation complete des engagements tactiques
+    // AVANT le traitement d'une bataille historique.
+    // Une phase tactique manquante ne doit pas provoquer
+    // une mutation partielle d'autres engagements.
+    EnsureTacticalHoursReady(currentHour);
+
+    _endedThisTick.Clear();
+
+    foreach (var engagement in _activeEngagements.ToArray())
     {
-        _endedThisTick.Clear();
-        foreach (var engagement in
-                _activeEngagements.ToArray())
+        if (_activeTacticalBattles.ContainsKey(engagement))
         {
-            ProcessEngagementTick(
+            // IMPORTANT :
+            // Les pertes tactiques ont deja ete appliquees
+            // directement aux compagnies avant cet appel.
+            //
+            // Aucun appel au calcul de puissance,
+            // de pertes humaines, de pertes de chars
+            // ou de pertes d'organisation legacy.
+            _lastTacticalProcessedHour[engagement] =
+                currentHour;
+
+            var participants = engagement.Participants
+                .Where(d => ReferenceEquals(
+                    d.CurrentEngagement, engagement))
+                .ToList();
+
+            // Conserver le traitement operationnel
+            // de fin de bataille : vainqueur,
+            // historique et liberation des divisions.
+            ResolveEngagementIfPossible(
                 engagement,
-                currentHour
-            );
+                participants,
+                currentHour);
+
+            continue;
         }
+
+        // Une bataille sans simulation tactique
+        // conserve temporairement l'ancien moteur.
+        _legacyProcessedEngagements.Add(engagement);
+
+        ProcessEngagementTick(
+            engagement,
+            currentHour);
     }
+}
 
 
     private CombatPowerProfile CalculateDivisionEffectiveCombatPower(
@@ -1445,6 +1509,13 @@ public sealed class EngagementSystem
             throw new InvalidOperationException(
                 "Engagement missing from active list.");
 
+
+        // Liberer les objets tactiques volumineux lorsqu'une
+        // bataille se termine. Le mode historique reste
+        // memorise dans _tacticalEngagements.
+        _activeTacticalBattles.Remove(engagement);
+        _lastTacticalProcessedHour.Remove(engagement);
+        
         if (engagement.Type == EngagementType.ProvinceBattle)
         {
             Province province = engagement.Province!;
@@ -1490,9 +1561,160 @@ public sealed class EngagementSystem
             _activeMeetingEngagements.Remove(key);
     }
 
+    /// <summary>
+    /// Confie definitivement un engagement actif
+    /// au moteur tactique pour ses effets militaires.
+    /// </summary>
+    public void AttachTacticalBattle(TacticalBattle battle)
+    {
+        ArgumentNullException.ThrowIfNull(battle);
 
+        var engagement = battle.Engagement;
 
+        if (!engagement.IsActive
+            || !_activeEngagements.Contains(engagement))
+        {
+            throw new InvalidOperationException(
+                "Tactical battle must belong to an active engagement " +
+                "managed by this system.");
+        }
 
+        if (_legacyProcessedEngagements.Contains(engagement))
+        {
+            throw new InvalidOperationException(
+                "An engagement already processed by the legacy " +
+                "engine cannot be switched mid-battle.");
+        }
+
+        if (_tacticalEngagements.Contains(engagement))
+        {
+            throw new InvalidOperationException(
+                "A tactical battle is already attached.");
+        }
+
+        _activeTacticalBattles.Add(engagement, battle);
+        _tacticalEngagements.Add(engagement);
+    }
+
+    /// <summary>
+    /// Indique le moteur responsable d'un engagement connu.
+    /// </summary>
+    public EngagementCombatMode GetCombatMode(
+        Engagement engagement)
+    {
+        ArgumentNullException.ThrowIfNull(engagement);
+
+        if (!_engagements.Contains(engagement))
+        {
+            throw new InvalidOperationException(
+                "Engagement does not belong to this system.");
+        }
+
+        return _tacticalEngagements.Contains(engagement)
+            ? EngagementCombatMode.Tactical
+            : EngagementCombatMode.LegacyOperational;
+    }
+
+    /// <summary>
+    /// Valide toutes les batailles tactiques avant
+    /// que le temps general de simulation n'avance.
+    ///
+    /// Aucun effet militaire n'est applique ici.
+    /// </summary>
+    public void EnsureTacticalHoursReady(long currentHour)
+    {
+        foreach (var pair in _activeTacticalBattles)
+        {
+            ValidateTacticalHour(
+                pair.Key,
+                pair.Value,
+                currentHour);
+        }
+    }
+
+    private void ValidateTacticalHour(
+        Engagement engagement,
+        TacticalBattle battle,
+        long currentHour)
+    {
+        if (!ReferenceEquals(battle.Engagement, engagement)
+            || !engagement.IsActive
+            || !_activeEngagements.Contains(engagement))
+        {
+            throw new InvalidOperationException(
+                "Inconsistent tactical engagement registration.");
+        }
+
+        if (currentHour < engagement.StartHour)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(currentHour));
+        }
+
+        if (_lastTacticalProcessedHour.TryGetValue(
+            engagement, out long previous)
+            && currentHour <= previous)
+        {
+            throw new InvalidOperationException(
+                "Tactical engagement hour already processed.");
+        }
+
+        var participants = engagement.Participants
+            .Where(d => ReferenceEquals(
+                d.CurrentEngagement, engagement))
+            .ToArray();
+
+        // La fin d'une bataille peut etre geree
+        // immediatement s'il ne reste qu'un camp capable
+        // de combattre, sans demander une nouvelle salve.
+        int capableCountries = participants
+            .Where(d => !d.IsBroken && d.Country is not null)
+            .Select(d => d.Country!.Id)
+            .Distinct()
+            .Take(2)
+            .Count();
+
+        if (capableCountries <= 1)
+            return;
+
+        // Chaque division encore engagee doit disposer
+        // d'au moins une compagnie representee dans
+        // la bataille tactique. Les renforts non deployes
+        // ne doivent pas etre ignores silencieusement.
+        var representedDivisions =
+            new HashSet<Division>(
+                ReferenceEqualityComparer.Instance);
+
+        foreach (var deployment in battle.Deployments)
+        {
+            var division =
+                deployment.Company.ParentBattalion?.ParentDivision;
+
+            if (division is not null)
+                representedDivisions.Add(division);
+        }
+
+        foreach (var division in participants)
+        {
+            if (!division.IsBroken
+                && !representedDivisions.Contains(division))
+            {
+                throw new InvalidOperationException(
+                    "An engaged division has no tactical deployment.");
+            }
+        }
+
+        // Le moteur tactique doit avoir acheve toute
+        // sa chaine, jusqu'a l'application des pertes.
+        if (battle.DirectFire.LastPhase?.Hour != currentHour
+            || battle.DirectFire.LastCasualtyPhase?.Hour
+                != currentHour)
+        {
+            throw new InvalidOperationException(
+                $"Tactical engagement {engagement.Id} has not " +
+                $"completed its casualty phase for hour {currentHour}.");
+        }
+    }
 
 
 }

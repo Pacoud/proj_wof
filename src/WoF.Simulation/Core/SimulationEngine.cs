@@ -44,6 +44,10 @@ public sealed class SimulationEngine
 
     public void Tick()
     {
+        //Refuse un tick incomplet avant d'avancer le temps
+        Engagements.EnsureTacticalHoursReady(
+        checked(Clock.CurrentHour + 1));
+
         Clock.AdvanceOneHour();
 
         Engagements.ProcessEngagements(Clock.CurrentHour);
