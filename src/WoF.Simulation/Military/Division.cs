@@ -580,7 +580,7 @@ public sealed class Division
 
         // Pendant cette migration, aucune ressource
         // ne doit apparaître ou disparaître à l'activation.
-        if (hierarchical != legacy)
+        if ((hierarchical with { Ammunition = default}) != legacy)
         {
             throw new InvalidOperationException(
                 "Hierarchical and legacy resources do not match.");

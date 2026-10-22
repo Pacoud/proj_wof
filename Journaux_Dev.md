@@ -4019,7 +4019,7 @@ des mécanismes de combat tactique. Les optimisations
 des allocations et de l'indexation spatiale restent
 reportées jusqu'à un nouveau besoin démontré.
 
-# COMMIT #
+# COMMIT 7fb0da68e834ce9837f276f35232711e8220a6be #
 
 # C2.4a — Autorisation des tirs directs
 
@@ -4104,3 +4104,32 @@ Tests ciblés :
 dotnet test -c Release \
   --filter FullyQualifiedName~TacticalDirectFireTests
 ```
+
+# COMMIT # 
+
+## C2.4b.1 — Munitions hiérarchiques
+
+### Objectif
+Introduire des stocks physiques de munitions par compagnie,
+avec agrégation aux niveaux bataillon et division.
+
+### Fonctionnalités
+- Quatre catégories provisoires de munitions.
+- Inventaire individuel pour chaque compagnie.
+- Consultation, consommation et réapprovisionnement.
+- Refus des consommations supérieures aux stocks.
+- Protection contre les quantités négatives et débordements.
+- Agrégation hiérarchique sans second stock physique.
+- Maintien de la compatibilité avec les ressources Legacy.
+
+### Limites actuelles
+- Aucune salve exécutée automatiquement.
+- Aucun calcul d'impact ou de pertes tactiques.
+- Aucun transfert logistique entre compagnies.
+- Aucun modèle de calibre détaillé.
+- Pas de sécurité pour les mutations concurrentes.
+
+### Suite
+C2.4b.2 : exécution de salves et consommation
+effective de munitions pendant les combats.
+

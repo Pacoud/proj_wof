@@ -64,6 +64,8 @@ public readonly record struct TankTotals(
 
     public StockTotals Radios {get; init; }
 
+    public AmmunitionTotals Ammunition { get; init; }
+
     public static FormationResourceTotals Capture(
         CompanyComposition composition)
     {
@@ -76,7 +78,10 @@ public readonly record struct TankTotals(
             composition.Tanks,
             composition.Trucks,
             composition.Radios
-        );
+        ) with
+        {
+            Ammunition = composition.Ammunition.Capture()
+        };
     }
 
     public static FormationResourceTotals Capture(
@@ -154,7 +159,8 @@ public readonly record struct TankTotals(
             a.Trucks + b.Trucks
         )
         {
-            Radios = a.Radios + b.Radios
+            Radios = a.Radios + b.Radios,
+            Ammunition = a.Ammunition + b.Ammunition
         };
     }
 }
