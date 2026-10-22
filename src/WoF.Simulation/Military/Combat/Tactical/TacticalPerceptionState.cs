@@ -427,4 +427,23 @@ public sealed class TacticalPerceptionState
             && track.Position is not null;
     }
 
+    /// <summary>
+    /// Recupere l'identifiant de la piste ennemie,
+    /// uniquement si la localisation est actuelle.
+    /// </summary>
+    internal int? GetCurrentLocalizedTrackId(
+        CompanyDeployment observer,
+        CompanyDeployment target,
+        long currentHour)
+    {
+        if (!HasCurrentLocalization(
+            observer, target, currentHour))
+        {
+            return null;
+        }
+
+        return _tracks[observer][target].Id;
+    }
+
+
 }

@@ -4021,7 +4021,7 @@ reportées jusqu'à un nouveau besoin démontré.
 
 # COMMIT 7fb0da68e834ce9837f276f35232711e8220a6be #
 
-# C2.4a — Autorisation des tirs directs
+## C2.4a — Autorisation des tirs directs
 
 ## Objectif
 
@@ -4105,7 +4105,7 @@ dotnet test -c Release \
   --filter FullyQualifiedName~TacticalDirectFireTests
 ```
 
-# COMMIT # 
+# COMMIT 74c52d6c875e9efb3f4e97ae0ab4fc0a7b79e960 # 
 
 ## C2.4b.1 — Munitions hiérarchiques
 
@@ -4133,3 +4133,60 @@ avec agrégation aux niveaux bataillon et division.
 C2.4b.2 : exécution de salves et consommation
 effective de munitions pendant les combats.
 
+# COMMIT # 
+
+## C2.4b.2 — Exécution des salves tactiques
+
+### Objectif
+Passer de l'autorisation du tir direct à son exécution
+physique, avec consommation réelle de munitions et
+production d'événements inspectables.
+
+### Fonctionnalités
+- Ordres de tir directs entre compagnies.
+- Vérification des armes et du personnel disponibles.
+- Calcul du nombre de cartouches engagées.
+- Consommation des stocks physiques des compagnies.
+- Événements de salves sans exposition de la cible réelle.
+- Validation des ordres avant toute mutation.
+- Une seule phase de tir par bataille et par heure.
+- Résultat inspectable de la dernière phase.
+
+### Architecture
+- TacticalFireOrder : demande interne de tir.
+- TacticalFireEvent : événement de salve exécutée.
+- TacticalFirePhaseResult : résultats d'une phase.
+- TacticalDirectFireSystem : prépare et exécute les salves.
+- TacticalDirectFireEvaluator : autorise ou refuse le tir.
+- TacticalPerceptionState : fournit la piste actuelle.
+- TacticalBattle : possède le système d'exécution.
+- CompanyAmmunitionInventory : détient les munitions.
+
+### Tests
+- Salve réussie : vérifie la consommation exacte
+  sans appliquer prématurément des dégâts.
+- Perception : interdit les tirs sur cibles inconnues
+  ou dont la localisation est périmée.
+- Ressources : empêche les tirs sans suffisamment
+  d'armes ou de munitions.
+- Tirs adverses : vérifie l'indépendance des stocks
+  pendant une phase commune.
+- Répétition : empêche de débiter deux fois une phase.
+- Validation : interdit les mutations partielles
+  en présence d'ordres incohérents.
+
+### Limites actuelles
+- Armes légères uniquement.
+- Une commande de salve par compagnie et par heure.
+- Quantité de tirs déterminée explicitement par l'ordre.
+- Aucune cadence, précision ou mécanique de rechargement.
+- Aucune résolution des impacts ou des pertes.
+- Pas de tir indirect ni de suppression.
+- Exécution synchrone, monothread.
+- Pas de raccordement automatique au tick opérationnel.
+- Conservation de la dernière phase uniquement.
+
+### Suite
+C2.4c : définir et introduire la résolution des impacts
+des tirs directs, puis préparer l'application des effets
+physiques sur les compagnies.

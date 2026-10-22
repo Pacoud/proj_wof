@@ -1,0 +1,217 @@
+
+using WoF.Simulation.Diplomacy;
+using WoF.Simulation.Military.Composition;
+
+namespace WoF.Simulation.Military.Combat.Tactical;
+
+/// <summary>
+/// Execute les salves d'une bataille tactique.
+/// Une seule phase de tir est autorisee par heure.
+/// Aucun impact ni degat n'est calcule ici.
+/// </summary>
+internal sealed class TacticalDirectFireSystem
+{
+    private readonly TacticalBattle _battle;
+
+    private long? _lastProcessedHour;
+
+    internal TacticalFirePhaseResult? LastPhase { get; private set; }
+
+    internal TacticalDirectFireSystem(TacticalBattle battle)
+    {
+        _battle = battle
+            ?? throw new ArgumentNullException(nameof(battle));
+    }
+
+    private readonly record struct PlannedSalvo(
+        CompanyAmmunitionInventory Inventory,
+        TacticalFireEvent Event);
+
+    internal TacticalFirePhaseResult Execute(
+        IReadOnlyList<TacticalFireOrder> orders,
+        TacticalGeometryMap geometry,
+        DiplomacySystem diplomacy,
+        TacticalPerceptionState perception,
+        long hour)
+    {
+        ArgumentNullException.ThrowIfNull(orders);
+        ArgumentNullException.ThrowIfNull(geometry);
+        ArgumentNullException.ThrowIfNull(diplomacy);
+        ArgumentNullException.ThrowIfNull(perception);
+
+        // Tous les services doivent travailler
+        // sur la meme bataille.
+        if (!ReferenceEquals(geometry.Battle, _battle)
+            || !ReferenceEquals(perception.Battle, _battle))
+        {
+            throw new InvalidOperationException(
+                "Fire services belong to different battles.");
+        }
+
+        if (hour < _battle.Engagement.StartHour)
+        {
+            throw new ArgumentOutOfRangeException(nameof(hour));
+        }
+
+        // Empeche de rejouer accidentellement une phase.
+        if (_lastProcessedHour is long previous
+            && hour <= previous)
+        {
+            throw new InvalidOperationException(
+                "Fire phase already processed or time moved backwards.");
+        }
+
+        // PREMIERE PASSE : validation de tous les ordres.
+        // Aucune ressource n'est modifiee ici.
+        var shooters = new HashSet<CompanyDeployment>(
+            ReferenceEqualityComparer.Instance);
+
+        foreach (var order in orders)
+        {
+            ArgumentNullException.ThrowIfNull(order);
+            ArgumentNullException.ThrowIfNull(order.Shooter);
+            ArgumentNullException.ThrowIfNull(order.Target);
+            ArgumentNullException.ThrowIfNull(order.Profile);
+
+            if (order.WeaponsCommitted <= 0
+                || order.RoundsPerWeapon <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(orders),
+                    "Weapon and round counts must be positive.");
+            }
+
+            if (!_battle.ContainsDeployment(order.Shooter)
+                || !_battle.ContainsDeployment(order.Target))
+            {
+                throw new InvalidOperationException(
+                    "Fire order contains a foreign deployment.");
+            }
+
+            if (!shooters.Add(order.Shooter))
+            {
+                throw new InvalidOperationException(
+                    "A company has multiple orders in one fire phase.");
+            }
+        }
+
+        // DEUXIEME PASSE : preparer les salves.
+        // Toujours aucune consommation.
+        var planned = new List<PlannedSalvo>(orders.Count);
+
+        var outcomes = new List<TacticalFireOrderOutcome>(
+            orders.Count);
+
+        foreach (var order in orders)
+        {
+            var authorization = TacticalDirectFireEvaluator.Evaluate(
+                _battle,
+                geometry,
+                diplomacy,
+                perception,
+                order.Shooter,
+                order.Target,
+                hour,
+                order.Profile);
+
+            if (!authorization.CanFire)
+            {
+                outcomes.Add(new TacticalFireOrderOutcome(
+                    TacticalFireOrderStatus.AuthorizationDenied,
+                    authorization.Status));
+
+                continue;
+            }
+
+            var resources = order.Shooter.Company.Composition!;
+
+            // Premier modele : un combattant disponible
+            // peut servir au maximum une arme d'infanterie.
+            int availableWeapons = Math.Min(
+                resources.Manpower.Current,
+                resources.InfantryEquipment.Current);
+
+            if (order.WeaponsCommitted > availableWeapons)
+            {
+                outcomes.Add(new TacticalFireOrderOutcome(
+                    TacticalFireOrderStatus.InsufficientWeapons,
+                    TacticalDirectFireStatus.Allowed));
+
+                continue;
+            }
+
+            // Multiplication en long : pas de debordement
+            // par multiplication d'entiers 32 bits.
+            long rounds = checked(
+                (long)order.WeaponsCommitted
+                * order.RoundsPerWeapon);
+
+            var inventory = resources.Ammunition;
+
+            if (inventory.GetAvailable(AmmunitionType.SmallArms)
+                < rounds)
+            {
+                outcomes.Add(new TacticalFireOrderOutcome(
+                    TacticalFireOrderStatus.InsufficientAmmunition,
+                    TacticalDirectFireStatus.Allowed));
+
+                continue;
+            }
+
+            // La piste est necessairement actuelle
+            // puisque l'autorisation a reussi.
+            int trackId = perception.GetCurrentLocalizedTrackId(
+                order.Shooter,
+                order.Target,
+                hour)
+                ?? throw new InvalidOperationException(
+                    "Authorized target has no current track.");
+
+            var fireEvent = new TacticalFireEvent(
+                Hour: hour,
+                Shooter: order.Shooter,
+                TargetTrackId: trackId,
+                AmmunitionType: AmmunitionType.SmallArms,
+                WeaponsCommitted: order.WeaponsCommitted,
+                RoundsExpended: rounds);
+
+            planned.Add(new PlannedSalvo(
+                inventory,
+                fireEvent));
+
+            outcomes.Add(new TacticalFireOrderOutcome(
+                TacticalFireOrderStatus.Fired,
+                TacticalDirectFireStatus.Allowed));
+        }
+
+        // Preparer les resultats consultables avant
+        // de commencer les mutations physiques.
+        var events = Array.AsReadOnly(
+            planned.Select(p => p.Event).ToArray());
+
+        var result = new TacticalFirePhaseResult(
+            hour,
+            Array.AsReadOnly(outcomes.ToArray()),
+            events);
+
+        // TROISIEME PASSE : application physique.
+        // Une seule commande par compagnie garantit
+        // qu'un meme inventaire n'est pas debite deux fois.
+        // Le moteur est monothread a ce stade.
+        foreach (var salvo in planned)
+        {
+            if (!salvo.Inventory.TryConsume(
+                salvo.Event.AmmunitionType,
+                salvo.Event.RoundsExpended))
+            {
+                throw new InvalidOperationException(
+                    "Prepared ammunition consumption failed.");
+            }
+        }
+
+        _lastProcessedHour = hour;
+        LastPhase = result;
+
+        return result;
+    }
+}
