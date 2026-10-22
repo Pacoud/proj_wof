@@ -29,6 +29,15 @@ internal sealed class TacticalDirectFireSystem
         private set;
     }
 
+
+        private TacticalFirePhaseResult? _suppressionResolvedSource;
+
+        internal TacticalSuppressionPhaseResult? LastSuppressionPhase
+        {
+            get;
+            private set;
+        }
+
     private TacticalFirePhaseResult? _personnelResolvedSource;
 
     internal TacticalPersonnelContactPhaseResult? LastPersonnelPhase
@@ -373,6 +382,9 @@ internal sealed class TacticalDirectFireSystem
 
         _effectsResolvedSource = null;
         LastPersonnelEffectsPhase = null;
+
+        _suppressionResolvedSource = null;
+        LastSuppressionPhase = null;
 
         return result;
     }
@@ -779,6 +791,78 @@ internal sealed class TacticalDirectFireSystem
         LastCasualtyPhase = application;
 
         return application;
+    }
+
+    /// <summary>
+    /// Calcule et applique la suppression a partir
+    /// des salves reellement executees.
+    ///
+    /// Ne retire ni soldats ni munitions.
+    /// Peut traiter une phase sans aucun tir.
+    /// </summary>
+    internal TacticalSuppressionPhaseResult
+    ResolveSuppressionLastPhase(
+        TacticalHitProfile hitProfile,
+        TacticalSuppressionProfile suppressionProfile)
+    {
+        ArgumentNullException.ThrowIfNull(hitProfile);
+        ArgumentNullException.ThrowIfNull(suppressionProfile);
+
+        var phase = LastPhase
+            ?? throw new InvalidOperationException(
+                "No fire phase has been executed.");
+
+        if (ReferenceEquals(_suppressionResolvedSource, phase))
+        {
+            throw new InvalidOperationException(
+                "Suppression phase already resolved.");
+        }
+
+        if (_lastSnapshots.Length != phase.Events.Count)
+        {
+            throw new InvalidOperationException(
+                "Fire snapshots do not match the phase.");
+        }
+
+        // Pour cette integration, les consequences
+        // humaines doivent etre resolues d'abord.
+        if (LastCasualtyPhase?.Hour != phase.Hour)
+        {
+            throw new InvalidOperationException(
+                "Personnel casualties must be applied first.");
+        }
+
+        var threats = new TacticalSuppressionThreat[
+            _lastSnapshots.Length];
+
+        for (int i = 0; i < _lastSnapshots.Length; i++)
+        {
+            var snapshot = _lastSnapshots[i];
+
+            if (!ReferenceEquals(
+                snapshot.FireEvent, phase.Events[i]))
+            {
+                throw new InvalidOperationException(
+                    "Fire snapshot mismatch.");
+            }
+
+            threats[i] = TacticalSuppressionResolver.Evaluate(
+                snapshot,
+                hitProfile,
+                suppressionProfile);
+        }
+
+        // Une seule application pour toute l'heure,
+        // quel que soit le nombre de tireurs.
+        var result = _battle.Suppression.ApplyHour(
+            phase.Hour,
+            threats,
+            suppressionProfile);
+
+        _suppressionResolvedSource = phase;
+        LastSuppressionPhase = result;
+
+        return result;
     }
 
 

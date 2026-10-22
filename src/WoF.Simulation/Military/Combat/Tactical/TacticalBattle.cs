@@ -42,6 +42,9 @@ public sealed class TacticalBattle
 
     public IReadOnlyList<CompanyDeployment> Deployments { get; }
 
+    internal TacticalSuppressionState Suppression { get; }
+
+
     public TacticalBattle(
         Engagement engagement,
         TacticalBattlefield battlefield)
@@ -67,6 +70,10 @@ public sealed class TacticalBattle
         DefensiveState = new TacticalDefensiveState(this);
 
         PersonnelExposure = new TacticalPersonnelExposureState(this);
+
+
+        Suppression = new TacticalSuppressionState(this);
+
 
     }
 

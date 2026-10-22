@@ -12,6 +12,7 @@ internal sealed class TacticalHourlyCombatSettings
     internal TacticalHitProfile Hit { get; }
     internal TacticalDefenseProfile Defense { get; }
     internal TacticalPersonnelEffectProfile Effects { get; }
+    internal TacticalSuppressionProfile? Suppression { get; }
 
     internal int MaxWeaponsPerCompany { get; }
     internal int RoundsPerWeapon { get; }
@@ -25,7 +26,8 @@ internal sealed class TacticalHourlyCombatSettings
         TacticalPersonnelEffectProfile effects,
         int maxWeaponsPerCompany,
         int roundsPerWeapon,
-        ulong baseSeed)
+        ulong baseSeed,
+        TacticalSuppressionProfile? suppression = null)
     {
         Detection = detection
             ?? throw new ArgumentNullException(nameof(detection));
@@ -49,5 +51,7 @@ internal sealed class TacticalHourlyCombatSettings
         MaxWeaponsPerCompany = maxWeaponsPerCompany;
         RoundsPerWeapon = roundsPerWeapon;
         BaseSeed = baseSeed;
+        Suppression = suppression;
+
     }
 }

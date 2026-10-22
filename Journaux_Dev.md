@@ -4888,7 +4888,7 @@ Poursuivre ensuite la migration des effets militaires
 vers le moteur tactique, afin de supprimer définitivement
 les calculs de combat historiques.
 
-# COMMIT # 
+# COMMIT 88981e4d8b13052e9f437ba4a75524f7af367d8e # 
 
 ## C2.4d.1 — Orchestration horaire du combat tactique
 
@@ -4982,3 +4982,90 @@ rupture des formations.
 Faire ensuite dépendre la fin des engagements
 des résultats tactiques et non des anciens calculs
 de puissance opérationnelle.
+
+# COMMIT # 
+
+## C2.4d.2 — Suppression des compagnies sous le feu
+
+### Objectif
+Permettre aux tirs ennemis de réduire temporairement
+l'efficacité d'une compagnie même lorsqu'ils
+ne provoquent aucune perte humaine.
+
+### Fonctionnalités
+- Suppression tactique persistante par compagnie.
+- Niveau de pression compris entre 0 et 100.
+- Calcul des projectiles traversant la zone dangereuse
+  autour des combattants exposés.
+- Distinction entre contacts corporels et tirs menaçants.
+- Accumulation des tirs de plusieurs compagnies.
+- Récupération progressive en l'absence de feu.
+- Réduction temporaire des armes engagées.
+- Préservation du matériel et des effectifs physiques.
+- Utilisation des instantanés au moment des salves.
+- Résolution unique de la suppression par heure.
+- Intégration optionnelle à l'orchestrateur horaire.
+- Paramètres expérimentaux configurables.
+
+### Architecture
+- TacticalSuppressionProfile :
+  paramètres de danger, pression, récupération
+  et réduction de puissance de feu.
+
+- TacticalSuppressionResolver :
+  estime l'intensité des tirs menaçants à partir
+  de la géométrie des salves exécutées.
+
+- TacticalSuppressionState :
+  conserve la pression des compagnies et
+  sa récupération au fil des heures.
+
+- TacticalBattle :
+  possède l'état de suppression de ses compagnies.
+
+- TacticalDirectFireSystem :
+  résout la suppression de la dernière phase
+  sans consommer de nouvelles munitions.
+
+- TacticalHourlyCombatOrchestrator :
+  applique la réduction de capacité de tir
+  et actualise la suppression chaque heure.
+
+### Tests
+- Suppression sans morts ni blessés.
+- Accumulation de plusieurs sources de tir.
+- Récupération entre deux heures.
+- Réduction de la puissance de feu.
+- Protection contre la double application.
+- Isolation des états entre batailles.
+- Validation des paramètres.
+- Intégration dans deux ticks successifs.
+- Agrégation des pertes de plusieurs compagnies
+  au niveau bataillon et division.
+
+### Limites actuelles
+- Paramètres non calibrés historiquement.
+- Intensité de feu menaçant encore approximative.
+- Pas de corrélation détaillée entre rafales.
+- Influence du couvert sur la suppression à affiner.
+- Réduction des tirs appliquée à l'heure suivante.
+- Pas encore de posture automatiquement modifiée
+  en réaction à la suppression.
+- Pas de mouvement ni repli déclenché par la pression.
+- Pas encore de cohésion propre au bataillon.
+- Pas de transmission des effets psychologiques
+  entre compagnies ou échelons de commandement.
+- La variable Organization de la division
+  n'est pas encore issue de la cohésion tactique.
+
+### Suite
+Développer la cohésion tactique des compagnies,
+puis sa synthèse au niveau des bataillons.
+
+Faire ensuite dépendre la tenue des positions,
+les replis et les ruptures de formation des
+pertes, de la suppression et du commandement.
+
+Conserver les effectifs des compagnies comme
+source unique des pertes humaines, agrégées
+vers les bataillons et les divisions.

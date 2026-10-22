@@ -209,6 +209,16 @@ internal sealed class TacticalHourlyCombatOrchestrator
         _battle.PersonnelExposure.ReconcileAppliedCasualties(
             casualties);
 
+
+        // La suppression s'applique egalement lorsque
+        // les salves n'ont provoque aucune victime.
+        if (_settings.Suppression is not null)
+        {
+            _battle.DirectFire.ResolveSuppressionLastPhase(
+                _settings.Hit,
+                _settings.Suppression);
+        }
+
         int killed = 0;
         int wounded = 0;
 
@@ -274,6 +284,17 @@ internal sealed class TacticalHourlyCombatOrchestrator
                     Math.Min(
                         resources.Manpower.Current,
                         resources.InfantryEquipment.Current)));
+
+            // Les compagnies supprimees engagent moins
+            // d'armes pendant cette heure.
+            if (_settings.Suppression is not null)
+            {
+                weapons = _battle.Suppression.GetEffectiveWeapons(
+                    shooter,
+                    weapons,
+                    hour,
+                    _settings.Suppression);
+            }
 
             long availableRounds =
                 resources.Ammunition.GetAvailable(

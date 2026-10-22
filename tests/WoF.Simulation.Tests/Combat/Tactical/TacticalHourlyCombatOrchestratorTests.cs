@@ -62,7 +62,8 @@ public sealed class TacticalHourlyCombatOrchestratorTests
         int frenchExposed = 10,
         bool placeFrench = true,
         bool registerOrchestrator = true,
-        double killedProbability = 1)
+        double killedProbability = 1,
+        bool enableSuppression = false)
     {
         var engine = new SimulationEngine();
 
@@ -172,12 +173,23 @@ public sealed class TacticalHourlyCombatOrchestratorTests
                 effectiveTargetRadiusMeters: 10),
             defense: new TacticalDefenseProfile(
                 1, 1, 1, 0, 0, 0),
-            effects: new TacticalPersonnelEffectProfile(
+
+                effects: new TacticalPersonnelEffectProfile(
                 killedProbability,
                 woundedUnavailableProbability: 0),
-            maxWeaponsPerCompany: 10,
-            roundsPerWeapon: 3,
-            baseSeed: 12345);
+                maxWeaponsPerCompany: 10,
+                roundsPerWeapon: 3,
+                baseSeed: 12345,
+                suppression: enableSuppression
+                ? new TacticalSuppressionProfile(
+                    dangerMarginMeters: 10,
+                    pressurePerThreateningRound: 2,
+                    recoveryPerHour: 10,
+                    maxFireReductionFraction: 0.8)
+                    : null);
+
+        
+    
 
         var orchestrator = new TacticalHourlyCombatOrchestrator(
             battle,
@@ -476,4 +488,57 @@ public sealed class TacticalHourlyCombatOrchestratorTests
             s.FrenchDivision.GetCurrentResourceTotals()
                 .Ammunition.SmallArms);
     }
+
+
+
+    [Fact]
+    public void SuppressionReducesFireInFollowingTick()
+    {
+        var s = CreateScenario(
+            killedProbability: 0,
+            enableSuppression: true);
+
+        // Les deux camps deviennent observables.
+        // Ils pourront donc tous les deux tirer.
+        s.Signatures.Set(
+            s.French,
+            new TacticalUnitSignature(
+                TacticalActivity.Stationary,
+                TacticalConcealment.None));
+
+        s.Engine.Tick();
+
+        var first = s.Orchestrator.LastResult!.Value;
+
+        Assert.Equal(2, first.SalvosFired);
+        Assert.Equal(60, first.RoundsExpended);
+
+        // Les deux compagnies ont ete prises sous le feu.
+        Assert.True(
+            s.Battle.Suppression.GetProjectedPressure(
+                s.French, 3,
+                new TacticalSuppressionProfile(10, 2, 10, 0.8)) > 0);
+
+        s.Engine.Tick();
+
+        var second = s.Orchestrator.LastResult!.Value;
+
+        Assert.Equal(3, second.Hour);
+
+        Assert.True(
+            second.RoundsExpended < first.RoundsExpended);
+
+        // Aucune perte humaine : la baisse provient
+        // uniquement de la suppression.
+        Assert.Equal(
+            100,
+            s.FrenchDivision.GetCurrentResourceTotals()
+                .Personnel.Available);
+
+        Assert.Equal(
+            100,
+            s.GermanDivision.GetCurrentResourceTotals()
+                .Personnel.Available);
+    }
+
 }
