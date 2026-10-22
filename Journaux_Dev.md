@@ -4526,7 +4526,7 @@ pertes aux compagnies sans double comptage avec
 le moteur opérationnel.
 
 
-# COMMIT # 
+# COMMIT 26df117540de4574407fd9383281e48dd862a07b # 
 
 ## C2.4c.4 — Contacts des tirs avec les combattants
 
@@ -4621,3 +4621,99 @@ Introduire les conséquences des contacts sur les
 combattants, distinguer les effets physiques et
 appliquer les pertes aux véritables PersonnelPool,
 sans double comptage avec le combat opérationnel.
+
+# COMMIT # 
+
+## C2.4c.5 — Conséquences des tirs sur les combattants
+
+### Objectif
+Transformer les contacts de projectiles en nombres
+entiers de combattants distincts atteints, puis
+déterminer les conséquences physiques simulées.
+
+### Fonctionnalités
+- Résolution des combattants distincts atteints.
+- Prise en compte des contacts répétés sur une personne.
+- Echantillonnage sans objet individuel par soldat.
+- Coût limité par les effectifs exposés.
+- Conséquences : tués, blessés indisponibles,
+  et atteintes sans incapacité durable.
+- Probabilités de gravité configurables.
+- Répartition exclusive des conséquences.
+- Regroupement par compagnie cible.
+- Résultats déterministes avec graine aléatoire.
+- Résolution unique par phase.
+- Aucune nouvelle consommation de munitions.
+- Aucune mutation des effectifs réels.
+
+### Architecture
+- TacticalPersonnelEffectProfile :
+  configure les probabilités de gravité.
+
+- TacticalPersonnelEffectResult :
+  représente les conséquences pour une compagnie.
+
+- TacticalPersonnelEffectsPhaseResult :
+  rassemble les conséquences d'une phase.
+
+- TacticalPersonnelEffectResolver :
+  échantillonne les personnes distinctes atteintes
+  et répartit les conséquences.
+
+- TacticalImpactResolver :
+  fournit les tirages binomiaux et le générateur
+  aléatoire déterministe existants.
+
+- TacticalDirectFireSystem :
+  conserve et contrôle la résolution des conséquences.
+
+### Tests
+- Contacts répétés :
+  empêche de compter plusieurs fois un combattant.
+
+- Conservation :
+  garantit que les catégories de conséquence
+  totalisent les personnes distinctes atteintes.
+
+- Cohérence statistique :
+  compare les tirages à l'espérance théorique.
+
+- Probabilités extrêmes :
+  vérifie les cas sans incapacité, blessure
+  systématique et décès systématique.
+
+- Plusieurs tireurs :
+  garantit un unique bilan par compagnie cible.
+
+- Reproductibilité :
+  vérifie le déterminisme des résultats.
+
+- Temporalité :
+  protège les conséquences contre les changements
+  survenus après les tirs.
+
+- Ressources :
+  garantit l'absence de pertes prématurées.
+
+- Phases :
+  interdit la double résolution et permet
+  de traiter les phases successives.
+
+### Limites actuelles
+- Probabilités de gravité non calibrées historiquement.
+- Contacts attribués uniformément aux hommes exposés.
+- Aucune identité individuelle persistante.
+- Les impacts répétés sur une personne ne modifient
+  pas encore la gravité de ses blessures.
+- Pas de distinction entre armes et calibres.
+- Pas de blessures localisées ni de premiers secours.
+- Pas de suppression ou de désorganisation.
+- Les conséquences restent propres à chaque phase.
+- Aucune application des pertes à PersonnelPool.
+- Aucun raccordement au moteur opérationnel.
+
+### Suite
+C2.4c.6 : appliquer les pertes humaines aux
+compagnies, protéger la résolution contre les
+doublons et préparer la transition avec le moteur
+de combat opérationnel.

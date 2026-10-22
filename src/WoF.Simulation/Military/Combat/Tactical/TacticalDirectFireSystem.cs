@@ -37,6 +37,14 @@ internal sealed class TacticalDirectFireSystem
         private set;
     }
 
+    private TacticalPersonnelContactPhaseResult? _effectsResolvedSource;
+
+    internal TacticalPersonnelEffectsPhaseResult? LastPersonnelEffectsPhase
+    {
+        get;
+        private set;
+    }
+
 
     internal TacticalFirePhaseResult? LastPhase { get; private set; }
 
@@ -352,6 +360,9 @@ internal sealed class TacticalDirectFireSystem
         _personnelResolvedSource = null;
         LastPersonnelPhase = null;
 
+        _effectsResolvedSource = null;
+        LastPersonnelEffectsPhase = null;
+
         return result;
     }
 
@@ -580,5 +591,72 @@ internal sealed class TacticalDirectFireSystem
     }
 
 
+
+    /// <summary>
+    /// Convertit les contacts de la derniere phase en
+    /// consequences sur les combattants distincts.
+    ///
+    /// Doit etre execute apres ResolvePersonnelLastPhase.
+    /// N'applique PAS encore les pertes a PersonnelPool.
+    /// </summary>
+    internal TacticalPersonnelEffectsPhaseResult
+        ResolvePersonnelEffectsLastPhase(
+            TacticalPersonnelEffectProfile profile,
+            ulong seed)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+
+        var contacts = LastPersonnelPhase
+            ?? throw new InvalidOperationException(
+                "Personnel contacts have not been resolved.");
+
+        // Les contacts doivent correspondre a
+        // la phase de tir actuellement conservee.
+        if (LastPhase is null
+            || !ReferenceEquals(_personnelResolvedSource, LastPhase))
+        {
+            throw new InvalidOperationException(
+                "Personnel contacts are not from the current fire phase.");
+        }
+
+        if (ReferenceEquals(_effectsResolvedSource, contacts))
+        {
+            throw new InvalidOperationException(
+                "Personnel effects already resolved for this phase.");
+        }
+
+        var results = new TacticalPersonnelEffectResult[
+            contacts.Targets.Count];
+
+        for (int i = 0; i < contacts.Targets.Count; i++)
+        {
+            var target = contacts.Targets[i];
+
+            if (!_battle.ContainsDeployment(target.Target))
+            {
+                throw new InvalidOperationException(
+                    "Effect target belongs to another tactical battle.");
+            }
+
+            ulong targetSeed = unchecked(
+                seed + (ulong)i * 0x9E3779B97F4A7C15UL);
+
+            results[i] = TacticalPersonnelEffectResolver.Resolve(
+                target,
+                profile,
+                targetSeed);
+        }
+
+        var result = new TacticalPersonnelEffectsPhaseResult(
+            Hour: contacts.Hour,
+            Seed: seed,
+            Targets: Array.AsReadOnly(results));
+
+        // Publier uniquement apres le traitement complet.
+        _effectsResolvedSource = contacts;
+        LastPersonnelEffectsPhase = result;
+
+        return result;
+    }
 
 }

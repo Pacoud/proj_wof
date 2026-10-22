@@ -216,7 +216,7 @@ internal static class TacticalImpactResolver
     /// Generateur deterministe SplitMix64.
     /// La graine est locale a chaque salve.
     /// </summary>
-    private static double NextUniform(ref ulong state)
+    internal static double NextUniform(ref ulong state)
     {
         state = unchecked(
             state + 0x9E3779B97F4A7C15UL);
