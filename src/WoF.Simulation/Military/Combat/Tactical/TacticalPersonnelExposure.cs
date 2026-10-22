@@ -64,6 +64,7 @@ internal sealed class TacticalPersonnelExposureState
     {
         _battle = battle
             ?? throw new ArgumentNullException(nameof(battle));
+
     }
 
     internal void Set(
@@ -114,6 +115,65 @@ internal sealed class TacticalPersonnelExposureState
             reserve: available,
             exposedDepthMeters: 20);
     }
+
+
+    /// <summary>
+    /// Ajuste les repartitions explicites apres une
+    /// phase de pertes tactiques deja appliquee.
+    ///
+    /// Les victimes proviennent des hommes exposes.
+    /// Les repartitions implicites, sans affectation
+    /// explicite, restent gerees par Get().
+    /// </summary>
+    internal void ReconcileAppliedCasualties(
+        TacticalCasualtyPhaseResult phase)
+    {
+        ArgumentNullException.ThrowIfNull(phase);
+
+        var adjustments = new List<(
+            CompanyDeployment Target,
+            TacticalPersonnelExposure Updated)>();
+
+        // Valider toutes les repartitions avant
+        // de commencer leur modification.
+        foreach (var report in phase.Companies)
+        {
+            Validate(report.Target);
+
+            if (!_states.TryGetValue(
+                report.Target, out var previous))
+            {
+                continue;
+            }
+
+            int lost = report.Casualties.Total;
+
+            if (previous.Total != report.AvailableBefore
+                || lost < 0
+                || lost > previous.Exposed
+                || report.AvailableAfter
+                    != report.AvailableBefore - lost
+                || report.Target.Company.Composition!
+                    .Manpower.Current != report.AvailableAfter)
+            {
+                throw new InvalidOperationException(
+                    "Cannot reconcile tactical personnel exposure.");
+            }
+
+            adjustments.Add((
+                report.Target,
+                new TacticalPersonnelExposure(
+                    exposed: previous.Exposed - lost,
+                    sheltered: previous.Sheltered,
+                    reserve: previous.Reserve,
+                    exposedDepthMeters:
+                        previous.ExposedDepthMeters)));
+        }
+
+        foreach (var adjustment in adjustments)
+            _states[adjustment.Target] = adjustment.Updated;
+    }
+
 
     private void Validate(CompanyDeployment deployment)
     {

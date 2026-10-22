@@ -20,6 +20,13 @@ public sealed class EngagementSystem
         _activeTacticalBattles =
             new(ReferenceEqualityComparer.Instance);
 
+  
+    private readonly Dictionary<
+        Engagement,
+        TacticalHourlyCombatOrchestrator>
+        _hourlyTacticalOrchestrators =
+            new(ReferenceEqualityComparer.Instance);          
+
     // Historique leger du mode choisi.
     // On conserve le fait qu'un engagement termine
     // avait utilise le moteur tactique.
@@ -1515,7 +1522,8 @@ public sealed class EngagementSystem
         // memorise dans _tacticalEngagements.
         _activeTacticalBattles.Remove(engagement);
         _lastTacticalProcessedHour.Remove(engagement);
-        
+        _hourlyTacticalOrchestrators.Remove(engagement);
+
         if (engagement.Type == EngagementType.ProvinceBattle)
         {
             Province province = engagement.Province!;
@@ -1716,6 +1724,91 @@ public sealed class EngagementSystem
         }
     }
 
+
+    /// <summary>
+    /// Associe une execution horaire automatique
+    /// a une bataille deja confiee au moteur tactique.
+    /// </summary>
+    internal void RegisterTacticalOrchestrator(
+        TacticalHourlyCombatOrchestrator orchestrator)
+    {
+        ArgumentNullException.ThrowIfNull(orchestrator);
+
+        var battle = orchestrator.Battle;
+        var engagement = battle.Engagement;
+
+        if (!engagement.IsActive
+            || !_activeTacticalBattles.TryGetValue(
+                engagement, out var registered)
+            || !ReferenceEquals(registered, battle))
+        {
+            throw new InvalidOperationException(
+                "Orchestrator must belong to an attached tactical battle.");
+        }
+
+        if (!_hourlyTacticalOrchestrators.TryAdd(
+            engagement, orchestrator))
+        {
+            throw new InvalidOperationException(
+                "A tactical orchestrator is already registered.");
+        }
+    }
+
+    /// <summary>
+    /// Prepare les heures automatiques avant le tick.
+    ///
+    /// Les batailles tactiques sans orchestrateur
+    /// doivent avoir ete preparees manuellement.
+    /// </summary>
+    internal void PrepareTacticalHours(long hour)
+    {
+        var automatic =
+            new List<TacticalHourlyCombatOrchestrator>();
+
+        // Valider tous les cas connus AVANT de lancer
+        // la premiere bataille automatique.
+        foreach (var pair in _activeTacticalBattles)
+        {
+            var engagement = pair.Key;
+            var battle = pair.Value;
+
+            int capableCountries = engagement.Participants
+                .Where(d =>
+                    ReferenceEquals(d.CurrentEngagement, engagement)
+                    && !d.IsBroken
+                    && d.Country is not null)
+                .Select(d => d.Country!.Id)
+                .Distinct()
+                .Take(2)
+                .Count();
+
+            // Un engagement sans opposition active
+            // peut etre termine par le moteur operationnel.
+            if (capableCountries <= 1)
+                continue;
+
+            if (_hourlyTacticalOrchestrators.TryGetValue(
+                engagement, out var orchestrator))
+            {
+                orchestrator.ValidateCanRun(hour);
+                automatic.Add(orchestrator);
+            }
+            else
+            {
+                // Conserver l'ancien mode de preparation
+                // manuelle des batailles tactiques.
+                ValidateTacticalHour(
+                    engagement,
+                    battle,
+                    hour);
+            }
+        }
+
+        // Les erreurs previsibles de preparation ont
+        // ete controlees. Executer maintenant les cycles.
+        foreach (var orchestrator in automatic)
+            orchestrator.Run(hour);
+    }
 
 }
 

@@ -4792,7 +4792,7 @@ des pertes d'un engagement, supprimer le risque de
 double calcul opérationnel et préparer la migration
 définitive vers un moteur de combat tactique unique.
 
-# COMMIT # 
+# COMMIT b7e6719416b8747901c4801944030fa632b75356 # 
 
 ## C2.4c.7 — Responsabilité unique du combat par engagement
 
@@ -4887,3 +4887,98 @@ application des pertes et synchronisation opérationnelle.
 Poursuivre ensuite la migration des effets militaires
 vers le moteur tactique, afin de supprimer définitivement
 les calculs de combat historiques.
+
+# COMMIT # 
+
+## C2.4d.1 — Orchestration horaire du combat tactique
+
+### Objectif
+Automatiser le déroulement d'une heure de combat
+tactique et synchroniser ses conséquences avec
+le moteur général de simulation.
+
+### Fonctionnalités
+- Un seul orchestrateur par bataille tactique.
+- Mise à jour automatique de la détection.
+- Réutilisation des signatures et renseignements.
+- Sélection provisoire des cibles localisées.
+- Vérification des armes, effectifs et munitions.
+- Exécution automatique des salves.
+- Résolution des contacts avec les combattants.
+- Calcul des blessés et tués.
+- Application des pertes aux compagnies.
+- Actualisation des combattants exposés survivants.
+- Remontée hiérarchique des pertes aux divisions.
+- Bilan horaire des ordres, salves et conséquences.
+- Préparation avant avancement de l'horloge.
+- Préservation du mode tactique manuel existant.
+- Absence de double calcul des pertes opérationnelles.
+
+### Architecture
+- TacticalHourlyCombatSettings :
+  centralise les profils et paramètres expérimentaux
+  du cycle horaire.
+
+- TacticalHourlyCombatOrchestrator :
+  coordonne les étapes du combat et la sélection
+  provisoire des ordres de tir.
+
+- TacticalHourlyCombatResult :
+  fournit un bilan compact de l'heure simulée.
+
+- TacticalPersonnelExposureState :
+  synchronise les répartitions des survivants
+  après les pertes réellement appliquées.
+
+- EngagementSystem :
+  enregistre les orchestrateurs, vérifie la
+  préparation des batailles et déclenche les cycles.
+
+- SimulationEngine :
+  exécute la préparation tactique avant d'avancer
+  l'horloge et de traiter les engagements.
+
+### Tests
+- Exécution complète depuis un unique Tick().
+- Conservation des pertes par remontée hiérarchique.
+- Refus des tirs sans signature de détection.
+- Vérification de la portée d'observation.
+- Respect des combattants effectivement exposés.
+- Prise en compte des survivants aux heures suivantes.
+- Blocage du tick lorsqu'une position manque.
+- Protection contre le retraitement de la même heure.
+- Refus des orchestrateurs étrangers ou dupliqués.
+- Compatibilité avec les engagements tactiques manuels.
+- Conservation des effectifs en absence de létalité.
+
+### Limites actuelles
+- Politique automatique de tir volontairement simple.
+- Première cible localisée et autorisée seulement.
+- Pas encore de doctrine ou de priorisation des cibles.
+- Pas encore de génération autonome des déploiements.
+- Positions et signatures initiales à configurer.
+- Signatures non actualisées automatiquement par l'activité.
+- Renseignement partagé et chaîne de commandement
+  non encore intégrés à la sélection des ordres.
+- Pas de mouvement tactique automatique.
+- Combat direct à armes légères uniquement.
+- Paramètres de précision et de létalité non calibrés.
+- Pas de suppression ni de cohésion tactique.
+- Pas de résolution transactionnelle globale
+  entre plusieurs batailles en cas d'exception.
+- L'issue de la bataille dépend encore des règles
+  opérationnelles existantes.
+- Le moteur historique reste actif pour les engagements
+  qui n'ont pas été migrés vers le mode tactique.
+
+### Suite
+Remplacer progressivement la sélection automatique
+simplifiée par les véritables ordres tactiques.
+
+Introduire les réactions au combat : suppression,
+désorganisation, évolution des positions, repli et
+rupture des formations.
+
+Faire ensuite dépendre la fin des engagements
+des résultats tactiques et non des anciens calculs
+de puissance opérationnelle.

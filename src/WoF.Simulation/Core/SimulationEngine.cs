@@ -44,9 +44,17 @@ public sealed class SimulationEngine
 
     public void Tick()
     {
+        long nextHour = checked(Clock.CurrentHour+1);
+        
+        
+        // Execute automatiquement les batailles dotees
+        // d'un orchestrateur et valide les batailles
+        // encore preparees manuellement.
+        Engagements.PrepareTacticalHours(nextHour);
+        
+        
         //Refuse un tick incomplet avant d'avancer le temps
-        Engagements.EnsureTacticalHoursReady(
-        checked(Clock.CurrentHour + 1));
+        Engagements.EnsureTacticalHoursReady(nextHour);
 
         Clock.AdvanceOneHour();
 
