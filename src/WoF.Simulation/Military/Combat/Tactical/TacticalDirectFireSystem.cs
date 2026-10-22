@@ -23,6 +23,47 @@ internal sealed class TacticalDirectFireSystem
             ?? throw new ArgumentNullException(nameof(battle));
     }
 
+
+    /// <summary>
+    /// Estime les impacts de la derniere phase de tir.
+    /// A appeler avant la prochaine mise a jour des contacts.
+    /// Ne consomme aucune munition supplementaire.
+    /// </summary>
+    internal IReadOnlyList<TacticalHitEstimate> EstimateLastPhase(
+        TacticalGeometryMap geometry,
+        TacticalPerceptionState perception,
+        TacticalHitProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(geometry);
+        ArgumentNullException.ThrowIfNull(perception);
+        ArgumentNullException.ThrowIfNull(profile);
+
+        if (!ReferenceEquals(geometry.Battle, _battle)
+            || !ReferenceEquals(perception.Battle, _battle))
+        {
+            throw new InvalidOperationException(
+                "Estimation services belong to another battle.");
+        }
+
+        var phase = LastPhase
+            ?? throw new InvalidOperationException(
+                "No fire phase has been executed.");
+
+        var estimates = new TacticalHitEstimate[phase.Events.Count];
+
+        for (int i = 0; i < phase.Events.Count; i++)
+        {
+            estimates[i] = TacticalHitProbabilityEvaluator.Evaluate(
+                phase.Events[i],
+                geometry,
+                perception,
+                profile);
+        }
+
+        return Array.AsReadOnly(estimates);
+    }
+
+
     private readonly record struct PlannedSalvo(
         CompanyAmmunitionInventory Inventory,
         TacticalFireEvent Event);

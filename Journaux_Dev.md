@@ -4269,3 +4269,92 @@ voisins tout en conservant un unique déploiement militaire.
 Introduire la résolution des impacts tactiques (C2.4c),
 puis développer progressivement les mouvements et
 la mise à jour incrémentale de l'index spatial.
+
+# COMMIT #
+
+## C2.4c.1 — Probabilités d'impact des tirs directs
+
+### Objectif
+Introduire un premier modèle probabiliste d'impact
+pour les salves tactiques, sans appliquer de dégâts.
+
+### Fonctionnalités
+- Modèle de dispersion gaussienne bidimensionnelle.
+- Dispersion dépendant de la distance de tir.
+- Prise en compte de l'incertitude de localisation.
+- Paramètres configurables pour les armes.
+- Calcul de la probabilité d'impact par cartouche.
+- Calcul du nombre statistique d'impacts attendus.
+- Estimation des salves déjà exécutées.
+- Résultats déterministes et sans mutation militaire.
+- Consultation directe des pistes de renseignement.
+
+### Architecture
+- TacticalHitProfile :
+  paramètres de dispersion et dimensions de la
+  cible individuelle théorique.
+
+- TacticalHitEstimate :
+  résultat immuable d'une estimation statistique.
+
+- TacticalHitProbabilityEvaluator :
+  calcule la probabilité d'impact depuis la position
+  du tireur et la localisation rapportée de la cible.
+
+- TacticalPerceptionState :
+  fournit les pistes actuelles par identifiant,
+  sans exposer les unités ennemies réelles.
+
+- TacticalDirectFireSystem :
+  expose l'estimation des salves de sa dernière phase.
+
+### Tests
+- Modèle mathématique :
+  vérifie l'exactitude de la formule gaussienne.
+
+- Distance :
+  vérifie la diminution de précision avec la portée.
+
+- Incertitude :
+  garantit qu'une localisation imprécise pénalise
+  la probabilité d'impact.
+
+- Renseignement :
+  empêche l'utilisation de la position réelle
+  de l'ennemi pour calculer la précision.
+
+- Isolation des observateurs :
+  interdit l'utilisation de pistes d'autres unités.
+
+- Temporalité :
+  rejette les localisations devenues périmées.
+
+- Conservation des ressources :
+  garantit que l'estimation ne consomme aucune
+  munition et ne provoque aucune perte.
+
+- Entrées invalides :
+  protège les invariants mathématiques du modèle.
+
+- Isolation des batailles :
+  interdit le mélange de données de combats distincts.
+
+### Limites actuelles
+- Armes légères uniquement.
+- Modèle statistique simplifié et non calibré
+  historiquement.
+- Cible individuelle théorique de forme circulaire.
+- Incertitude de localisation assimilée à un écart-type.
+- Pas encore d'exposition réelle des combattants.
+- Pas de couvert, mouvement, stress ou suppression.
+- Corrélation entre projectiles non modélisée.
+- Aucune résolution aléatoire des impacts.
+- Aucune perte humaine ou matérielle appliquée.
+- Estimation à effectuer avant renouvellement
+  des observations de la phase suivante.
+- Aucun raccordement automatique au tick opérationnel.
+
+### Suite
+C2.4c.2 : introduire l'exposition des cibles,
+les protections, le terrain et les positions défensives
+avant de résoudre les impacts physiques.

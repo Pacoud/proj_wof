@@ -203,6 +203,12 @@ public sealed class TacticalPerceptionState
         CompanyDeployment,
         Dictionary<CompanyDeployment, Track>>
         _tracks = new(ReferenceEqualityComparer.Instance);
+    // Acces direct aux pistes, sans recherche lineaire.
+    // L'observateur reste associe a chaque piste.
+    private readonly Dictionary<
+        int,
+        (CompanyDeployment Observer, Track Contact)> _tracksById =
+        new();
 
     private int _nextTrackId = 1;
     private long? _lastUpdateHour;
@@ -312,6 +318,10 @@ public sealed class TacticalPerceptionState
                     hour);
 
                 observerTracks.Add(observation.Target, track);
+
+                _tracksById.Add(
+                track.Id,
+                (observation.Observer, track));
             }
             else
             {
@@ -444,6 +454,51 @@ public sealed class TacticalPerceptionState
 
         return _tracks[observer][target].Id;
     }
+
+
+
+    private static bool IsCurrentlyLocalized(
+        Track track,
+        long hour)
+    {
+        return track.CurrentlyObserved
+            && track.LastObservedHour == hour
+            && track.LastLocatedHour == hour
+            && track.CurrentObservationLevel
+                >= TacticalKnowledgeLevel.Located
+            && track.Position is not null;
+    }
+
+    /// <summary>
+    /// Renvoie une piste actuellement localisee par
+    /// CET observateur, sans exposer sa cible reelle.
+    /// Recherche par dictionnaire en O(1) moyen.
+    /// </summary>
+    internal TacticalEnemyContactReport? GetCurrentTrackReport(
+        CompanyDeployment observer,
+        int trackId,
+        long hour)
+    {
+        ArgumentNullException.ThrowIfNull(observer);
+
+        if (!_battle.ContainsDeployment(observer))
+        {
+            throw new InvalidOperationException(
+                "Observer does not belong to this battle.");
+        }
+
+        if (!_tracksById.TryGetValue(trackId, out var entry))
+            return null;
+
+        if (!ReferenceEquals(entry.Observer, observer))
+            return null;
+
+        if (!IsCurrentlyLocalized(entry.Contact, hour))
+            return null;
+
+        return entry.Contact.Capture();
+    }
+
 
 
 }
