@@ -29,6 +29,14 @@ internal sealed class TacticalDirectFireSystem
         private set;
     }
 
+    private TacticalFirePhaseResult? _personnelResolvedSource;
+
+    internal TacticalPersonnelContactPhaseResult? LastPersonnelPhase
+    {
+        get;
+        private set;
+    }
+
 
     internal TacticalFirePhaseResult? LastPhase { get; private set; }
 
@@ -341,6 +349,9 @@ internal sealed class TacticalDirectFireSystem
         _resolvedSource = null;
         LastImpactPhase = null;
 
+        _personnelResolvedSource = null;
+        LastPersonnelPhase = null;
+
         return result;
     }
 
@@ -378,6 +389,8 @@ internal sealed class TacticalDirectFireSystem
 
         var defense = _battle.DefensiveState.Get(order.Target);
 
+        var personnel = _battle.PersonnelExposure.Get(order.Target);
+
         return new TacticalFireSnapshot(
             FireEvent: fire,
             RealTarget: order.Target,
@@ -386,7 +399,10 @@ internal sealed class TacticalDirectFireSystem
             RealTargetPoint: targetPosition.Point,
             LocalizationUncertaintyMeters:
                 report.PositionUncertaintyMeters.Value,
-            TargetDefense: defense);
+            TargetDefense: defense,
+            TargetPersonnel : personnel,
+            TargetFrontageMeters : targetPosition.FrontageMeters,
+            TargetFacingDegrees: targetPosition.FacingDegrees);
     }
 
 
@@ -446,6 +462,123 @@ internal sealed class TacticalDirectFireSystem
 
         return result;
     }
+
+
+    /// <summary>
+    /// Resout les contacts avec la population exposee.
+    /// Ne modifie ni les hommes ni les munitions.
+    /// Une seule resolution de population par phase.
+    /// </summary>
+    internal TacticalPersonnelContactPhaseResult
+        ResolvePersonnelLastPhase(
+            TacticalHitProfile hitProfile,
+            TacticalDefenseProfile defenseProfile,
+            ulong seed)
+    {
+        ArgumentNullException.ThrowIfNull(hitProfile);
+        ArgumentNullException.ThrowIfNull(defenseProfile);
+
+        var phase = LastPhase
+            ?? throw new InvalidOperationException(
+                "No fire phase has been executed.");
+
+        if (ReferenceEquals(_personnelResolvedSource, phase))
+        {
+            throw new InvalidOperationException(
+                "Personnel contacts already resolved.");
+        }
+
+        if (_lastSnapshots.Length != phase.Events.Count)
+        {
+            throw new InvalidOperationException(
+                "Fire snapshots do not match the phase.");
+        }
+
+        var events = new TacticalPersonnelContactEvent[
+            _lastSnapshots.Length];
+
+        // Regroupement par vraie compagnie.
+        // Ne jamais utiliser le secteur comme identite
+        // militaire : une compagnie couvre plusieurs
+        // secteurs sans etre dupliquee.
+        var totals = new Dictionary<
+            CompanyDeployment,
+            (int Exposed, long Contacts)>(
+                ReferenceEqualityComparer.Instance);
+
+        for (int i = 0; i < _lastSnapshots.Length; i++)
+        {
+            var snapshot = _lastSnapshots[i];
+
+            ulong salvoSeed = unchecked(
+                seed + (ulong)i * 0x9E3779B97F4A7C15UL);
+
+            var contact = TacticalPersonnelContactResolver.Resolve(
+                snapshot,
+                hitProfile,
+                defenseProfile,
+                salvoSeed);
+
+            events[i] = contact;
+
+            if (totals.TryGetValue(
+                contact.RealTarget,
+                out var current))
+            {
+                if (current.Exposed != contact.ExposedPersonnel)
+                {
+                    throw new InvalidOperationException(
+                        "Inconsistent target exposure within one phase.");
+                }
+
+                totals[contact.RealTarget] = (
+                    current.Exposed,
+                    checked(current.Contacts + contact.ContactEvents));
+            }
+            else
+            {
+                totals.Add(
+                    contact.RealTarget,
+                    (
+                        contact.ExposedPersonnel,
+                        contact.ContactEvents
+                    ));
+            }
+        }
+
+        // Evaluation des personnes distinctes sur
+        // le TOTAL des tirs diriges vers une compagnie,
+        // plutot qu'en additionnant des estimations
+        // independantes par salve.
+        var targets = new List<TacticalPersonnelTargetSummary>(
+            totals.Count);
+
+        foreach (var entry in totals)
+        {
+            targets.Add(new TacticalPersonnelTargetSummary(
+                Target: entry.Key,
+                ExposedPersonnel: entry.Value.Exposed,
+                ContactEvents: entry.Value.Contacts,
+                ExpectedDistinctPersonnel:
+                    TacticalPersonnelContactResolver.ExpectedDistinct(
+                        entry.Value.Exposed,
+                        entry.Value.Contacts)));
+        }
+
+        var result = new TacticalPersonnelContactPhaseResult(
+            Hour: phase.Hour,
+            Seed: seed,
+            Events: Array.AsReadOnly(events),
+            Targets: Array.AsReadOnly(targets.ToArray()));
+
+        // Publier le resultat seulement apres avoir
+        // termine tous les calculs et validations.
+        _personnelResolvedSource = phase;
+        LastPersonnelPhase = result;
+
+        return result;
+    }
+
 
 
 }

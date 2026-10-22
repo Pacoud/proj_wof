@@ -122,7 +122,7 @@ internal static class TacticalImpactResolver
     /// Exact par sauts pour les faibles esperances,
     /// approximation normale pour les grandes.
     /// </summary>
-    private static long SampleBinomial(
+    internal static long SampleBinomial(
         long count,
         double probability,
         ulong seed)

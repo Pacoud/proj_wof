@@ -2,10 +2,12 @@
 namespace WoF.Simulation.Military.Combat.Tactical;
 
 /// <summary>
-/// Instantane interne d'une salve executee.
-/// Il contient des informations reelles qui ne
-/// doivent pas etre exposees au joueur.
+/// Etat fige lors de l'execution d'une salve.
+/// Contient des informations reelles internes
+/// au moteur, non destinees au renseignement.
 /// </summary>
+/// 
+/// 
 internal readonly record struct TacticalFireSnapshot(
     TacticalFireEvent FireEvent,
     CompanyDeployment RealTarget,
@@ -13,4 +15,10 @@ internal readonly record struct TacticalFireSnapshot(
     TacticalPoint ReportedTargetPoint,
     TacticalPoint RealTargetPoint,
     double LocalizationUncertaintyMeters,
-    TacticalDefensiveDisposition TargetDefense);
+    TacticalDefensiveDisposition TargetDefense,
+
+    // Donnees de population capturees au tir.
+    
+    TacticalPersonnelExposure TargetPersonnel,
+    double TargetFrontageMeters,
+    double TargetFacingDegrees);

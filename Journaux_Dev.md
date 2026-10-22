@@ -4446,7 +4446,7 @@ C2.4c.3 : introduire la résolution physique des impacts
 et préparer la traduction en pertes humaines et
 matérielles, sans double comptage opérationnel.
 
-# COMMIT # 
+# COMMIT 8a83b8117e6cc19d2986f4ef5215ed46cacf1631 # 
 
 ## C2.4c.3 — Résolution des impacts tactiques
 
@@ -4524,3 +4524,100 @@ Modéliser les combattants exposés et convertir les
 impacts en effets militaires, avec application des
 pertes aux compagnies sans double comptage avec
 le moteur opérationnel.
+
+
+# COMMIT # 
+
+## C2.4c.4 — Contacts des tirs avec les combattants
+
+### Objectif
+Calculer comment les salves de tir direct rencontrent
+les combattants réellement exposés d'une compagnie.
+
+### Fonctionnalités
+- Répartition des hommes entre exposés, abrités
+  et réserve.
+- Conservation exacte des effectifs existants.
+- Définition de la profondeur du front exposé.
+- Utilisation de la largeur et de l'orientation
+  réelles du déploiement tactique.
+- Calcul de la probabilité qu'un projectile
+  tombe dans la zone des combattants.
+- Modèle agrégé de densité des silhouettes.
+- Prise en compte des postures et protections.
+- Tirage reproductible des contacts de projectiles.
+- Regroupement des contacts par compagnie cible.
+- Estimation des personnes distinctes atteintes.
+- Instantanés des effectifs au moment du tir.
+- Aucune perte ou consommation supplémentaire.
+
+### Architecture
+- TacticalPersonnelExposure :
+  décrit la répartition agrégée des effectifs.
+
+- TacticalPersonnelExposureState :
+  conserve les répartitions par compagnie.
+
+- TacticalFireSnapshot :
+  enregistre la répartition et la géométrie
+  des combattants au moment de la salve.
+
+- TacticalPersonnelContactResolver :
+  calcule la probabilité spatiale de contact
+  et le nombre d'événements correspondants.
+
+- TacticalDirectFireSystem :
+  déclenche la résolution et regroupe les
+  résultats par compagnie cible.
+
+- TacticalImpactResolver :
+  fournit le tirage binomial réutilisable.
+
+### Tests
+- Conservation des effectifs :
+  interdit les répartitions incohérentes.
+
+- Population exposée :
+  vérifie que le nombre de combattants exposés
+  modifie la probabilité de contact.
+
+- Géométrie :
+  vérifie les effets de la largeur du front
+  et du point visé.
+
+- Déterminisme :
+  garantit la reproductibilité des tirages.
+
+- Temporalité :
+  préserve la répartition au moment du tir.
+
+- Tirs multiples :
+  produit un seul bilan par compagnie cible.
+
+- Emprise multizone :
+  évite de dupliquer les combattants entre secteurs.
+
+- Conservation militaire :
+  interdit toute perte non explicitement appliquée.
+
+- Résolution unique :
+  empêche de résoudre deux fois une phase.
+
+### Limites actuelles
+- Répartition des combattants encore manuelle.
+- Distribution spatiale supposée uniforme.
+- Surface de présence rectangulaire simplifiée.
+- Pas encore de sous-groupes à positions distinctes.
+- Silhouette humaine modélisée par une aire équivalente.
+- Modèle statistique non calibré historiquement.
+- Corrélation des rafales non représentée.
+- Nombre de personnes distinctes seulement estimé.
+- Contacts non convertis en blessures ou décès.
+- Les contacts entre phases ne sont pas encore cumulés.
+- Pas d'intégration au combat opérationnel.
+
+### Suite
+Introduire les conséquences des contacts sur les
+combattants, distinguer les effets physiques et
+appliquer les pertes aux véritables PersonnelPool,
+sans double comptage avec le combat opérationnel.
