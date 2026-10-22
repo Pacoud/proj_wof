@@ -4133,7 +4133,7 @@ avec agrégation aux niveaux bataillon et division.
 C2.4b.2 : exécution de salves et consommation
 effective de munitions pendant les combats.
 
-# COMMIT # 
+# COMMIT 463d8c2832c741498f8a884d9c5cb3bda703fe16 # 
 
 ## C2.4b.2 — Exécution des salves tactiques
 
@@ -4190,3 +4190,82 @@ production d'événements inspectables.
 C2.4c : définir et introduire la résolution des impacts
 des tirs directs, puis préparer l'application des effets
 physiques sur les compagnies.
+
+# COMMIT # 
+
+## C2.4b.3 — Occupation et emprise tactique
+
+### Objectif
+Permettre à une compagnie de couvrir plusieurs secteurs
+voisins tout en conservant un unique déploiement militaire.
+
+### Fonctionnalités
+- Emprise simplifiée à partir de la position,
+  de l'orientation et de la largeur de front.
+- Détection d'intersection entre l'emprise d'une
+  compagnie et les secteurs voisins.
+- Distinction entre affectation principale et couverture.
+- Présence de plusieurs compagnies par secteur.
+- Indexation spatiale pour des consultations rapides.
+- Détection des changements invalidant l'index.
+- Indicateur du nombre de compagnies couvrant un secteur.
+
+### Architecture
+- TacticalCompanyFootprint :
+  représente le segment de front d'une compagnie
+  et calcule ses intersections géométriques.
+
+- TacticalSectorPresenceIndex :
+  associe les secteurs à leurs compagnies affectées
+  et aux compagnies dont le front les couvre.
+
+- CompanyDeployment :
+  conserve l'unique secteur principal d'affectation.
+
+- TacticalGeometryMap :
+  fournit les positions et orientations existantes.
+
+- TacticalBattlefield :
+  fournit les secteurs et leurs connexions.
+
+### Tests
+- Couverture multizone :
+  vérifie qu'une compagnie peut couvrir plusieurs
+  secteurs sans duplication.
+
+- Appartenance hiérarchique :
+  garantit que la cohabitation de compagnies
+  ne modifie pas leur bataillon ou division.
+
+- Géométrie :
+  vérifie le calcul de l'emprise selon la largeur
+  et l'orientation du front.
+
+- Présence non positionnée :
+  distingue affectation et occupation physique.
+
+- Invalidation :
+  empêche les consultations sur un index périmé.
+
+- Isolation :
+  interdit le mélange de secteurs et de batailles.
+
+- Conservation des ressources :
+  empêche le double comptage des hommes et munitions.
+
+- Secteurs vides :
+  garantit des consultations valides.
+
+### Limites actuelles
+- Emprise représentée par un segment de front.
+- Géométrie des secteurs encore circulaire.
+- Couverture limitée aux secteurs voisins directs.
+- Index à reconstruire après changement spatial.
+- Aucun déplacement tactique continu.
+- Aucun effet de congestion ou de densité.
+- Aucune extension automatique des capacités de tir.
+
+### Suite
+Introduire la résolution des impacts tactiques (C2.4c),
+puis développer progressivement les mouvements et
+la mise à jour incrémentale de l'index spatial.
