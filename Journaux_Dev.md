@@ -4359,7 +4359,7 @@ C2.4c.2 : introduire l'exposition des cibles,
 les protections, le terrain et les positions défensives
 avant de résoudre les impacts physiques.
 
-# COMMIT # 
+# COMMIT 9d9cde5437383f4e2383c9ffbdacebb066f3c8eb # 
 
 ## C2.4c.2 — Exposition et protections tactiques
 
@@ -4445,3 +4445,82 @@ des tirs directs.
 C2.4c.3 : introduire la résolution physique des impacts
 et préparer la traduction en pertes humaines et
 matérielles, sans double comptage opérationnel.
+
+# COMMIT # 
+
+## C2.4c.3 — Résolution des impacts tactiques
+
+### Objectif
+Transformer les probabilités d'impact en nombres entiers
+d'impacts simulés, reproductibles et traçables.
+
+### Fonctionnalités
+- Capture de l'état tactique au moment du tir.
+- Conservation du point visé et de la position réelle.
+- Prise en compte du décalage entre ces positions.
+- Résolution probabiliste des impacts par salve.
+- Tirages reproductibles à partir d'une graine.
+- Échantillonnage adapté aux grands volumes de tirs.
+- Résolution unique de chaque phase.
+- Conservation des résultats de la dernière phase.
+- Aucune consommation supplémentaire de munitions.
+
+### Architecture
+- TacticalFireSnapshot :
+  capture les données d'une salve au moment du tir.
+
+- TacticalImpactResolver :
+  calcule la probabilité réelle approximative
+  et échantillonne le nombre entier d'impacts.
+
+- TacticalImpactEvent :
+  représente le résultat d'une salve résolue.
+
+- TacticalImpactPhaseResult :
+  regroupe les impacts d'une phase de combat.
+
+- TacticalDirectFireSystem :
+  conserve les instantanés et contrôle la résolution.
+
+### Tests
+- Bornes des impacts :
+  empêche de dépasser les munitions dépensées.
+
+- Cas extrêmes :
+  protège les limites numériques du modèle.
+
+- Décalage géographique :
+  garantit qu'une erreur de visée réduit l'efficacité.
+
+- Déterminisme :
+  rend les résultats de combat reproductibles.
+
+- Instantanés :
+  préserve l'état historique de chaque salve.
+
+- Résolution unique :
+  empêche le double comptage des impacts.
+
+- Ressources :
+  interdit les pertes et consommations involontaires.
+
+- Temporalité :
+  permet des résolutions indépendantes à chaque heure.
+
+### Limites actuelles
+- Distribution spatiale des tirs encore simplifiée.
+- Approximation pour les cibles décentrées.
+- Modèle de dispersion non calibré historiquement.
+- Corrélations entre projectiles non représentées.
+- Cible individuelle théorique, pas encore
+  une population de combattants exposés.
+- Impacts non convertis en pertes humaines.
+- Aucun dommage matériel ou effet de suppression.
+- Aucun raccordement au combat opérationnel.
+- Dernière phase seulement, sans historique complet.
+
+### Suite
+Modéliser les combattants exposés et convertir les
+impacts en effets militaires, avec application des
+pertes aux compagnies sans double comptage avec
+le moteur opérationnel.

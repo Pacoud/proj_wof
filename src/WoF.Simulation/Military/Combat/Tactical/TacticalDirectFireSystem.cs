@@ -15,6 +15,21 @@ internal sealed class TacticalDirectFireSystem
 
     private long? _lastProcessedHour;
 
+
+    // Informations figees au moment de l'execution.
+    private TacticalFireSnapshot[] _lastSnapshots =
+        Array.Empty<TacticalFireSnapshot>();
+
+    // Identite de la derniere phase deja resolue.
+    private TacticalFirePhaseResult? _resolvedSource;
+
+    internal TacticalImpactPhaseResult? LastImpactPhase
+    {
+        get;
+        private set;
+    }
+
+
     internal TacticalFirePhaseResult? LastPhase { get; private set; }
 
     internal TacticalDirectFireSystem(TacticalBattle battle)
@@ -123,7 +138,8 @@ internal sealed class TacticalDirectFireSystem
 
     private readonly record struct PlannedSalvo(
         CompanyAmmunitionInventory Inventory,
-        TacticalFireEvent Event);
+        TacticalFireEvent Event,
+        TacticalFireSnapshot Snapshot);
 
     internal TacticalFirePhaseResult Execute(
         IReadOnlyList<TacticalFireOrder> orders,
@@ -273,9 +289,17 @@ internal sealed class TacticalDirectFireSystem
                 WeaponsCommitted: order.WeaponsCommitted,
                 RoundsExpended: rounds);
 
+            var snapshot = CaptureFireSnapshot(
+                order,
+                fireEvent,
+                geometry,
+                perception
+            );
+
             planned.Add(new PlannedSalvo(
                 inventory,
-                fireEvent));
+                fireEvent,
+                snapshot));
 
             outcomes.Add(new TacticalFireOrderOutcome(
                 TacticalFireOrderStatus.Fired,
@@ -307,9 +331,121 @@ internal sealed class TacticalDirectFireSystem
             }
         }
 
+        _lastSnapshots = planned 
+            .Select(p => p.Snapshot)
+            .ToArray();
+
         _lastProcessedHour = hour;
         LastPhase = result;
 
+        _resolvedSource = null;
+        LastImpactPhase = null;
+
         return result;
     }
+
+
+
+    /// <summary>
+    /// Capture toutes les donnees necessaires a la
+    /// resolution future, au moment du tir.
+    /// </summary>
+    private TacticalFireSnapshot CaptureFireSnapshot(
+        TacticalFireOrder order,
+        TacticalFireEvent fire,
+        TacticalGeometryMap geometry,
+        TacticalPerceptionState perception)
+    {
+        var shooterPosition =
+            geometry.GetPosition(order.Shooter);
+
+        var targetPosition =
+            geometry.GetPosition(order.Target);
+
+        var report = perception.GetCurrentTrackReport(
+            order.Shooter,
+            fire.TargetTrackId,
+            fire.Hour);
+
+        if (shooterPosition is null
+            || targetPosition is null
+            || report?.LastKnownPosition is null
+            || report.PositionUncertaintyMeters is null)
+        {
+            throw new InvalidOperationException(
+                "Cannot capture an incomplete fire snapshot.");
+        }
+
+        var defense = _battle.DefensiveState.Get(order.Target);
+
+        return new TacticalFireSnapshot(
+            FireEvent: fire,
+            RealTarget: order.Target,
+            ShooterPoint: shooterPosition.Point,
+            ReportedTargetPoint: report.LastKnownPosition.Value,
+            RealTargetPoint: targetPosition.Point,
+            LocalizationUncertaintyMeters:
+                report.PositionUncertaintyMeters.Value,
+            TargetDefense: defense);
+    }
+
+
+
+    /// <summary>
+    /// Resout une seule fois les impacts de la derniere phase.
+    /// Aucun nouveau tir et aucune mutation des effectifs.
+    /// </summary>
+    internal TacticalImpactPhaseResult ResolveLastPhase(
+        TacticalHitProfile hitProfile,
+        TacticalDefenseProfile defenseProfile,
+        ulong seed)
+    {
+        ArgumentNullException.ThrowIfNull(hitProfile);
+        ArgumentNullException.ThrowIfNull(defenseProfile);
+
+        var phase = LastPhase
+            ?? throw new InvalidOperationException(
+                "No fire phase has been executed.");
+
+        if (ReferenceEquals(_resolvedSource, phase))
+        {
+            throw new InvalidOperationException(
+                "This fire phase has already been resolved.");
+        }
+
+        if (_lastSnapshots.Length != phase.Events.Count)
+        {
+            throw new InvalidOperationException(
+                "Fire snapshots do not match the executed phase.");
+        }
+
+        var impacts = new TacticalImpactEvent[
+            _lastSnapshots.Length];
+
+        // Chaque salve possede une graine derivee.
+        // L'ordre est celui des evenements executes.
+        for (int i = 0; i < _lastSnapshots.Length; i++)
+        {
+            ulong salvoSeed = unchecked(
+                seed + (ulong)i * 0x9E3779B97F4A7C15UL);
+
+            impacts[i] = TacticalImpactResolver.Resolve(
+                _lastSnapshots[i],
+                hitProfile,
+                defenseProfile,
+                salvoSeed);
+        }
+
+        var result = new TacticalImpactPhaseResult(
+            Hour: phase.Hour,
+            Seed: seed,
+            Events: Array.AsReadOnly(impacts));
+
+        _resolvedSource = phase;
+        LastImpactPhase = result;
+
+        return result;
+    }
+
+
 }
