@@ -64,6 +64,63 @@ internal sealed class TacticalDirectFireSystem
     }
 
 
+    /// <summary>
+    /// Estime les impacts non interceptes de la derniere
+    /// phase, avec la defense REELLE de chaque cible.
+    ///
+    /// A appeler avant changement des perceptions ou
+    /// dispositions defensives concernees.
+    /// Ne modifie aucune ressource.
+    /// </summary>
+    internal IReadOnlyList<TacticalProtectedHitEstimate>
+        EstimateProtectedLastPhase(
+            TacticalGeometryMap geometry,
+            TacticalPerceptionState perception,
+            TacticalHitProfile hitProfile,
+            TacticalDefenseProfile defenseProfile)
+    {
+        ArgumentNullException.ThrowIfNull(defenseProfile);
+
+        // Cette methode valide deja les appartenances
+        // de bataille et la fraicheur des contacts.
+        var geometricEstimates = EstimateLastPhase(
+            geometry,
+            perception,
+            hitProfile);
+
+        var phase = LastPhase
+            ?? throw new InvalidOperationException(
+                "No fire phase has been executed.");
+
+        var results = new TacticalProtectedHitEstimate[
+            phase.Events.Count];
+
+        for (int i = 0; i < phase.Events.Count; i++)
+        {
+            var fire = phase.Events[i];
+
+            // La cible reelle n'est retrouvee qu'ici,
+            // dans le traitement interne du moteur.
+            var target = perception.ResolveCurrentTarget(
+                fire.Shooter,
+                fire.TargetTrackId,
+                fire.Hour)
+                ?? throw new InvalidOperationException(
+                    "No current target for this salvo.");
+
+            var disposition = _battle.DefensiveState.Get(target);
+
+            results[i] = TacticalProtectedHitEvaluator.Evaluate(
+                geometricEstimates[i],
+                disposition,
+                defenseProfile);
+        }
+
+        return Array.AsReadOnly(results);
+    }
+
+
+
     private readonly record struct PlannedSalvo(
         CompanyAmmunitionInventory Inventory,
         TacticalFireEvent Event);

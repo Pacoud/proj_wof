@@ -207,8 +207,8 @@ public sealed class TacticalPerceptionState
     // L'observateur reste associe a chaque piste.
     private readonly Dictionary<
         int,
-        (CompanyDeployment Observer, Track Contact)> _tracksById =
-        new();
+        (CompanyDeployment Observer, CompanyDeployment Target, Track Contact)> 
+        _tracksById = new();
 
     private int _nextTrackId = 1;
     private long? _lastUpdateHour;
@@ -321,7 +321,7 @@ public sealed class TacticalPerceptionState
 
                 _tracksById.Add(
                 track.Id,
-                (observation.Observer, track));
+                (observation.Observer, observation.Target, track));
             }
             else
             {
@@ -500,5 +500,26 @@ public sealed class TacticalPerceptionState
     }
 
 
+
+    /// <summary>
+    /// Resolution autoritaire d'une piste pour le moteur.
+    /// Ne jamais exposer cette methode dans les rapports
+    /// de renseignement accessibles au joueur.
+    /// </summary>
+    internal CompanyDeployment? ResolveCurrentTarget(
+        CompanyDeployment observer,
+        int trackId,
+        long hour)
+    {
+        // Reutilise les controles d'appartenance,
+        // d'observateur et de fraicheur du contact.
+        if (GetCurrentTrackReport(
+            observer, trackId, hour) is null)
+        {
+            return null;
+        }
+
+        return _tracksById[trackId].Target;
+    }
 
 }

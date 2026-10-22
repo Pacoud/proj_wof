@@ -4191,7 +4191,7 @@ C2.4c : définir et introduire la résolution des impacts
 des tirs directs, puis préparer l'application des effets
 physiques sur les compagnies.
 
-# COMMIT # 
+# COMMIT 617226fb751deac0c7c21c33bbe6fcee93d15817 # 
 
 ## C2.4b.3 — Occupation et emprise tactique
 
@@ -4270,7 +4270,7 @@ Introduire la résolution des impacts tactiques (C2.4c),
 puis développer progressivement les mouvements et
 la mise à jour incrémentale de l'index spatial.
 
-# COMMIT #
+# COMMIT bbd166ddc1331a8732eee0793d7e6e82a854331c #
 
 ## C2.4c.1 — Probabilités d'impact des tirs directs
 
@@ -4358,3 +4358,90 @@ pour les salves tactiques, sans appliquer de dégâts.
 C2.4c.2 : introduire l'exposition des cibles,
 les protections, le terrain et les positions défensives
 avant de résoudre les impacts physiques.
+
+# COMMIT # 
+
+## C2.4c.2 — Exposition et protections tactiques
+
+### Objectif
+Prendre en compte l'exposition des combattants et
+leurs protections dans l'estimation des impacts
+des tirs directs.
+
+### Fonctionnalités
+- Trois postures : debout, accroupi, couché.
+- Couvert local : végétation, bâtiment, retranchement.
+- Coefficients d'exposition et d'interception configurables.
+- Vérification des protections disponibles par secteur.
+- Distinction entre terrain présent et couvert utilisé.
+- Calcul des impacts théoriques non interceptés.
+- Résolution interne de la cible réelle depuis une piste.
+- Une seule disposition défensive par compagnie.
+- Aucune nouvelle consommation ni perte militaire.
+
+### Architecture
+- TacticalDefensiveDisposition :
+  représente la posture et le couvert d'une compagnie.
+
+- TacticalDefenseProfile :
+  définit les coefficients du modèle défensif.
+
+- TacticalDefensiveState :
+  conserve les dispositions réelles des compagnies
+  appartenant à une bataille.
+
+- TacticalBattle :
+  possède l'état défensif de son engagement.
+
+- TacticalPerceptionState :
+  permet au moteur de retrouver la cible réelle
+  depuis une piste actuelle, sans exposition publique.
+
+- TacticalProtectedHitEvaluator :
+  combine probabilité géométrique, exposition et couvert.
+
+- TacticalDirectFireSystem :
+  expose l'estimation protégée des salves exécutées.
+
+### Tests
+- Défense par défaut :
+  évite d'attribuer automatiquement un couvert.
+
+- Exposition :
+  vérifie les effets des postures sur les probabilités.
+
+- Protection :
+  vérifie l'interception et la disponibilité du couvert.
+
+- Isolation :
+  empêche de mélanger les données de plusieurs batailles.
+
+- Emprise multizone :
+  évite de multiplier les protections d'une compagnie.
+
+- Conservation :
+  interdit toute mutation militaire pendant l'estimation.
+
+- Renseignement :
+  refuse les localisations périmées.
+
+- Entrées invalides :
+  protège les paramètres et les états défensifs.
+
+### Limites actuelles
+- Coefficients expérimentaux, non calibrés historiquement.
+- Modèle multiplicatif simplifié.
+- Une disposition défensive par compagnie entière.
+- Les protections sont définies explicitement.
+- Pas d'occupation détaillée des bâtiments et tranchées.
+- Pas de résistance balistique par matériau.
+- Pas de mouvement ou de changement automatique de posture.
+- Pas encore de densité spatiale des combattants.
+- Pas d'application des impacts ou des pertes.
+- Estimations dépendant des états tactiques actuels.
+- Pas d'intégration automatique au tick opérationnel.
+
+### Suite
+C2.4c.3 : introduire la résolution physique des impacts
+et préparer la traduction en pertes humaines et
+matérielles, sans double comptage opérationnel.

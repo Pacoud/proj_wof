@@ -36,6 +36,8 @@ public sealed class TacticalBattle
 
     internal TacticalDirectFireSystem DirectFire { get; }
 
+    internal TacticalDefensiveState DefensiveState { get; }
+
     public IReadOnlyList<CompanyDeployment> Deployments { get; }
 
     public TacticalBattle(
@@ -59,6 +61,8 @@ public sealed class TacticalBattle
         Deployments = _deployments.AsReadOnly();
 
         DirectFire = new TacticalDirectFireSystem(this);
+
+        DefensiveState = new TacticalDefensiveState(this);
 
     }
 
