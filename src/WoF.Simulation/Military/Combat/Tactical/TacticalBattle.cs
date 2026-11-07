@@ -44,6 +44,8 @@ public sealed class TacticalBattle
 
     internal TacticalSuppressionState Suppression { get; }
 
+    internal TacticalCohesionState Cohesion { get; }
+
 
     public TacticalBattle(
         Engagement engagement,
@@ -73,6 +75,10 @@ public sealed class TacticalBattle
 
 
         Suppression = new TacticalSuppressionState(this);
+
+        
+        Cohesion = new TacticalCohesionState(this);
+
 
 
     }

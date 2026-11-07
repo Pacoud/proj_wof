@@ -4983,7 +4983,7 @@ Faire ensuite dépendre la fin des engagements
 des résultats tactiques et non des anciens calculs
 de puissance opérationnelle.
 
-# COMMIT # 
+# COMMIT 450066582f469662d0511ef31ba31473fcd86786 # 
 
 ## C2.4d.2 — Suppression des compagnies sous le feu
 

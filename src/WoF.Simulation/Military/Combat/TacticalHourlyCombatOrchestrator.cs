@@ -212,12 +212,38 @@ internal sealed class TacticalHourlyCombatOrchestrator
 
         // La suppression s'applique egalement lorsque
         // les salves n'ont provoque aucune victime.
+
+        TacticalSuppressionPhaseResult? suppressionResult = null;
+
         if (_settings.Suppression is not null)
         {
-            _battle.DirectFire.ResolveSuppressionLastPhase(
-                _settings.Hit,
-                _settings.Suppression);
+            suppressionResult =
+                _battle.DirectFire.ResolveSuppressionLastPhase(
+                    _settings.Hit,
+                    _settings.Suppression);
         }
+
+        // La cohesion est mise a jour APRES :
+        // 1. les pertes humaines appliquees,
+        // 2. l'actualisation des combattants exposes,
+        // 3. la resolution de la suppression.
+        if (_settings.Cohesion is not null)
+        {
+            if (suppressionResult is null
+                || _settings.Suppression is null)
+            {
+                throw new InvalidOperationException(
+                    "Cohesion requires completed suppression.");
+            }
+
+            _battle.Cohesion.ApplyHour(
+                hour,
+                casualties,
+                suppressionResult,
+                _settings.Suppression,
+                _settings.Cohesion);
+        }
+
 
         int killed = 0;
         int wounded = 0;
@@ -294,6 +320,17 @@ internal sealed class TacticalHourlyCombatOrchestrator
                     weapons,
                     hour,
                     _settings.Suppression);
+            }
+
+            // La cohesion reduit la capacite durable a
+            // coordonner les armes encore utilisables.
+            // Elle ne detruit aucun equipement physique.
+            if (_settings.Cohesion is not null)
+            {
+                weapons = _battle.Cohesion.GetEffectiveWeapons(
+                    shooter,
+                    weapons,
+                    _settings.Cohesion);
             }
 
             long availableRounds =

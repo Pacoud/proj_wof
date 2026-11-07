@@ -63,7 +63,8 @@ public sealed class TacticalHourlyCombatOrchestratorTests
         bool placeFrench = true,
         bool registerOrchestrator = true,
         double killedProbability = 1,
-        bool enableSuppression = false)
+        bool enableSuppression = false,
+        bool enableCohesion = false )
     {
         var engine = new SimulationEngine();
 
@@ -186,7 +187,18 @@ public sealed class TacticalHourlyCombatOrchestratorTests
                     pressurePerThreateningRound: 2,
                     recoveryPerHour: 10,
                     maxFireReductionFraction: 0.8)
-                    : null);
+                    : null,
+
+                cohesion: enableCohesion
+                    ? new TacticalCohesionProfile(
+                        lossPerCasualtyPercent: 1.5,
+                        sustainedSuppressionThreshold: 40,
+                        lossPerExcessPressurePoint: 0.1,
+                        recoveryPerQuietHour: 3,
+                        recoverySuppressionCeiling: 20,
+                        maxFireReductionFraction: 0.5)
+                    : null
+                    );
 
         
     
@@ -540,5 +552,87 @@ public sealed class TacticalHourlyCombatOrchestratorTests
             s.GermanDivision.GetCurrentResourceTotals()
                 .Personnel.Available);
     }
+
+
+
+
+    [Fact]
+    public void SustainedTacticalFireDegradesCompanyCohesionAcrossTicks()
+    {
+        var s = CreateScenario(
+            killedProbability: 0,
+            enableSuppression: true,
+            enableCohesion: true);
+
+        // Heure 2 : premiere salve.
+        s.Engine.Tick();
+
+        Assert.Equal(2, s.Engine.Clock.CurrentHour);
+
+        Assert.Equal(
+            100,
+            s.Battle.Cohesion.Get(s.German));
+
+        Assert.Equal(
+            100,
+            s.GermanDivision.GetCurrentResourceTotals()
+                .Personnel.Available);
+
+        // Heure 3 : feu continu sur la meme compagnie.
+        // La suppression preexistante provoque
+        // maintenant une perte de cohesion.
+        s.Engine.Tick();
+
+        Assert.Equal(3, s.Engine.Clock.CurrentHour);
+
+        double germanCohesion =
+            s.Battle.Cohesion.Get(s.German);
+
+        Assert.InRange(germanCohesion, 0, 99.999);
+
+        // Le defenseur est desorganise, mais il
+        // n'a perdu aucun homme dans ce scenario.
+        Assert.Equal(
+            100,
+            s.GermanDivision.GetCurrentResourceTotals()
+                .Personnel.Available);
+
+        // La compagnie francaise n'a pas subi de feu.
+        Assert.Equal(
+            100,
+            s.Battle.Cohesion.Get(s.French));
+
+        // La baisse de cohesion reduit les armes
+        // qui pourront etre engagees ensuite.
+        var profile = new TacticalCohesionProfile(
+            lossPerCasualtyPercent: 1.5,
+            sustainedSuppressionThreshold: 40,
+            lossPerExcessPressurePoint: 0.1,
+            recoveryPerQuietHour: 3,
+            recoverySuppressionCeiling: 20,
+            maxFireReductionFraction: 0.5);
+
+        int effectiveWeapons =
+            s.Battle.Cohesion.GetEffectiveWeapons(
+                s.German,
+                availableWeapons: 10,
+                profile);
+
+        Assert.True(effectiveWeapons < 10);
+
+        // Les armes physiques n'ont pas disparu.
+        Assert.Equal(
+            100,
+            s.German.Company.Composition!
+                .InfantryEquipment.Current);
+
+        // Une seule compagnie tire dans le scenario :
+        // 30 cartouches par heure.
+        Assert.Equal(
+            940,
+            s.FrenchDivision.GetCurrentResourceTotals()
+                .Ammunition.SmallArms);
+    }
+
 
 }

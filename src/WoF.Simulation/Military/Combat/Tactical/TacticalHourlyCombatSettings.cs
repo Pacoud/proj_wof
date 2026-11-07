@@ -13,6 +13,7 @@ internal sealed class TacticalHourlyCombatSettings
     internal TacticalDefenseProfile Defense { get; }
     internal TacticalPersonnelEffectProfile Effects { get; }
     internal TacticalSuppressionProfile? Suppression { get; }
+    internal TacticalCohesionProfile? Cohesion { get; }
 
     internal int MaxWeaponsPerCompany { get; }
     internal int RoundsPerWeapon { get; }
@@ -27,7 +28,8 @@ internal sealed class TacticalHourlyCombatSettings
         int maxWeaponsPerCompany,
         int roundsPerWeapon,
         ulong baseSeed,
-        TacticalSuppressionProfile? suppression = null)
+        TacticalSuppressionProfile? suppression = null,
+        TacticalCohesionProfile? cohesion = null)
     {
         Detection = detection
             ?? throw new ArgumentNullException(nameof(detection));
@@ -53,5 +55,14 @@ internal sealed class TacticalHourlyCombatSettings
         BaseSeed = baseSeed;
         Suppression = suppression;
 
+        if (cohesion is not null && suppression is null)
+        {
+            throw new ArgumentException(
+                "Cohesion requires the suppresion system",
+                nameof(cohesion)
+            );
+        }
+
+        Cohesion = cohesion;
     }
 }
