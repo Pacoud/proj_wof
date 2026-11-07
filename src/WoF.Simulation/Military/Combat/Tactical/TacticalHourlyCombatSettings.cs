@@ -14,6 +14,10 @@ internal sealed class TacticalHourlyCombatSettings
     internal TacticalPersonnelEffectProfile Effects { get; }
     internal TacticalSuppressionProfile? Suppression { get; }
     internal TacticalCohesionProfile? Cohesion { get; }
+    internal TacticalBattalionAssessmentProfile? BattalionAssessment
+    {
+        get;
+    }
 
     internal int MaxWeaponsPerCompany { get; }
     internal int RoundsPerWeapon { get; }
@@ -29,7 +33,8 @@ internal sealed class TacticalHourlyCombatSettings
         int roundsPerWeapon,
         ulong baseSeed,
         TacticalSuppressionProfile? suppression = null,
-        TacticalCohesionProfile? cohesion = null)
+        TacticalCohesionProfile? cohesion = null,
+        TacticalBattalionAssessmentProfile? battalionAssessment = null)
     {
         Detection = detection
             ?? throw new ArgumentNullException(nameof(detection));
@@ -64,5 +69,16 @@ internal sealed class TacticalHourlyCombatSettings
         }
 
         Cohesion = cohesion;
+
+
+        if (battalionAssessment is not null && cohesion is null )
+        {
+            throw new ArgumentException (
+                "Battalion assessment requires company cohesion",
+                nameof(battalionAssessment)
+            );
+        }
+
+        BattalionAssessment = battalionAssessment;
     }
 }

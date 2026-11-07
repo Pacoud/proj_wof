@@ -5069,3 +5069,99 @@ pertes, de la suppression et du commandement.
 Conserver les effectifs des compagnies comme
 source unique des pertes humaines, agrégées
 vers les bataillons et les divisions.
+
+# COMMIT 35cc861b0b831252f6ab1db864e007101bb087c7 # 
+
+## C2.4d.3 — Cohésion et désorganisation des compagnies
+
+### Objectif
+Introduire une cohésion tactique persistante au niveau
+des compagnies, distincte des effectifs disponibles
+et de la suppression momentanée.
+
+### Fonctionnalités
+- Cohésion initiale de 100 points par compagnie.
+- État borné entre 0 et 100.
+- Dégradation liée aux pertes humaines.
+- Dégradation sous suppression prolongée.
+- Distinction entre pression immédiate et
+  désorganisation durable.
+- Récupération progressive durant les périodes calmes.
+- Blocage de la récupération sous forte suppression.
+- Réduction de la capacité de tir des compagnies
+  ayant perdu leur cohésion.
+- Application des conséquences à l'heure suivante.
+- Aucun retrait supplémentaire de personnel.
+- Aucune destruction supplémentaire de matériel.
+- Intégration optionnelle dans l'orchestrateur horaire.
+- Résolution unique de la cohésion par phase.
+
+### Architecture
+- TacticalCohesionProfile :
+  paramètres de dégradation, récupération et
+  réduction de la capacité de tir.
+
+- TacticalCohesionState :
+  conserve la cohésion de chaque compagnie
+  et applique ses variations horaires.
+
+- TacticalCohesionCompanyReport :
+  détaille les causes de variation d'une compagnie.
+
+- TacticalCohesionPhaseResult :
+  regroupe les bilans de cohésion d'une heure.
+
+- TacticalBattle :
+  possède l'état tactique de cohésion.
+
+- TacticalHourlyCombatSettings :
+  active et configure le modèle de cohésion.
+
+- TacticalHourlyCombatOrchestrator :
+  applique les effets sur les tirs puis met à jour
+  la cohésion après les pertes et la suppression.
+
+### Tests
+- Cohésion initiale des compagnies.
+- Influence des pertes humaines.
+- Absence de double application des victimes.
+- Première suppression sans désorganisation durable.
+- Dégradation sous feu prolongé.
+- Récupération durant les périodes calmes.
+- Blocage de récupération sous forte suppression.
+- Diminution des armes engagées.
+- Préservation des équipements physiques.
+- Protection contre les phases répétées.
+- Rejet des heures incohérentes.
+- Isolation entre batailles.
+- Validation des paramètres.
+- Intégration sur plusieurs ticks successifs.
+
+### Limites actuelles
+- Coefficients expérimentaux non calibrés.
+- Cohésion uniforme au niveau de chaque compagnie.
+- Pas encore de cohésion propre aux bataillons.
+- Les différentes fonctions des soldats au sein
+  d'une compagnie ne sont pas encore distinguées.
+- Pas de modélisation spécifique des officiers,
+  sous-officiers ou pertes du commandement.
+- Fatigue, terrain et météo non intégrés.
+- Effets des doctrines et de l'entraînement absents.
+- Pas de panique ou de rupture automatique.
+- Pas de repli tactique lié au niveau de cohésion.
+- La variable Organization des divisions n'est
+  pas encore dérivée des échelons tactiques.
+- Les coefficients cumulés de suppression et
+  de cohésion restent à équilibrer.
+
+### Suite
+C2.4d.4 — Introduire la capacité de combat et la
+cohésion tactique des bataillons en tenant compte
+de l'état de leurs compagnies.
+
+Préparer ensuite les mécanismes de rupture,
+de repli et de perte de contrôle des positions.
+
+À terme, faire remonter les états tactiques
+jusqu'à la division afin de remplacer
+l'ancien calcul indépendant d'organisation.

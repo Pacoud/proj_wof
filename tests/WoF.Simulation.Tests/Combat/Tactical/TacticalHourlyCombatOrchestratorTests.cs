@@ -64,7 +64,8 @@ public sealed class TacticalHourlyCombatOrchestratorTests
         bool registerOrchestrator = true,
         double killedProbability = 1,
         bool enableSuppression = false,
-        bool enableCohesion = false )
+        bool enableCohesion = false,
+        bool enableBattalionAssessment = false)
     {
         var engine = new SimulationEngine();
 
@@ -197,6 +198,16 @@ public sealed class TacticalHourlyCombatOrchestratorTests
                         recoveryPerQuietHour: 3,
                         recoverySuppressionCeiling: 20,
                         maxFireReductionFraction: 0.5)
+                    : null,
+
+                    battalionAssessment: enableBattalionAssessment
+                    ? new TacticalBattalionAssessmentProfile(
+                        frontLineWeight: 3,
+                        supportWeight: 2,
+                        reserveWeight: 1,
+                        priorityFrontMultiplier: 2,
+                        holdThreshold: 60,
+                        riskThreshold: 30)
                     : null
                     );
 
@@ -633,6 +644,120 @@ public sealed class TacticalHourlyCombatOrchestratorTests
             s.FrenchDivision.GetCurrentResourceTotals()
                 .Ammunition.SmallArms);
     }
+
+
+    [Fact]
+    public void HourlyTickProducesBattalionAssessment()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true,
+            enableBattalionAssessment: true);
+
+        var battalion = s.German.Company.ParentBattalion!;
+
+        s.Battle.BattalionAssessments.SetPrioritySector(
+            battalion,
+            s.German.Sector);
+
+        // Le tick produit d'abord les consequences
+        // aux compagnies puis les bilans de bataillons.
+        s.Engine.Tick();
+
+        Assert.Equal(2, s.Engine.Clock.CurrentHour);
+
+        var reports = s.Orchestrator.LastBattalionAssessments;
+
+        // Un bataillon francais, un bataillon allemand.
+        Assert.Equal(2, reports.Count);
+
+        var german = Assert.Single(reports, r =>
+            ReferenceEquals(r.Battalion, battalion));
+
+        int available =
+            s.GermanDivision.GetCurrentResourceTotals()
+                .Personnel.Available;
+
+        Assert.Equal(available, german.AvailablePersonnel);
+
+        Assert.Equal(
+            s.Battle.Cohesion.Get(s.German),
+            german.Cohesion,
+            6);
+
+        Assert.Equal(
+            german.Cohesion * available / 100.0,
+            german.CombatReadiness,
+            6);
+
+        Assert.Equal(
+            german.CombatReadiness,
+            german.PrioritySectorReadiness!.Value,
+            6);
+
+        Assert.NotEqual(
+            TacticalBattalionMissionStatus.Unassigned,
+            german.MissionStatus);
+
+        // L'evaluation ne cree aucune perte supplementaire.
+        Assert.Equal(
+            available,
+            s.German.Company.Composition!.Manpower.Current);
+    }
+
+    [Fact]
+    public void ConsecutiveTicksRefreshBattalionAssessment()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true,
+            enableBattalionAssessment: true);
+
+        var battalion = s.German.Company.ParentBattalion!;
+
+        s.Battle.BattalionAssessments.SetPrioritySector(
+            battalion,
+            s.German.Sector);
+
+        s.Engine.Tick();
+
+        var first = Assert.Single(
+            s.Orchestrator.LastBattalionAssessments,
+            r => ReferenceEquals(r.Battalion, battalion));
+
+        s.Engine.Tick();
+
+        var second = Assert.Single(
+            s.Orchestrator.LastBattalionAssessments,
+            r => ReferenceEquals(r.Battalion, battalion));
+
+        Assert.Equal(3, s.Engine.Clock.CurrentHour);
+
+        // Les effectifs et la cohesion reels sont
+        // relus apres chaque heure de combat.
+        Assert.True(
+            second.AvailablePersonnel <= first.AvailablePersonnel);
+
+        Assert.Equal(
+            s.GermanDivision.GetCurrentResourceTotals()
+                .Personnel.Available,
+            second.AvailablePersonnel);
+
+        Assert.Equal(
+            s.Battle.Cohesion.Get(s.German),
+            second.Cohesion,
+            6);
+
+        Assert.True(
+            second.CombatReadiness <= first.CombatReadiness);
+
+        // Le bilan de l'heure precedente reste une
+        // photographie, et n'est pas modifie en place.
+        Assert.Equal(
+            first.AvailablePersonnel,
+            first.AvailablePersonnel);
+    }
+
 
 
 }

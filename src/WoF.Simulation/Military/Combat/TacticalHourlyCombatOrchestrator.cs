@@ -44,6 +44,13 @@ internal sealed class TacticalHourlyCombatOrchestrator
         private set;
     }
 
+
+    internal IReadOnlyList<TacticalBattalionAssessment>
+            LastBattalionAssessments { get; private set; } =
+                Array.Empty<TacticalBattalionAssessment>();
+
+
+
     internal TacticalHourlyCombatOrchestrator(
         TacticalBattle battle,
         TacticalGeometryMap geometry,
@@ -151,6 +158,14 @@ internal sealed class TacticalHourlyCombatOrchestrator
             _battle.PersonnelExposure.Get(deployment);
         }
 
+        // Verifier la couverture des bataillons AVANT
+        // de tirer ou de modifier les ressources.
+        if (_settings.BattalionAssessment is not null)
+        {
+            _battle.BattalionAssessments.EvaluateAll(
+                _settings.BattalionAssessment);
+        }
+
         _perception.EnsureCanUpdate(hour);
     }
 
@@ -244,6 +259,15 @@ internal sealed class TacticalHourlyCombatOrchestrator
                 _settings.Cohesion);
         }
 
+        // Synthese apres la mise a jour des compagnies.
+        // Aucun nouveau degat ni tirage aleatoire.
+        var battalionReports =
+            _settings.BattalionAssessment is null
+                ? Array.Empty<TacticalBattalionAssessment>()
+                : _battle.BattalionAssessments
+                    .EvaluateAll(_settings.BattalionAssessment)
+                    .ToArray();
+
 
         int killed = 0;
         int wounded = 0;
@@ -273,6 +297,11 @@ internal sealed class TacticalHourlyCombatOrchestrator
             Killed: killed,
             Wounded: wounded);
 
+        
+
+        LastBattalionAssessments =
+            Array.AsReadOnly(battalionReports);
+            
         _lastCompletedHour = hour;
         LastResult = result;
 
