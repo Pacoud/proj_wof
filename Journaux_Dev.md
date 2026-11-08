@@ -5165,3 +5165,210 @@ de repli et de perte de contrôle des positions.
 À terme, faire remonter les états tactiques
 jusqu'à la division afin de remplacer
 l'ancien calcul indépendant d'organisation.
+
+# COMMIT e4c4866270ab03b3e3b180d09d8ec5a8b3ff5e58 # 
+
+## C2.4d.4 — Cohésion et capacité opérationnelle des bataillons
+
+### Objectif
+Évaluer l'état tactique des bataillons à partir des
+effectifs et de la cohésion de leurs compagnies.
+
+Distinguer leur capacité globale à combattre
+de leur capacité à tenir un secteur prioritaire.
+
+### Fonctionnalités
+- Évaluation de la cohésion globale du bataillon.
+- Calcul de la capacité de combat disponible.
+- Pondération des compagnies selon leur rôle tactique.
+- Prise en compte des effectifs autorisés et disponibles.
+- Pondération particulière du front prioritaire.
+- Attribution explicite d'un secteur prioritaire.
+- Évaluation de la capacité à tenir ce secteur.
+- États de mission :
+  - Unassigned
+  - Capable
+  - AtRisk
+  - UnableToHold
+- Calcul dynamique sans nouveau stock de ressources.
+- Conservation de l'influence des compagnies détruites.
+- Prise en compte des changements d'effectifs et de cohésion.
+- Synthèse automatique après chaque tick tactique.
+- Aucune création de pertes humaines supplémentaires.
+- Aucun recalcul indépendant des pertes au niveau bataillon.
+
+### Architecture
+- TacticalBattalionAssessmentProfile :
+  définit les pondérations et les seuils de mission.
+
+- TacticalBattalionAssessmentSystem :
+  agrège les états des compagnies et évalue
+  la capacité opérationnelle des bataillons.
+
+- TacticalBattalionAssessment :
+  représente les indicateurs calculés d'un bataillon.
+
+- TacticalBattalionMissionStatus :
+  décrit la capacité évaluée à tenir sa mission.
+
+- TacticalBattle :
+  donne accès au système d'évaluation des bataillons.
+
+- TacticalHourlyCombatSettings :
+  active optionnellement les évaluations.
+
+- TacticalHourlyCombatOrchestrator :
+  produit les bilans après les conséquences tactiques
+  de chaque heure.
+
+### Intérêt des tests
+- Vérifier les indicateurs d'un bataillon intact.
+- Contrôler les effets des pertes du front prioritaire.
+- Distinguer pertes secondaires et rupture prioritaire.
+- Conserver l'influence des compagnies détruites.
+- Vérifier l'absence de tenue sans première ligne.
+- Ne pas inventer une mission lorsqu'elle est absente.
+- Rejeter les évaluations de bataillons partiellement déployés.
+- Actualiser les bilans après récupération des blessés.
+- Empêcher toute modification des ressources pendant l'évaluation.
+- Vérifier l'isolation entre batailles.
+- Garantir une seule évaluation par bataillon représenté.
+- Vérifier l'intégration dans plusieurs ticks successifs.
+
+### Limites actuelles
+- Pondérations et seuils expérimentaux.
+- Cohésion du bataillon calculée, non stockée.
+- Pas encore de cohésion autonome du commandement.
+- Pas de représentation du PC de bataillon.
+- Pas de prise en compte de la perte des officiers.
+- Missions prioritaires encore configurées manuellement.
+- Pas d'attribution automatique depuis DivisionTacticalOrder.
+- Bataillons partiellement déployés non évaluables.
+- Bataillons entièrement absents de la bataille non évalués.
+- Pas encore de transfert automatique des réserves.
+- Pas encore de modification des ordres selon l'état du bataillon.
+- Pas de rupture ou de repli tactique automatique.
+- Division.Organization reste indépendante de ces évaluations.
+
+### Suite
+C2.4d.5 — Introduire les premières réactions tactiques
+aux situations de rupture : perte de tenue du secteur,
+repli et demande de réorganisation.
+
+Faire ensuite remonter la capacité opérationnelle
+des bataillons vers la division et préparer le
+remplacement définitif de l'ancien système
+d'organisation opérationnelle.
+
+# COMMIT # 
+## C2.4d.5 — Rupture du front et réactions tactiques
+
+### Objectif
+Transformer les évaluations tactiques des bataillons
+en états persistants et en demandes de réaction.
+
+Distinguer les positions menacées, les ruptures
+confirmées et les situations rétablies, sans déclencher
+automatiquement une retraite opérationnelle.
+
+### Fonctionnalités
+- Suivi de l'état du front prioritaire par bataillon.
+- États Unassigned, Holding, Threatened et
+  RuptureConfirmed.
+- Confirmation des situations critiques sur
+  plusieurs heures consécutives.
+- Hystérésis pour éviter les changements d'état
+  artificiels autour des seuils.
+- Confirmation du rétablissement sur plusieurs heures.
+- Réinitialisation du suivi lors d'un changement
+  de secteur prioritaire.
+- Demande de réorganisation lorsqu'une position
+  devient menacée.
+- Demande de renfort lors d'une rupture confirmée,
+  lorsque des réserves sont disponibles.
+- Demande de repli lorsqu'une rupture est confirmée
+  et qu'aucune réserve n'est disponible.
+- Identification des compagnies de première ligne
+  concernées par chaque demande.
+- Identification des réserves candidates.
+- Émission des demandes uniquement lors d'un
+  changement d'état ou de réaction nécessaire.
+- Bilans de réaction disponibles après chaque tick.
+- Validation des rapports avant modification de l'état.
+- Aucun nouveau calcul de pertes humaines ou matérielles.
+- Aucune modification automatique des positions.
+- Aucun déclenchement de Division.IsBroken.
+
+### Architecture
+- TacticalBattalionReactionProfile :
+  configure les délais de confirmation et la marge
+  de récupération.
+
+- TacticalBattalionReactionState :
+  conserve les états de rupture des bataillons,
+  applique l'hystérésis et génère les demandes.
+
+- TacticalBattalionReactionRequest :
+  identifie la réaction demandée, le bataillon,
+  son secteur et les compagnies concernées.
+
+- TacticalBattalionReactionPhaseResult :
+  rassemble les états et les nouvelles demandes
+  produits pendant une heure.
+
+- TacticalBattle :
+  possède le système de suivi des réactions.
+
+- TacticalHourlyCombatSettings :
+  active optionnellement les réactions.
+
+- TacticalHourlyCombatOrchestrator :
+  traite les réactions après l'évaluation
+  de cohésion et de capacité des bataillons.
+
+### Intérêt des tests
+- Vérifier qu'un bataillon intact tient son secteur.
+- Vérifier la demande de réorganisation en cas de menace.
+- Exiger deux heures critiques avant confirmation.
+- Empêcher la répétition inutile des mêmes demandes.
+- Distinguer les réactions avec et sans réserves.
+- Adapter les demandes lorsque les réserves disparaissent.
+- Exiger un rétablissement durable après rupture.
+- Réinitialiser les compteurs lors d'un changement
+  de mission ou d'une interruption horaire.
+- Ne générer aucune demande sans mission attribuée.
+- Refuser les rapports dupliqués et les phases répétées.
+- Garantir qu'un traitement invalide ne modifie pas
+  partiellement l'état des bataillons.
+- Vérifier l'absence de pertes supplémentaires.
+- Vérifier le fonctionnement sur deux vrais ticks.
+
+### Limites actuelles
+- Seuils et délais expérimentaux.
+- Les demandes ne sont pas encore exécutées.
+- Pas encore de déplacement tactique automatique.
+- Pas de transfert effectif de réserves entre secteurs.
+- Pas de sélection d'une destination de repli.
+- Pas encore de vérification des itinéraires de retraite.
+- Les états de rupture sont liés au secteur prioritaire,
+  et non à une géométrie détaillée de toute la ligne.
+- Pas encore de prise en compte de l'encerclement.
+- Pas d'intervention autonome du commandement.
+- Absence de simulation de transmission des demandes.
+- Pas de modification directe de Division.Organization.
+- Pas de transition automatique vers Division.IsBroken.
+- Les évaluations doivent représenter tous les
+  bataillons déployés dans la bataille.
+- Les index des bataillons pourront être optimisés
+  lorsque les effectifs simulés deviendront très grands.
+
+### Suite
+C2.4d.6 — Exécution contrôlée des réactions tactiques.
+
+Permettre au commandement d'accepter ou refuser
+une demande, de mobiliser des compagnies de réserve
+et de préparer un repli vers une position valide.
+
+Relier progressivement les mouvements tactiques
+à l'évolution des secteurs, puis faire remonter
+les résultats vers le commandement divisionnaire.

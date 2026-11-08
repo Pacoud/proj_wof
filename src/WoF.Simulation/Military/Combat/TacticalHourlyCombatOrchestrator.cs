@@ -45,9 +45,21 @@ internal sealed class TacticalHourlyCombatOrchestrator
     }
 
 
+    internal TacticalBattalionReactionPhaseResult?
+        LastBattalionReactionPhase
+     {
+        get;
+        private set;
+    }
+
+
+
     internal IReadOnlyList<TacticalBattalionAssessment>
             LastBattalionAssessments { get; private set; } =
                 Array.Empty<TacticalBattalionAssessment>();
+
+
+
 
 
 
@@ -166,6 +178,17 @@ internal sealed class TacticalHourlyCombatOrchestrator
                 _settings.BattalionAssessment);
         }
 
+
+        // Verifier avant le tir que la phase de reactions
+        // n'a pas deja ete appliquee.
+        if (_settings.BattalionReactions is not null)
+        {
+            _battle.BattalionReactions.EnsureCanApply(
+                hour,
+                _settings.BattalionAssessment!,
+                _settings.BattalionReactions);
+        }
+
         _perception.EnsureCanUpdate(hour);
     }
 
@@ -269,6 +292,20 @@ internal sealed class TacticalHourlyCombatOrchestrator
                     .ToArray();
 
 
+            // Les reactions lisent les resultats de C2.4d.4.
+            // Elles ne calculent pas de nouvelles pertes.
+            TacticalBattalionReactionPhaseResult? reactionPhase = null;
+
+            if (_settings.BattalionReactions is not null)
+            {
+                reactionPhase = _battle.BattalionReactions.ApplyHour(
+                    hour,
+                    battalionReports,
+                    _settings.BattalionAssessment!,
+                    _settings.BattalionReactions);
+            }
+
+
         int killed = 0;
         int wounded = 0;
 
@@ -301,7 +338,8 @@ internal sealed class TacticalHourlyCombatOrchestrator
 
         LastBattalionAssessments =
             Array.AsReadOnly(battalionReports);
-            
+
+        LastBattalionReactionPhase = reactionPhase;
         _lastCompletedHour = hour;
         LastResult = result;
 

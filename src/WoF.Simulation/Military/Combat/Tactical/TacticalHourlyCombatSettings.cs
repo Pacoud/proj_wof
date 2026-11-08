@@ -19,6 +19,12 @@ internal sealed class TacticalHourlyCombatSettings
         get;
     }
 
+    internal TacticalBattalionReactionProfile? BattalionReactions
+    {
+        get;
+    }
+
+
     internal int MaxWeaponsPerCompany { get; }
     internal int RoundsPerWeapon { get; }
     internal ulong BaseSeed { get; }
@@ -34,7 +40,8 @@ internal sealed class TacticalHourlyCombatSettings
         ulong baseSeed,
         TacticalSuppressionProfile? suppression = null,
         TacticalCohesionProfile? cohesion = null,
-        TacticalBattalionAssessmentProfile? battalionAssessment = null)
+        TacticalBattalionAssessmentProfile? battalionAssessment = null,
+        TacticalBattalionReactionProfile? battalionReactions = null)
     {
         Detection = detection
             ?? throw new ArgumentNullException(nameof(detection));
@@ -80,5 +87,23 @@ internal sealed class TacticalHourlyCombatSettings
         }
 
         BattalionAssessment = battalionAssessment;
+
+
+
+        if (battalionReactions is not null
+            && battalionAssessment is null)
+        {
+            throw new ArgumentException(
+                "Battalion reactions require battalion assessment.",
+                nameof(battalionReactions));
+        }
+
+        if (battalionReactions is not null)
+        {
+            battalionReactions.ValidateFor(battalionAssessment!);
+        }
+
+        BattalionReactions = battalionReactions;
+
     }
 }

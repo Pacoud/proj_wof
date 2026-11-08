@@ -52,6 +52,13 @@ public sealed class TacticalBattle
     }
 
 
+    internal TacticalBattalionReactionState BattalionReactions
+    {
+        get;
+    }
+
+
+
     public TacticalBattle(
         Engagement engagement,
         TacticalBattlefield battlefield)
@@ -85,6 +92,11 @@ public sealed class TacticalBattle
         Cohesion = new TacticalCohesionState(this);
 
         BattalionAssessments = new TacticalBattalionAssessmentSystem(this);
+
+
+        BattalionReactions =
+            new TacticalBattalionReactionState(this);
+
 
 
 

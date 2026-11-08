@@ -6,6 +6,8 @@ using WoF.Simulation.Military.Combat.Tactical;
 using WoF.Simulation.Military.Composition;
 using WoF.Simulation.Military.Organization;
 using WoF.Simulation.World;
+using WoF.Simulation.Military.Combat.Losses;
+
 
 namespace WoF.Simulation.Tests.Combat.Tactical;
 
@@ -65,7 +67,8 @@ public sealed class TacticalHourlyCombatOrchestratorTests
         double killedProbability = 1,
         bool enableSuppression = false,
         bool enableCohesion = false,
-        bool enableBattalionAssessment = false)
+        bool enableBattalionAssessment = false,
+        bool enableBattalionReactions = false)
     {
         var engine = new SimulationEngine();
 
@@ -208,6 +211,13 @@ public sealed class TacticalHourlyCombatOrchestratorTests
                         priorityFrontMultiplier: 2,
                         holdThreshold: 60,
                         riskThreshold: 30)
+                    : null,
+
+                    battalionReactions: enableBattalionReactions
+                    ? new TacticalBattalionReactionProfile(
+                        criticalConfirmationHours: 2,
+                        recoveryConfirmationHours: 2,
+                        recoveryMargin: 10)
                     : null
                     );
 
@@ -757,6 +767,108 @@ public sealed class TacticalHourlyCombatOrchestratorTests
             first.AvailablePersonnel,
             first.AvailablePersonnel);
     }
+
+
+
+
+    [Fact]
+    public void ConsecutiveTicksConfirmRuptureAndRequestWithdrawal()
+    {
+        var s = CreateScenario(
+            killedProbability: 0,
+            enableSuppression: true,
+            enableCohesion: true,
+            enableBattalionAssessment: true,
+            enableBattalionReactions: true);
+
+        var battalion = s.German.Company.ParentBattalion!;
+        var initialSector = s.German.Sector;
+
+        s.Battle.BattalionAssessments.SetPrioritySector(
+            battalion,
+            s.German.Sector);
+
+        // Preparer une compagnie fortement affaiblie
+        // AVANT le premier tick de ce test.
+        var pool = s.German.Company.Composition!.Manpower;
+
+        pool.ApplyCasualties(new PersonnelCasualtyReport(
+            KilledInAction: 80,
+            WoundedInAction: 0,
+            MissingOrCaptured: 0));
+
+        // Mettre en accord l'exposition avec
+        // les vingt survivants.
+        s.Battle.PersonnelExposure.Set(
+            s.German,
+            new TacticalPersonnelExposure(
+                exposed: 20,
+                sheltered: 0,
+                reserve: 0,
+                exposedDepthMeters: 1));
+
+        // Heure 2 : incapacite critique observee.
+        s.Engine.Tick();
+
+        var first = s.Orchestrator.LastBattalionReactionPhase!;
+
+        var firstReport = Assert.Single(
+            first.Battalions,
+            r => ReferenceEquals(r.Battalion, battalion));
+
+        Assert.Equal(
+            TacticalBattalionFrontState.Threatened,
+            firstReport.State);
+
+        Assert.Equal(1, firstReport.ConsecutiveCriticalHours);
+
+        Assert.Equal(
+            TacticalBattalionReactionType.Reorganize,
+            Assert.Single(
+                first.Requests,
+                r => ReferenceEquals(
+                    r.Battalion, battalion)).Type);
+
+        // Heure 3 : seconde confirmation.
+        s.Engine.Tick();
+
+        var second = s.Orchestrator.LastBattalionReactionPhase!;
+
+        var secondReport = Assert.Single(
+            second.Battalions,
+            r => ReferenceEquals(r.Battalion, battalion));
+
+        Assert.Equal(
+            TacticalBattalionFrontState.RuptureConfirmed,
+            secondReport.State);
+
+        Assert.Equal(2, secondReport.ConsecutiveCriticalHours);
+
+        // Aucun reserviste dans ce bataillon :
+        // le commandement recoit une demande de repli.
+        var request = Assert.Single(
+            second.Requests,
+            r => ReferenceEquals(r.Battalion, battalion));
+
+        Assert.Equal(
+            TacticalBattalionReactionType.RequestWithdrawal,
+            request.Type);
+
+        // Mais la bataille n'a pas physiquement
+        // deplace ou rompu toute la division.
+        Assert.Same(initialSector, s.German.Sector);
+        Assert.False(s.GermanDivision.IsBroken);
+
+        // Les pertes preparees en amont ne sont
+        // pas appliquees une seconde fois.
+        Assert.Equal(20, pool.Current);
+
+        Assert.Equal(
+            20,
+            s.GermanDivision.GetCurrentResourceTotals()
+                .Personnel.Available);
+    }
+
 
 
 
