@@ -57,6 +57,9 @@ public sealed class TacticalBattle
         get;
     }
 
+    internal long DeploymentRevision { get; private set; }
+
+
 
 
     public TacticalBattle(
@@ -161,6 +164,9 @@ public sealed class TacticalBattle
         _byCompany.Add(company, deployment);
         _deployments.Add(deployment);
 
+
+        DeploymentRevision++;
+
         return deployment;
     }
 
@@ -199,5 +205,16 @@ public sealed class TacticalBattle
                     d.Company.ParentBattalion,
                     battalion))
             .ToArray();
+    }
+
+
+    internal void NotifyDeploymentChanged(
+    CompanyDeployment deployment)
+    {
+        if (!ContainsDeployment(deployment))
+            throw new InvalidOperationException(
+                "Deployment does not belong to this battle.");
+
+        DeploymentRevision++;
     }
 }

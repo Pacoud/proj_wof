@@ -33,6 +33,8 @@ public sealed class TacticalSectorPresenceIndex
     private readonly int _sectorCount;
     private readonly int _geometryCount;
     private readonly int _connectionCount;
+    private readonly long _deploymentRevision;
+    private readonly long _geometryRevision;
 
     public TacticalSectorPresenceIndex(
         TacticalBattle battle,
@@ -43,6 +45,10 @@ public sealed class TacticalSectorPresenceIndex
 
         _geometry = geometry
             ?? throw new ArgumentNullException(nameof(geometry));
+
+        
+        _deploymentRevision = battle.DeploymentRevision;
+        _geometryRevision = geometry.Revision;
 
         if (!ReferenceEquals(_geometry.Battle, _battle))
         {
@@ -210,7 +216,9 @@ public sealed class TacticalSectorPresenceIndex
             || _geometry.CompanyPositions.Count != _positionCount
             || battlefield.Sectors.Count != _sectorCount
             || _geometry.SectorGeometries.Count != _geometryCount
-            || battlefield.Connections.Count != _connectionCount)
+            || battlefield.Connections.Count != _connectionCount
+            || _battle.DeploymentRevision != _deploymentRevision
+            || _geometry.Revision != _geometryRevision)
         {
             throw new InvalidOperationException(
                 "Tactical sector index is outdated. Rebuild it.");

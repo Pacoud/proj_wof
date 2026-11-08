@@ -14,9 +14,9 @@ public sealed class CompanyDeployment
 {
     public Company Company { get; }
 
-    public BattleSector Sector { get; }
+    public BattleSector Sector { get; private set; }
 
-    public CompanyDeploymentRole Role { get; }
+    public CompanyDeploymentRole Role { get; private set; }
 
     internal CompanyDeployment(
         Company company,
@@ -25,6 +25,20 @@ public sealed class CompanyDeployment
     {
         Company = company;
         Sector = sector;
+        Role = role;
+    }
+
+
+    internal void ApplyMovementArrival(
+    BattleSector destination,
+    CompanyDeploymentRole role)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+
+        if (!Enum.IsDefined(role))
+            throw new ArgumentOutOfRangeException(nameof(role));
+
+        Sector = destination;
         Role = role;
     }
 }

@@ -96,4 +96,14 @@ internal sealed class TacticalDefensiveState
                 "Deployment belongs to another tactical battle.");
         }
     }
+    
+    /// <summary>
+    /// Le couvert d'un ancien secteur ne peut pas
+    /// etre conserve apres un déplacement.
+    /// </summary>
+    internal void Clear(CompanyDeployment deployment)
+    {
+        ValidateDeployment(deployment);
+        _dispositions.Remove(deployment);
+    }
 }

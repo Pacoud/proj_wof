@@ -53,6 +53,16 @@ internal sealed class TacticalHourlyCombatOrchestrator
     }
 
 
+    internal TacticalReactionExecutionState? ReactionExecution
+    {
+        get;
+    }
+
+    internal TacticalMovementPhaseResult? LastMovementPhase =>
+        ReactionExecution?.LastMovementPhase;
+
+
+
 
     internal IReadOnlyList<TacticalBattalionAssessment>
             LastBattalionAssessments { get; private set; } =
@@ -96,6 +106,16 @@ internal sealed class TacticalHourlyCombatOrchestrator
             throw new InvalidOperationException(
                 "Tactical services must belong to the same battle.");
         }
+
+        if (_settings.ReactionMovement is not null)
+        {
+            ReactionExecution = new TacticalReactionExecutionState(
+                _battle,
+                _geometry,
+                _diplomacy,
+                _settings.ReactionMovement);
+        }
+
     }
 
     /// <summary>
@@ -189,6 +209,8 @@ internal sealed class TacticalHourlyCombatOrchestrator
                 _settings.BattalionReactions);
         }
 
+        ReactionExecution?.EnsureCanAdvance(hour);
+
         _perception.EnsureCanUpdate(hour);
     }
 
@@ -199,6 +221,11 @@ internal sealed class TacticalHourlyCombatOrchestrator
     internal TacticalHourlyCombatResult Run(long hour)
     {
         ValidateCanRun(hour);
+
+        // Les compagnies dont le transfert est acheve
+        // arrivent avant la detection et les tirs
+        // de cette nouvelle heure.
+        ReactionExecution?.AdvanceHour(hour);
 
         // 1. Mise a jour du renseignement.
         TacticalDetectionSystem.Update(
@@ -362,6 +389,12 @@ internal sealed class TacticalHourlyCombatOrchestrator
 
         foreach (var shooter in _battle.Deployments)
         {
+
+            // Une compagnie en cours de transfert ne participe
+            // pas aux salves automatiques.
+            if (ReactionExecution?.IsMoving(shooter) == true)
+                continue;
+                
             if (shooter.Role != CompanyDeploymentRole.FrontLine)
                 continue;
 

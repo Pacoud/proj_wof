@@ -24,6 +24,11 @@ internal sealed class TacticalHourlyCombatSettings
         get;
     }
 
+    internal TacticalReactionMovementProfile? ReactionMovement
+    {
+        get;
+    }
+
 
     internal int MaxWeaponsPerCompany { get; }
     internal int RoundsPerWeapon { get; }
@@ -41,7 +46,8 @@ internal sealed class TacticalHourlyCombatSettings
         TacticalSuppressionProfile? suppression = null,
         TacticalCohesionProfile? cohesion = null,
         TacticalBattalionAssessmentProfile? battalionAssessment = null,
-        TacticalBattalionReactionProfile? battalionReactions = null)
+        TacticalBattalionReactionProfile? battalionReactions = null,
+        TacticalReactionMovementProfile? reactionMovement = null)
     {
         Detection = detection
             ?? throw new ArgumentNullException(nameof(detection));
@@ -105,5 +111,21 @@ internal sealed class TacticalHourlyCombatSettings
 
         BattalionReactions = battalionReactions;
 
+
+
+        if (reactionMovement is not null
+            && battalionReactions is null)
+        {
+            throw new ArgumentException(
+                "Reaction movement requires battalion reactions.",
+                nameof(reactionMovement));
+        }
+
+        ReactionMovement = reactionMovement;
+
+
     }
+
+
+
 }

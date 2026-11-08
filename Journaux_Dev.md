@@ -5260,7 +5260,7 @@ des bataillons vers la division et préparer le
 remplacement définitif de l'ancien système
 d'organisation opérationnelle.
 
-# COMMIT # 
+# COMMIT 15ac54d9bd13d669861f5f22b321600a6160a4e0 # 
 ## C2.4d.5 — Rupture du front et réactions tactiques
 
 ### Objectif
@@ -5372,3 +5372,122 @@ et de préparer un repli vers une position valide.
 Relier progressivement les mouvements tactiques
 à l'évolution des secteurs, puis faire remonter
 les résultats vers le commandement divisionnaire.
+
+
+# COMMIT # 
+## C2.4d.6 — Exécution contrôlée des réactions tactiques
+
+### Objectif
+Permettre au commandement d'accepter ou de refuser
+les demandes tactiques des bataillons, puis d'exécuter
+des transferts de compagnies entre secteurs adjacents.
+
+Maintenir une séparation entre les demandes,
+les décisions et les mouvements effectivement réalisés.
+
+### Fonctionnalités
+- Acceptation ou refus explicite des demandes tactiques.
+- Validation de l'origine des demandes.
+- Protection contre les décisions répétées.
+- Sélection d'une compagnie de réserve pour les renforts.
+- Sélection d'une compagnie concernée pour les replis.
+- Vérification de l'appartenance au bon bataillon.
+- Contrôle des secteurs et des connexions.
+- Refus des transferts vers un secteur non adjacent.
+- Refus des replis vers un secteur occupé par l'ennemi.
+- Calcul de durée selon la distance et la vitesse.
+- Conservation des mouvements en cours entre les ticks.
+- Arrivée uniquement après la durée calculée.
+- Revalidation des conditions de repli à l'arrivée.
+- Changement de secteur et de rôle après transfert.
+- Mise à jour des positions géométriques.
+- Invalidation des anciens index spatiaux.
+- Réinitialisation du couvert lors d'un déplacement.
+- Actualisation des combattants exposés à l'arrivée.
+- Suspension des tirs automatiques pendant le transfert.
+- Bilans de mouvements et d'arrivées disponibles.
+- Aucun nouveau calcul de pertes humaines.
+- Aucun changement artificiel de cohésion.
+- Conservation du moteur tactique comme source
+  unique des conséquences physiques du combat.
+
+### Architecture
+- TacticalReactionMovementProfile :
+  configure les vitesses et la répartition initiale
+  des hommes exposés à l'arrivée.
+
+- TacticalReactionExecutionState :
+  vérifie les décisions, crée les ordres de mouvement,
+  conserve les transferts et traite les arrivées.
+
+- TacticalSectorMovementOrder :
+  représente un transfert entre secteurs adjacents
+  avec son heure d'émission et d'arrivée.
+
+- TacticalMovementPhaseResult :
+  fournit les transferts achevés ou bloqués.
+
+- CompanyDeployment :
+  autorise un changement contrôlé de secteur et de rôle.
+
+- TacticalGeometryMap :
+  autorise une relocalisation et versionne ses changements.
+
+- TacticalSectorPresenceIndex :
+  détecte les changements de déploiement ou de géométrie.
+
+- TacticalDefensiveState :
+  abandonne le couvert devenu invalide après déplacement.
+
+- TacticalHourlyCombatOrchestrator :
+  traite les arrivées avant la détection et les tirs,
+  puis continue le cycle tactique normal.
+
+### Intérêt des tests
+- Vérifier qu'un ordre accepté ne téléporte pas la compagnie.
+- Vérifier la durée de déplacement.
+- Vérifier le secteur et le rôle après arrivée.
+- Vérifier l'absence de pertes supplémentaires.
+- Vérifier la répartition des survivants après renfort.
+- Vérifier la sortie de première ligne après repli.
+- Rejeter les destinations ennemies ou non connectées.
+- Refuser les demandes falsifiées ou déjà décidées.
+- Vérifier que le refus n'entraîne aucun déplacement.
+- Détecter les index spatiaux périmés.
+- Vérifier le blocage si une destination devient ennemie.
+- Préserver la compatibilité avec les réactions
+  et les combats développés précédemment.
+
+### Limites actuelles
+- Déplacement limité à un secteur adjacent par ordre.
+- Pas encore de pathfinding tactique multi-secteurs.
+- Pas d'interpolation géométrique pendant le transit.
+- Les déplacements restent représentés à l'échelle horaire.
+- Pas de combat spécifiquement simulé sur les liaisons.
+- La compagnie reste localisée au secteur de départ
+  jusqu'à la validation de son arrivée.
+- Vitesse et exposition à l'arrivée expérimentales.
+- Fatigue, terrain et météo non intégrés à la vitesse.
+- Les demandes de réorganisation sont seulement acquittées.
+- Pas de réorganisation physique automatique.
+- Pas de génération automatique d'un nouvel itinéraire
+  si la destination devient inaccessible.
+- Pas de file persistante de demandes de commandement.
+- Les décisions restent à fournir explicitement.
+- Les déplacements ne sont pas encore transactionnels
+  avec l'ensemble des systèmes du tick.
+- Pas de changement automatique de mission divisionnaire.
+- Aucune traduction directe vers Division.IsBroken.
+
+### Suite
+C2.4d.7 — Déplacements continus et itinéraires tactiques.
+
+Introduire le pathfinding sur plusieurs secteurs,
+la progression géométrique sur les liaisons
+et la gestion des contacts pendant le déplacement.
+
+Faire ensuite dépendre les décisions du commandement
+des positions, des missions et des réserves disponibles.
+
+Poursuivre la remontée des conséquences tactiques
+des compagnies vers les bataillons et les divisions.

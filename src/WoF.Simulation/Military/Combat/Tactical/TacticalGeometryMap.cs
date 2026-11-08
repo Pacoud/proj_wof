@@ -122,6 +122,66 @@ public sealed class TacticalGeometryMap
         get;
     }
 
+    internal long Revision { get; private set; }
+
+
+    internal void RelocateCompany(
+        CompanyDeployment deployment,
+        BattleSector destination)
+    {
+    ArgumentNullException.ThrowIfNull(deployment);
+    ArgumentNullException.ThrowIfNull(destination);
+
+    EnsureActive();
+
+    if (!_battle.ContainsDeployment(deployment)
+        || !_battle.Battlefield.ContainsSector(destination))
+    {
+        throw new InvalidOperationException(
+            "Invalid tactical relocation.");
+    }
+
+    if (!_byDeployment.TryGetValue(
+        deployment, out var previous))
+    {
+        throw new InvalidOperationException(
+            "Company has no tactical position.");
+    }
+
+    if (!_bySector.TryGetValue(
+        destination, out var destinationGeometry))
+    {
+        throw new InvalidOperationException(
+            "Destination has no sector geometry.");
+    }
+
+    // Première approximation : position au centre
+    // du secteur, à son altitude déclarée.
+    var point = new TacticalPoint(
+        destinationGeometry.CenterXMeters,
+        destinationGeometry.CenterYMeters,
+        destination.ElevationMeters);
+
+    var replacement = new CompanyTacticalPosition(
+        deployment,
+        point,
+        previous.FacingDegrees,
+        previous.FrontageMeters);
+
+    int index = _positions.FindIndex(p =>
+        ReferenceEquals(p, previous));
+
+    if (index < 0)
+    {
+        throw new InvalidOperationException(
+            "Geometry position index is inconsistent.");
+    }
+
+    _positions[index] = replacement;
+    _byDeployment[deployment] = replacement;
+
+    Revision++;
+    }
 
     public TacticalGeometryMap(TacticalBattle battle)
     {
@@ -184,6 +244,8 @@ public sealed class TacticalGeometryMap
         _bySector.Add(sector, geometry);
         _sectorGeometries.Add(geometry);
 
+        Revision++;
+
         return geometry;
     }
 
@@ -211,6 +273,8 @@ public sealed class TacticalGeometryMap
                 "Obstacle ID already exists in this geometry map.");
 
         _lineObstacles.Add(obstacle);
+
+        Revision++;
     }
 
 
@@ -272,6 +336,8 @@ public sealed class TacticalGeometryMap
         _byDeployment.Add(deployment, position);
         _positions.Add(position);
 
+        Revision++;
+        
         return position;
     }
 
