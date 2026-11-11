@@ -5621,7 +5621,7 @@ mouvements et la gestion des croisements de compagnies.
 Préparer enfin les ordres tactiques de manœuvre
 indépendants des seules réactions de rupture.
 
-# COMMIT # 
+# COMMIT e71d339604adbb4d767b44187d64b6e6c785e1b8 # 
 
 ## C2.4d.8a — Indexation spatiale des compagnies
 
@@ -5718,3 +5718,100 @@ au même moment, sans dépendre de l'ordre de traitement.
 Préparer le raccordement aux renseignements,
 aux tirs, à la suppression et aux pertes humaines
 dans C2.4d.8c.
+
+
+# COMMIT # 
+
+## C2.4d.8b — Détection simultanée des croisements
+
+### Objectif
+Détecter les rencontres potentielles entre compagnies
+sur une même heure indépendamment de l'ordre
+de traitement des mouvements.
+
+Prendre en compte le temps de passage aux positions
+communes, sans introduire de nouveau moteur de combat.
+
+### Fonctionnalités
+- Préparation simultanée des trajectoires des compagnies.
+- Segments de mouvement horodatés sur [0, 1].
+- Représentation des compagnies stationnaires.
+- Prise en compte des arrivées avant la fin du tick.
+- Filtrage spatial des segments par sweep and prune.
+- Calcul de la distance minimale sur la période commune.
+- Distinction des croisements géométriques
+  et des rencontres au même moment.
+- Filtrage des compagnies alliées.
+- Suppression des événements dupliqués par paire.
+- Ordre déterministe des rencontres.
+- Résolution conservatrice des conflits de mouvement.
+- Suspension simultanée des compagnies concernées.
+- Stabilisation des suspensions lorsque celles-ci
+  créent de nouvelles rencontres potentielles.
+- Maintien des mouvements indépendants.
+- Séparation entre prédiction et application des mouvements.
+- Conservation d'un mode séquentiel de compatibilité.
+- Statistiques de filtrage et de résolution.
+- Aucun nouveau calcul de pertes humaines.
+- Aucun tir ou consommation de munitions supplémentaire.
+
+### Architecture
+- TacticalTimedTrajectorySegment :
+  portion de trajectoire associée à un intervalle
+  temporel normalisé.
+
+- TacticalSimultaneousContactDetector :
+  sélectionne les paires candidates et calcule
+  leur proximité spatiale au même instant.
+
+- TacticalPredictedEncounter :
+  décrit une rencontre potentielle et son temps.
+
+- TacticalSimultaneousMovementResolver :
+  stabilise les décisions de suspension des compagnies.
+
+- TacticalReactionMovementProfile :
+  active optionnellement les rencontres simultanées.
+
+- TacticalReactionExecutionState :
+  sépare la préparation des mouvements,
+  leur résolution et leur application.
+
+### Intérêt des tests
+- Vérifier les rencontres sur une même liaison.
+- Refuser les faux contacts à des instants différents.
+- Détecter les rencontres avec les unités stationnaires.
+- Exclure les compagnies alliées.
+- Empêcher les doublons lors d'itinéraires segmentés.
+- Garantir des résultats indépendants de l'ordre d'entrée.
+- Vérifier la suspension des deux compagnies opposées.
+- Vérifier la stabilisation des suspensions.
+- Préserver les effectifs et les ressources.
+- Garantir la non-régression des mouvements précédents.
+
+### Limites actuelles
+- Les rencontres restent des prédictions géométriques.
+- Les tirs et pertes en mouvement ne sont pas simulés.
+- Les suspensions interviennent dès le début du tick.
+- La progression exacte jusqu'au moment de contact
+  n'est pas encore appliquée.
+- Les calculs utilisent les centres des compagnies.
+- Les largeurs de formation ne sont pas intégrées.
+- Les différences d'altitude ne sont pas prises
+  en compte dans la distance de contact.
+- Les zones extrêmement denses restent coûteuses.
+- Les contacts ne produisent aucun renseignement
+  automatiquement connu du commandement.
+- Les performances à très grande échelle
+  doivent encore être mesurées.
+
+### Suite
+C2.4d.8c — Raccordement des engagements mobiles
+au système de combat tactique existant.
+
+Faire interagir les rencontres mobiles avec la détection,
+les ordres de tir, les munitions, les pertes,
+la suppression et la cohésion, sans second moteur de combat.
+
+Affiner ensuite les interruptions pour arrêter les unités
+au moment du contact plutôt qu'au début de l'heure.

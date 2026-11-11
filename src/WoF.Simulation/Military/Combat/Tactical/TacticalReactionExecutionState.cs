@@ -56,7 +56,9 @@ internal sealed record TacticalMovementPhaseResult(
     long Hour,
     IReadOnlyList<TacticalMovementCompletion> Completed,
     IReadOnlyList<TacticalMovementProgress> Active,
-    IReadOnlyList<TacticalTransitContact> Contacts);
+    IReadOnlyList<TacticalTransitContact> Contacts,
+    IReadOnlyList<TacticalPredictedEncounter>? PredictedEncounters = null,
+    TacticalSimultaneousMovementResolution? SimultaneousResolution = null);
 
 /// <summary>
 /// Routes multi-secteurs et progression horaire.
@@ -83,6 +85,17 @@ internal sealed class TacticalReactionExecutionState
             StartingPoint = startingPoint;
         }
     }
+
+    private readonly record struct MovementStep(
+        BattleSector Destination,
+        TacticalPoint Position,
+        double Distance,
+        bool AtWaypoint);
+
+    private sealed record MovementPlan(
+        IReadOnlyList<MovementStep> Steps,
+        IReadOnlyList<TacticalTimedTrajectorySegment> Trajectory,
+        TacticalMovementOutcome? Cancellation);
 
     private readonly TacticalBattle _battle;
     private readonly TacticalGeometryMap _geometry;
@@ -380,6 +393,13 @@ internal sealed class TacticalReactionExecutionState
     {
         EnsureCanAdvance(hour);
 
+        return _profile.UseSimultaneousContacts
+            ? AdvanceHourSimultaneously(hour)
+            : AdvanceHourLegacy(hour);
+    }
+
+    private TacticalMovementPhaseResult AdvanceHourLegacy(long hour)
+    {
         // Index construit une seule fois par heure,
         // uniquement si des contacts de transit (compagnies)
         // doivent etre recherches.
@@ -411,18 +431,9 @@ internal sealed class TacticalReactionExecutionState
 
             while (budget > 1e-9 && _pending.ContainsKey(company))
             {
-                var route = state.Order.Route;
-
-                BattleSector from = route[state.LegIndex];
-                BattleSector to = route[state.LegIndex + 1];
-
-                bool finalLeg =
-                    state.LegIndex == route.Count - 2;
-
+                var to = state.Order.Route[state.LegIndex + 1];
                 bool contestedReinforcement =
-                    finalLeg
-                    && state.Order.Reason ==
-                        TacticalBattalionReactionType.Reinforce;
+                    IsContestedReinforcement(state.Order, state.LegIndex);
 
                 // Revalider les secteurs avant chaque
                 // franchissement, meme si la route
@@ -436,36 +447,10 @@ internal sealed class TacticalReactionExecutionState
                     break;
                 }
 
-                double length = ConnectionLength(from, to);
-
-                double remainingOnLeg =
-                    length - state.DistanceOnLeg;
-
-                double step = Math.Min(
-                    budget, remainingOnLeg);
-
-                var fromGeometry =
-                    _geometry.GetSectorGeometry(from)!;
-
-                var toGeometry =
-                    _geometry.GetSectorGeometry(to)!;
-
-                TacticalPoint legStart = state.LegIndex == 0
-                    ? state.StartingPoint
-                    : SectorCenter(from, fromGeometry);
-
-                TacticalPoint legEnd =
-                    SectorCenter(to, toGeometry);
-
-                double nextFraction =
-                    (state.DistanceOnLeg + step) / length;
-
-                TacticalPoint proposed = Interpolate(
-                    legStart, legEnd,
-                    Math.Clamp(nextFraction, 0, 1));
-
-                TacticalPoint actual =
-                    _geometry.GetPosition(company)!.Point;
+                var step = CalculateStep(
+                    state.Order, state.StartingPoint, state.LegIndex,
+                    state.DistanceOnLeg, budget);
+                TacticalPoint actual = _geometry.GetPosition(company)!.Point;
 
                 // Les contacts sur une liaison sont
                 // rapportes sans inventer de tirs.
@@ -476,11 +461,7 @@ internal sealed class TacticalReactionExecutionState
                     && _profile.TransitContactDistanceMeters > 0)
                 {
                     var contact = FindContact(
-                        hour,
-                         company,
-                          actual,
-                           proposed,
-                           spatialIndex!);
+                        hour, company, actual, step.Position, spatialIndex!);
 
                     if (contact is not null)
                     {
@@ -490,43 +471,230 @@ internal sealed class TacticalReactionExecutionState
                     }
                 }
 
-                state.DistanceOnLeg += step;
-                state.DistanceTravelled += step;
-                budget -= step;
-
-                bool atWaypoint =
-                    state.DistanceOnLeg >= length - 1e-9;
-
-                if (!atWaypoint)
-                {
-                    _geometry.MoveCompanyAlongConnection(
-                        company, proposed);
-                        spatialIndex?.RefreshPosition(company);
-                    continue;
-                }
-
-                // Atteindre un secteur intermediaire
-                // n'acheve pas l'ordre global.
-                if (!finalLeg)
-                {
-                    _geometry.RelocateCompany(company, to);
-
-                    company.ApplyMovementArrival(
-                        to, company.Role);
-
-                    _battle.NotifyDeploymentChanged(company);
-                    _battle.DefensiveState.Clear(company);
-                    spatialIndex?.RefreshPosition(company);
-
-                    state.LegIndex++;
-                    state.DistanceOnLeg = 0;
-                    continue;
-                }
-
-                CompleteArrival(state, to, completions, spatialIndex);
+                budget -= step.Distance;
+                ApplyStep(state, step, completions, spatialIndex);
             }
         }
 
+        LastSpatialIndexStatistics = spatialIndex?.Statistics;
+        return PublishMovementPhase(hour, completions, contacts);
+    }
+
+    private TacticalMovementPhaseResult AdvanceHourSimultaneously(long hour)
+    {
+        if (_pending.Count == 0)
+        {
+            LastSpatialIndexStatistics = null;
+            var emptyResolution = new TacticalSimultaneousMovementResolution(
+                new HashSet<CompanyDeployment>(ReferenceEqualityComparer.Instance),
+                Array.Empty<TacticalPredictedEncounter>(), 0, 0, 0);
+            return PublishMovementPhase(
+                hour, Array.Empty<TacticalMovementCompletion>(),
+                Array.Empty<TacticalTransitContact>(), emptyResolution);
+        }
+
+        var deployments = _battle.Deployments.ToArray();
+        var positions = deployments.ToDictionary(
+            company => company,
+            company => _geometry.GetPosition(company)?.Point,
+            (IEqualityComparer<CompanyDeployment>)ReferenceEqualityComparer.Instance);
+        var occupants = deployments.ToLookup(
+            company => company.Sector,
+            (IEqualityComparer<BattleSector>)ReferenceEqualityComparer.Instance);
+
+        var plans = new Dictionary<CompanyDeployment, MovementPlan>(
+            ReferenceEqualityComparer.Instance);
+        foreach (var company in deployments)
+        {
+            if (_pending.TryGetValue(company, out var state))
+            {
+                plans.Add(company, PrepareMovement(
+                    state, positions[company]!.Value, occupants));
+            }
+        }
+
+        IReadOnlyList<TacticalTimedTrajectorySegment> BuildTimelines(
+            IReadOnlySet<CompanyDeployment> paused)
+        {
+            var segments = new List<TacticalTimedTrajectorySegment>();
+            foreach (var company in deployments)
+            {
+                if (plans.TryGetValue(company, out var plan) && !paused.Contains(company))
+                {
+                    segments.AddRange(plan.Trajectory);
+                }
+                else if (positions[company] is TacticalPoint point)
+                {
+                    segments.Add(new TacticalTimedTrajectorySegment(
+                        company, point, point, 0, 1, IsMoving: false));
+                }
+            }
+
+            return segments;
+        }
+
+        var resolution = TacticalSimultaneousMovementResolver.Resolve(
+            _battle, _diplomacy,
+            plans.Where(pair => pair.Value.Steps.Count > 0)
+                .Select(pair => pair.Key).ToArray(),
+            BuildTimelines, hour, _profile.TransitContactDistanceMeters);
+
+        var completions = new List<TacticalMovementCompletion>();
+        foreach (var (company, plan) in plans)
+        {
+            var state = _pending[company];
+            state.PausedByContact = resolution.PausedCompanies.Contains(company);
+            if (state.PausedByContact)
+                continue;
+
+            foreach (var step in plan.Steps)
+                ApplyStep(state, step, completions, spatialIndex: null);
+
+            if (plan.Cancellation is TacticalMovementOutcome outcome)
+                Cancel(state, outcome, completions, spatialIndex: null);
+        }
+
+        LastSpatialIndexStatistics = null;
+        return PublishMovementPhase(
+            hour, completions, Array.Empty<TacticalTransitContact>(), resolution);
+    }
+
+    private MovementPlan PrepareMovement(
+        ActiveMovement state,
+        TacticalPoint initialPosition,
+        ILookup<BattleSector, CompanyDeployment> occupants)
+    {
+        var steps = new List<MovementStep>();
+        var trajectory = new List<TacticalTimedTrajectorySegment>();
+        var company = state.Order.Company;
+        var point = initialPosition;
+        int legIndex = state.LegIndex;
+        double distanceOnLeg = state.DistanceOnLeg;
+        double budget = _profile.MetersPerHour;
+        double elapsed = 0;
+        double travelledThisHour = 0;
+        TacticalMovementOutcome? cancellation = null;
+
+        if (company.Company.Composition!.Manpower.Current <= 0)
+        {
+            cancellation = TacticalMovementOutcome.UnitUnavailable;
+        }
+        else
+        {
+            while (budget > 1e-9 && legIndex < state.Order.Route.Count - 1)
+            {
+                var destination = state.Order.Route[legIndex + 1];
+                bool contestedReinforcement = IsContestedReinforcement(state.Order, legIndex);
+                if (!contestedReinforcement
+                    && IsEnemyOccupied(destination, company, occupants[destination]))
+                {
+                    cancellation = TacticalMovementOutcome.BlockedByEnemy;
+                    break;
+                }
+
+                var step = CalculateStep(
+                    state.Order, state.StartingPoint, legIndex, distanceOnLeg, budget);
+                steps.Add(step);
+                budget -= step.Distance;
+                travelledThisHour += step.Distance;
+                double endTime = Math.Min(travelledThisHour / _profile.MetersPerHour, 1);
+                if (endTime > elapsed)
+                {
+                    trajectory.Add(new TacticalTimedTrajectorySegment(
+                        company, point, step.Position, elapsed, endTime,
+                        IsMoving: true,
+                        IsContestedReinforcementLeg: contestedReinforcement));
+                }
+
+                elapsed = endTime;
+                point = step.Position;
+                if (step.AtWaypoint)
+                {
+                    legIndex++;
+                    distanceOnLeg = 0;
+                }
+                else
+                {
+                    distanceOnLeg += step.Distance;
+                }
+            }
+        }
+
+        if (elapsed < 1)
+        {
+            trajectory.Add(new TacticalTimedTrajectorySegment(
+                company, point, point, elapsed, 1, IsMoving: false));
+        }
+
+        return new MovementPlan(steps, trajectory, cancellation);
+    }
+
+    private static bool IsContestedReinforcement(
+        TacticalSectorMovementOrder order, int legIndex)
+    {
+        return legIndex == order.Route.Count - 2
+            && order.Reason == TacticalBattalionReactionType.Reinforce;
+    }
+
+    private MovementStep CalculateStep(
+        TacticalSectorMovementOrder order,
+        TacticalPoint startingPoint,
+        int legIndex,
+        double distanceOnLeg,
+        double budget)
+    {
+        var from = order.Route[legIndex];
+        var to = order.Route[legIndex + 1];
+        double length = ConnectionLength(from, to);
+        double distance = Math.Min(budget, length - distanceOnLeg);
+        bool atWaypoint = distanceOnLeg + distance >= length - 1e-9;
+        var end = SectorCenter(to, _geometry.GetSectorGeometry(to)!);
+        var start = legIndex == 0
+            ? startingPoint
+            : SectorCenter(from, _geometry.GetSectorGeometry(from)!);
+        double fraction = Math.Clamp((distanceOnLeg + distance) / length, 0, 1);
+        var position = Interpolate(start, end, fraction);
+        return new MovementStep(to, position, distance, atWaypoint);
+    }
+
+    private void ApplyStep(
+        ActiveMovement state,
+        MovementStep step,
+        List<TacticalMovementCompletion> completions,
+        TacticalCompanySpatialIndex? spatialIndex)
+    {
+        var company = state.Order.Company;
+        state.DistanceOnLeg += step.Distance;
+        state.DistanceTravelled += step.Distance;
+
+        if (!step.AtWaypoint)
+        {
+            _geometry.MoveCompanyAlongConnection(company, step.Position);
+            spatialIndex?.RefreshPosition(company);
+            return;
+        }
+
+        if (state.LegIndex == state.Order.Route.Count - 2)
+        {
+            CompleteArrival(state, step.Destination, completions, spatialIndex);
+            return;
+        }
+
+        _geometry.RelocateCompany(company, step.Destination);
+        company.ApplyMovementArrival(step.Destination, company.Role);
+        _battle.NotifyDeploymentChanged(company);
+        _battle.DefensiveState.Clear(company);
+        spatialIndex?.RefreshPosition(company);
+        state.LegIndex++;
+        state.DistanceOnLeg = 0;
+    }
+
+    private TacticalMovementPhaseResult PublishMovementPhase(
+        long hour,
+        IReadOnlyCollection<TacticalMovementCompletion> completions,
+        IReadOnlyCollection<TacticalTransitContact> contacts,
+        TacticalSimultaneousMovementResolution? resolution = null)
+    {
         var active = _pending.Values
             .Select(state =>
             {
@@ -551,10 +719,10 @@ internal sealed class TacticalReactionExecutionState
             hour,
             Array.AsReadOnly(completions.ToArray()),
             Array.AsReadOnly(active),
-            Array.AsReadOnly(contacts.ToArray()));
+            Array.AsReadOnly(contacts.ToArray()),
+            resolution?.PredictedEncounters,
+            resolution);
 
-        LastSpatialIndexStatistics =
-        spatialIndex?.Statistics;
         _lastAdvancedHour = hour;
         LastMovementPhase = result;
 
@@ -755,7 +923,8 @@ internal sealed class TacticalReactionExecutionState
 
     private bool IsEnemyOccupied(
         BattleSector sector,
-        CompanyDeployment moving)
+        CompanyDeployment moving,
+        IEnumerable<CompanyDeployment>? occupants = null)
     {
         var country = moving.Company.ParentBattalion!
             .ParentDivision!.Country;
@@ -763,7 +932,7 @@ internal sealed class TacticalReactionExecutionState
         if (country is null)
             return true;
 
-        return _battle.Deployments.Any(other =>
+        return (occupants ?? _battle.Deployments).Any(other =>
         {
             if (ReferenceEquals(other, moving)
                 || !ReferenceEquals(other.Sector, sector)

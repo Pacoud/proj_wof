@@ -16,11 +16,14 @@ internal sealed class TacticalReactionMovementProfile
 
     internal double SpatialCellSizeMeters { get; }
 
+    internal bool UseSimultaneousContacts { get; }
+
     internal TacticalReactionMovementProfile(
         double metersPerHour,
         double frontLineExposureFraction = 0.25,
         double transitContactDistanceMeters = 0,
-        double spatialCellSizeMeters = 250)
+        double spatialCellSizeMeters = 250,
+        bool useSimultaneousContacts = false)
     {
         if (!double.IsFinite(metersPerHour)
             || metersPerHour <= 0)
@@ -71,6 +74,15 @@ internal sealed class TacticalReactionMovementProfile
                 nameof(spatialCellSizeMeters));
         }
 
+        if (useSimultaneousContacts
+            && transitContactDistanceMeters <= 0)
+        {
+            throw new ArgumentException(
+                "Simultaneous contacts require a positive contact radius.",
+                nameof(useSimultaneousContacts));
+        }
+
+        UseSimultaneousContacts = useSimultaneousContacts;
         SpatialCellSizeMeters = spatialCellSizeMeters;  
     }
 }

@@ -29,7 +29,8 @@ public sealed class TacticalReactionExecutionTests
     private static Division MakeDivision(
         Country country,
         Province province,
-        int companyCount)
+        int companyCount,
+        bool splitLastCompany = false)
     {
         var division = new Division(
             $"{country.Name} Division",
@@ -46,9 +47,15 @@ public sealed class TacticalReactionExecutionTests
         var battalion = new Battalion(
             1, "Infantry Battalion", BattalionType.Infantry);
 
+        var secondBattalion = splitLastCompany
+            ? new Battalion(2, "Second Battalion", BattalionType.Infantry)
+            : null;
         for (int i = 1; i <= companyCount; i++)
         {
-            battalion.AddCompany(new Company(
+            var parent = i == companyCount && secondBattalion is not null
+                ? secondBattalion
+                : battalion;
+            parent.AddCompany(new Company(
                 i, $"Company {i}", CompanyType.Infantry,
                 new CompanyComposition(
                     manpower: 100,
@@ -58,6 +65,8 @@ public sealed class TacticalReactionExecutionTests
         }
 
         division.AddBattalion(battalion);
+        if (secondBattalion is not null)
+            division.AddBattalion(secondBattalion);
         division.EnableHierarchicalResources();
 
         return division;
@@ -67,7 +76,10 @@ public sealed class TacticalReactionExecutionTests
         bool hasReserve = true,
         bool enemyInRear = false,
         bool connectReserve = true,
-        double transitContactDistanceMeters = 0)
+        double transitContactDistanceMeters = 0,
+        bool useSimultaneousContacts = false,
+        bool includeEnemyReserve = false,
+        bool includeSecondEnemyBattalion = false)
     {
         var engine = new SimulationEngine();
 
@@ -76,7 +88,10 @@ public sealed class TacticalReactionExecutionTests
         var province = new Province(1, "Battlefield");
 
         var friendly = MakeDivision(france, province, 2);
-        var enemy = MakeDivision(germany, province, 1);
+        int enemyCompanyCount = 1 + (includeEnemyReserve ? 1 : 0)
+            + (includeSecondEnemyBattalion ? 1 : 0);
+        var enemy = MakeDivision(germany, province, enemyCompanyCount,
+            splitLastCompany: includeSecondEnemyBattalion);
 
         engine.AddDivision(friendly);
         engine.AddDivision(enemy);
@@ -214,8 +229,8 @@ public sealed class TacticalReactionExecutionTests
             reactionMovement:
                 new TacticalReactionMovementProfile(3000,
                 frontLineExposureFraction: 0.25,
-                transitContactDistanceMeters:
-                transitContactDistanceMeters));
+                transitContactDistanceMeters: transitContactDistanceMeters,
+                useSimultaneousContacts: useSimultaneousContacts));
 
         var orchestrator = new TacticalHourlyCombatOrchestrator(
             battle,
@@ -521,10 +536,16 @@ public sealed class TacticalReactionExecutionTests
 
 
 
-    [Fact]
-    public void WithdrawalIsBlockedIfEnemyOccupiesDestinationBeforeArrival()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WithdrawalIsBlockedIfEnemyOccupiesDestinationBeforeArrival(
+        bool useSimultaneousContacts)
     {
-        var s = CreateScenario(hasReserve: false);
+        var s = CreateScenario(
+            hasReserve: false,
+            transitContactDistanceMeters: useSimultaneousContacts ? 100 : 0,
+            useSimultaneousContacts: useSimultaneousContacts);
 
         var request = ReachConfirmedRupture(s);
 
@@ -616,10 +637,16 @@ public sealed class TacticalReactionExecutionTests
                 && c.Outcome == TacticalMovementOutcome.Arrived);
     }
 
-    [Fact]
-    public void MultiSectorWithdrawalTraversesIntermediateWaypoints()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MultiSectorWithdrawalTraversesIntermediateWaypoints(
+        bool useSimultaneousContacts)
     {
-        var s = CreateScenario(hasReserve: false);
+        var s = CreateScenario(
+            hasReserve: false,
+            transitContactDistanceMeters: useSimultaneousContacts ? 100 : 0,
+            useSimultaneousContacts: useSimultaneousContacts);
 
         // Ajouter un quatrieme secteur derriere Rear.
         var farRear = new BattleSector(
@@ -653,6 +680,14 @@ public sealed class TacticalReactionExecutionTests
 
         Assert.Equal(7000, order.TotalDistanceMeters, 6);
         Assert.Equal(6, order.ArrivalHour);
+
+        if (useSimultaneousContacts)
+        {
+            // Tester la progression sur un trajet sans contact.
+            s.Geometry.RelocateCompany(s.Enemy, s.ReserveSector);
+            s.Enemy.ApplyMovementArrival(s.ReserveSector, CompanyDeploymentRole.FrontLine);
+            s.Battle.NotifyDeploymentChanged(s.Enemy);
+        }
 
         // Heure 4 : 2000 m jusqu'a Rear
         // puis 1000 m sur Rear -> Far Rear.
@@ -757,12 +792,15 @@ public sealed class TacticalReactionExecutionTests
         Assert.Empty(phase.Completed);
     }
 
-    [Fact]
-    public void MovementResumesAfterTransitContactDisappears()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MovementResumesAfterTransitContactDisappears(bool useSimultaneousContacts)
     {
         var s = CreateScenario(
             hasReserve: false,
-            transitContactDistanceMeters: 100);
+            transitContactDistanceMeters: 100,
+            useSimultaneousContacts: useSimultaneousContacts);
 
         var request = ReachConfirmedRupture(s);
 
@@ -795,6 +833,270 @@ public sealed class TacticalReactionExecutionTests
             s.Orchestrator.LastMovementPhase!.Completed,
             c => ReferenceEquals(c.Order.Company, s.Front)
                 && c.Outcome == TacticalMovementOutcome.Arrived);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SimultaneousContactsIncludeTimeSpentAtDestination(
+        bool reverseApprovalOrder)
+    {
+        var s = CreateScenario(
+            hasReserve: false,
+            enemyInRear: true,
+            transitContactDistanceMeters: 100,
+            useSimultaneousContacts: true);
+
+        var destination = new BattleSector(4, "Meeting point", TerrainType.Plains);
+        s.Battle.Battlefield.AddSector(destination);
+        s.Battle.Battlefield.Connect(s.FrontSector, destination, 1000);
+        s.Battle.Battlefield.Connect(s.RearSector, destination, 2000);
+        s.Geometry.DefineSector(destination, 1000, 2000, 100);
+
+        WeakenFront(s, s.Enemy);
+        var enemyBattalion = s.Enemy.Company.ParentBattalion!;
+
+        var firstRequest = ReachConfirmedRupture(s);
+        var secondRequest = Assert.Single(
+            s.Orchestrator.LastBattalionReactionPhase!.Requests,
+            request => ReferenceEquals(request.Battalion, enemyBattalion));
+        var orders = new[] { (firstRequest, s.Front), (secondRequest, s.Enemy) };
+        if (reverseApprovalOrder)
+            Array.Reverse(orders);
+
+        foreach (var (request, company) in orders)
+        {
+            s.Movements.Decide(request, TacticalReactionDecision.Approve,
+                company: company, destination: destination);
+        }
+
+        var frontStart = s.Geometry.GetPosition(s.Front)!.Point;
+        var enemyStart = s.Geometry.GetPosition(s.Enemy)!.Point;
+        s.Engine.Tick();
+
+        var phase = s.Orchestrator.LastMovementPhase!;
+        var encounter = Assert.Single(phase.PredictedEncounters!);
+        Assert.Same(s.Front, encounter.First);
+        Assert.Same(s.Enemy, encounter.Second);
+        Assert.Equal(2.0 / 3, encounter.TimeFraction, 6);
+        Assert.Equal(2, phase.SimultaneousResolution!.ResolutionPasses);
+        Assert.True(phase.SimultaneousResolution.ExactPairChecks > 0);
+        Assert.Empty(phase.Contacts);
+        Assert.Empty(phase.Completed);
+        Assert.Equal(2, phase.Active.Count);
+        Assert.All(phase.Active, move =>
+        {
+            Assert.True(move.PausedByContact);
+            Assert.Equal(0, move.DistanceTravelledMeters);
+        });
+        Assert.Same(s.FrontSector, s.Front.Sector);
+        Assert.Same(s.RearSector, s.Enemy.Sector);
+        Assert.Equal(frontStart, s.Geometry.GetPosition(s.Front)!.Point);
+        Assert.Equal(enemyStart, s.Geometry.GetPosition(s.Enemy)!.Point);
+    }
+
+    private static void WeakenFront(Scenario s, CompanyDeployment company)
+    {
+        var battalion = company.Company.ParentBattalion!;
+        s.Battle.BattalionAssessments.SetPrioritySector(battalion, company.Sector);
+        company.Company.Composition!.Manpower.ApplyCasualties(
+            new PersonnelCasualtyReport(80, 0, 0));
+        s.Battle.PersonnelExposure.Set(company, new TacticalPersonnelExposure(
+            exposed: 20, sheltered: 0, reserve: 0, exposedDepthMeters: 20));
+    }
+
+    private static BattleSector AddSector(
+        Scenario s, int id, double x, double y)
+    {
+        var sector = new BattleSector(id, $"Sector {id}", TerrainType.Plains);
+        s.Battle.Battlefield.AddSector(sector);
+        s.Geometry.DefineSector(sector, x, y, 100);
+        return sector;
+    }
+
+    private static void Relocate(Scenario s, CompanyDeployment company, BattleSector sector)
+    {
+        s.Geometry.RelocateCompany(company, sector);
+        company.ApplyMovementArrival(sector, company.Role);
+        s.Battle.NotifyDeploymentChanged(company);
+    }
+
+    private static void ApproveMovement(
+        Scenario s, CompanyDeployment company, BattleSector? destination = null)
+    {
+        var request = Assert.Single(
+            s.Orchestrator.LastBattalionReactionPhase!.Requests,
+            r => ReferenceEquals(r.Battalion, company.Company.ParentBattalion));
+        s.Movements.Decide(request, TacticalReactionDecision.Approve,
+            company: company, destination: destination);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OppositeOrdersOnSameConnectionPauseBothCompanies(bool reverseApprovalOrder)
+    {
+        var s = CreateScenario(
+            enemyInRear: true, transitContactDistanceMeters: 100,
+            useSimultaneousContacts: true, includeEnemyReserve: true);
+
+        // Deux renforts rejoignent leurs fronts respectifs par la même liaison.
+        Relocate(s, s.Reserve, s.RearSector);
+        var enemyReserve = s.Battle.DeployCompany(
+            s.Enemy.Company.ParentBattalion!.Companies[1],
+            s.FrontSector, CompanyDeploymentRole.Reserve);
+        s.Geometry.PlaceCompany(enemyReserve, new TacticalPoint(0, 0, 0), 270, 20);
+        WeakenFront(s, s.Enemy);
+        ReachConfirmedRupture(s);
+
+        var first = reverseApprovalOrder ? enemyReserve : s.Reserve;
+        var second = reverseApprovalOrder ? s.Reserve : enemyReserve;
+        ApproveMovement(s, first);
+        ApproveMovement(s, second);
+        var firstPosition = s.Geometry.GetPosition(first);
+        var secondPosition = s.Geometry.GetPosition(second);
+        int firstPersonnel = first.Company.Composition!.Manpower.Current;
+        int secondPersonnel = second.Company.Composition!.Manpower.Current;
+
+        s.Engine.Tick();
+
+        var phase = s.Orchestrator.LastMovementPhase!;
+        var encounter = Assert.Single(phase.PredictedEncounters!);
+        Assert.Same(s.Reserve, encounter.First);
+        Assert.Same(enemyReserve, encounter.Second);
+        Assert.Equal(1.0 / 3, encounter.TimeFraction, 6);
+        Assert.Equal(2, phase.SimultaneousResolution!.PausedCompanies.Count);
+        Assert.All(phase.Active, progress => Assert.True(progress.PausedByContact));
+        Assert.Empty(phase.Completed);
+        Assert.Same(firstPosition, s.Geometry.GetPosition(first));
+        Assert.Same(secondPosition, s.Geometry.GetPosition(second));
+        Assert.Equal(firstPersonnel, first.Company.Composition!.Manpower.Current);
+        Assert.Equal(secondPersonnel, second.Company.Composition!.Manpower.Current);
+    }
+
+    [Fact]
+    public void OrdersCrossingAtDifferentTimesContinue()
+    {
+        var s = CreateScenario(
+            hasReserve: false, transitContactDistanceMeters: 100,
+            useSimultaneousContacts: true);
+        var enemyOrigin = AddSector(s, 4, 1000, -3000);
+        var enemyDestination = AddSector(s, 5, 1000, 1000);
+        s.Battle.Battlefield.Connect(enemyOrigin, enemyDestination, 4000);
+        Relocate(s, s.Enemy, enemyOrigin);
+        WeakenFront(s, s.Enemy);
+        ReachConfirmedRupture(s);
+        ApproveMovement(s, s.Front, s.RearSector);
+        ApproveMovement(s, s.Enemy, enemyDestination);
+
+        s.Engine.Tick();
+
+        var phase = s.Orchestrator.LastMovementPhase!;
+        Assert.Empty(phase.PredictedEncounters!);
+        Assert.Empty(phase.SimultaneousResolution!.PausedCompanies);
+        Assert.Same(s.Front, Assert.Single(phase.Completed).Order.Company);
+        Assert.Same(s.RearSector, s.Front.Sector);
+        var continuing = Assert.Single(phase.Active);
+        Assert.Same(s.Enemy, continuing.Order.Company);
+        Assert.Equal(3000, continuing.DistanceTravelledMeters, 6);
+        Assert.Equal(new TacticalPoint(1000, 0, 0), continuing.Position);
+
+        s.Engine.Tick();
+        Assert.Same(enemyDestination, s.Enemy.Sector);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ThirdMovementRespondsOnlyToItsOwnEncounter(bool crossesPausedPosition)
+    {
+        var s = CreateScenario(
+            hasReserve: false, enemyInRear: true, transitContactDistanceMeters: 100,
+            useSimultaneousContacts: true, includeSecondEnemyBattalion: true);
+        var commonDestination = AddSector(s, 4, 1000, 2000);
+        s.Battle.Battlefield.Connect(s.FrontSector, commonDestination, 1000);
+        s.Battle.Battlefield.Connect(s.RearSector, commonDestination, 2000);
+
+        double x = crossesPausedPosition ? 0 : -2000;
+        var origin = AddSector(s, 5, x, -2000);
+        var destination = AddSector(s, 6, x, 1000);
+        var waypoint = AddSector(s, 7, x, -1000);
+        s.Battle.Battlefield.Connect(origin, waypoint, 1000);
+        s.Battle.Battlefield.Connect(waypoint, destination, 2000);
+        var thirdBattalion = s.Enemy.Company.ParentBattalion!.ParentDivision!.Battalions[1];
+        var third = s.Battle.DeployCompany(
+            thirdBattalion.Companies[0], origin, CompanyDeploymentRole.FrontLine);
+        var start = new TacticalPoint(x, -2000, 0);
+        s.Geometry.PlaceCompany(third, start, 90, 20);
+        WeakenFront(s, s.Enemy);
+        WeakenFront(s, third);
+        ReachConfirmedRupture(s);
+        ApproveMovement(s, s.Front, commonDestination);
+        ApproveMovement(s, s.Enemy, commonDestination);
+        ApproveMovement(s, third, destination);
+
+        s.Engine.Tick();
+
+        var phase = s.Orchestrator.LastMovementPhase!;
+        var resolution = phase.SimultaneousResolution!;
+        Assert.Contains(s.Front, resolution.PausedCompanies);
+        Assert.Contains(s.Enemy, resolution.PausedCompanies);
+        Assert.Equal(crossesPausedPosition ? 3 : 2, resolution.ResolutionPasses);
+        if (crossesPausedPosition)
+        {
+            Assert.Contains(third, resolution.PausedCompanies);
+            var encounter = Assert.Single(phase.PredictedEncounters!,
+                e => ReferenceEquals(e.First, s.Front) && ReferenceEquals(e.Second, third));
+            Assert.Equal(2.0 / 3, encounter.TimeFraction, 6);
+            Assert.Empty(phase.Completed);
+            Assert.Same(origin, third.Sector);
+            Assert.Equal(start, s.Geometry.GetPosition(third)!.Point);
+        }
+        else
+        {
+            Assert.DoesNotContain(third, resolution.PausedCompanies);
+            Assert.Single(phase.PredictedEncounters!);
+            var completion = Assert.Single(phase.Completed);
+            Assert.Same(third, completion.Order.Company);
+            Assert.Equal(TacticalMovementOutcome.Arrived, completion.Outcome);
+            Assert.Same(destination, third.Sector);
+        }
+    }
+
+    [Fact]
+    public void InvalidPendingMovementLeavesOtherDeploymentsUntouched()
+    {
+        var s = CreateScenario(
+            hasReserve: false, enemyInRear: true, transitContactDistanceMeters: 100,
+            useSimultaneousContacts: true);
+        var firstDestination = AddSector(s, 4, 0, 1000);
+        var secondDestination = AddSector(s, 5, 2000, 1000);
+        s.Battle.Battlefield.Connect(s.FrontSector, firstDestination, 1000);
+        s.Battle.Battlefield.Connect(s.RearSector, secondDestination, 1000);
+        WeakenFront(s, s.Enemy);
+        ReachConfirmedRupture(s);
+        ApproveMovement(s, s.Front, firstDestination);
+        ApproveMovement(s, s.Enemy, secondDestination);
+
+        var positions = s.Geometry.CompanyPositions.ToArray();
+        var orders = s.Movements.PendingMovements.ToArray();
+        var previousPhase = s.Movements.LastMovementPhase;
+        long deploymentRevision = s.Battle.DeploymentRevision;
+        long geometryRevision = s.Geometry.Revision;
+        s.Enemy.SetInTransit(false);
+
+        Assert.Throws<InvalidOperationException>(() => s.Movements.AdvanceHour(4));
+
+        Assert.Equal(positions, s.Geometry.CompanyPositions.ToArray());
+        Assert.Equal(orders, s.Movements.PendingMovements.ToArray());
+        Assert.Same(previousPhase, s.Movements.LastMovementPhase);
+        Assert.Equal(deploymentRevision, s.Battle.DeploymentRevision);
+        Assert.Equal(geometryRevision, s.Geometry.Revision);
+        Assert.Same(s.FrontSector, s.Front.Sector);
+        Assert.Same(s.RearSector, s.Enemy.Sector);
+
+        s.Enemy.SetInTransit(true);
+        Assert.Equal(2, s.Movements.AdvanceHour(4).Completed.Count);
     }
 
     [Fact]
@@ -1026,5 +1328,268 @@ public sealed class TacticalReactionExecutionTests
     }
 
 
+
+    [Fact]
+    public void OpposingMovementsMeetAtSameTime()
+    {
+        var s = CreateScenario();
+
+        var segments = new[]
+        {
+            new TacticalTimedTrajectorySegment(
+                s.Front,
+                new TacticalPoint(0, 0, 0),
+                new TacticalPoint(100, 0, 0),
+                0, 1, IsMoving: true),
+
+            new TacticalTimedTrajectorySegment(
+                s.Enemy,
+                new TacticalPoint(100, 0, 0),
+                new TacticalPoint(0, 0, 0),
+                0, 1, IsMoving: true)
+        };
+
+        var result = TacticalSimultaneousContactDetector.Detect(
+            s.Battle, s.Engine.Diplomacy, segments,
+            hour: 4, contactRadiusMeters: 5);
+
+        var encounter = Assert.Single(result.Encounters);
+
+        Assert.Same(s.Front, encounter.First);
+        Assert.Same(s.Enemy, encounter.Second);
+
+        Assert.Equal(0.5, encounter.TimeFraction, 6);
+        Assert.Equal(0, encounter.DistanceMeters, 6);
+        Assert.Equal(50, encounter.EstimatedPosition.XMeters, 6);
+    }
+
+    [Fact]
+    public void CrossingSamePointAtDifferentTimesIsNotContact()
+    {
+        var s = CreateScenario();
+
+        var segments = new[]
+        {
+            // Traverse (50, 0) a t = 0.5.
+            new TacticalTimedTrajectorySegment(
+                s.Front,
+                new TacticalPoint(0, 0, 0),
+                new TacticalPoint(100, 0, 0),
+                0, 1, IsMoving: true),
+
+            // Traverse (50, 0) a t = 0.75.
+            new TacticalTimedTrajectorySegment(
+                s.Enemy,
+                new TacticalPoint(50, -150, 0),
+                new TacticalPoint(50, 50, 0),
+                0, 1, IsMoving: true)
+        };
+
+        var result = TacticalSimultaneousContactDetector.Detect(
+            s.Battle, s.Engine.Diplomacy, segments,
+            hour: 4, contactRadiusMeters: 5);
+
+        Assert.Empty(result.Encounters);
+    }
+
+    [Fact]
+    public void MovingCompanyCanMeetStationaryEnemy()
+    {
+        var s = CreateScenario();
+
+        var segments = new[]
+        {
+            new TacticalTimedTrajectorySegment(
+                s.Front,
+                new TacticalPoint(0, 0, 0),
+                new TacticalPoint(100, 0, 0),
+                0, 1, IsMoving: true),
+
+            new TacticalTimedTrajectorySegment(
+                s.Enemy,
+                new TacticalPoint(50, 0, 0),
+                new TacticalPoint(50, 0, 0),
+                0, 1, IsMoving: false)
+        };
+
+        var result = TacticalSimultaneousContactDetector.Detect(
+            s.Battle, s.Engine.Diplomacy, segments,
+            hour: 4, contactRadiusMeters: 5);
+
+        var encounter = Assert.Single(result.Encounters);
+
+        Assert.Equal(0.5, encounter.TimeFraction, 6);
+        Assert.Equal(0, encounter.DistanceMeters, 6);
+    }
+
+    [Fact]
+    public void FriendlyCompaniesNeverCreateEnemyEncounter()
+    {
+        var s = CreateScenario();
+
+        var segments = new[]
+        {
+            new TacticalTimedTrajectorySegment(
+                s.Front,
+                new TacticalPoint(0, 0, 0),
+                new TacticalPoint(100, 0, 0),
+                0, 1, IsMoving: true),
+
+            new TacticalTimedTrajectorySegment(
+                s.Reserve,
+                new TacticalPoint(100, 0, 0),
+                new TacticalPoint(0, 0, 0),
+                0, 1, IsMoving: true)
+        };
+
+        var result = TacticalSimultaneousContactDetector.Detect(
+            s.Battle, s.Engine.Diplomacy, segments,
+            hour: 4, contactRadiusMeters: 5);
+
+        Assert.Empty(result.Encounters);
+    }
+
+    [Fact]
+    public void SegmentedTrajectoryProducesSingleEncounterPerPair()
+    {
+        var s = CreateScenario();
+
+        var segments = new[]
+        {
+            new TacticalTimedTrajectorySegment(
+                s.Front,
+                new TacticalPoint(0, 0, 0),
+                new TacticalPoint(50, 0, 0),
+                0, 0.5, IsMoving: true),
+
+            new TacticalTimedTrajectorySegment(
+                s.Front,
+                new TacticalPoint(50, 0, 0),
+                new TacticalPoint(100, 0, 0),
+                0.5, 1, IsMoving: true),
+
+            new TacticalTimedTrajectorySegment(
+                s.Enemy,
+                new TacticalPoint(50, 0, 0),
+                new TacticalPoint(50, 0, 0),
+                0, 1, IsMoving: false)
+        };
+
+        var result = TacticalSimultaneousContactDetector.Detect(
+            s.Battle, s.Engine.Diplomacy, segments,
+            hour: 4, contactRadiusMeters: 0);
+
+        var encounter = Assert.Single(result.Encounters);
+
+        Assert.Equal(0.5, encounter.TimeFraction, 6);
+    }
+
+    [Fact]
+    public void ContactDetectionDoesNotDependOnSegmentOrder()
+    {
+        var s = CreateScenario();
+
+        var first = new TacticalTimedTrajectorySegment(
+            s.Front,
+            new TacticalPoint(0, 0, 0),
+            new TacticalPoint(100, 0, 0),
+            0, 1, IsMoving: true);
+
+        var second = new TacticalTimedTrajectorySegment(
+            s.Enemy,
+            new TacticalPoint(100, 0, 0),
+            new TacticalPoint(0, 0, 0),
+            0, 1, IsMoving: true);
+
+        var forward = TacticalSimultaneousContactDetector.Detect(
+            s.Battle,
+            s.Engine.Diplomacy,
+            new[] { first, second },
+            4, 5);
+
+        var reverse = TacticalSimultaneousContactDetector.Detect(
+            s.Battle,
+            s.Engine.Diplomacy,
+            new[] { second, first },
+            4, 5);
+
+        Assert.Equal(forward.Encounters, reverse.Encounters);
+        Assert.Equal(
+            forward.Statistics.ExactPairChecks,
+            reverse.Statistics.ExactPairChecks);
+    }
+
+    [Fact]
+    public void SimultaneousResolverPausesBothOpposingMovers()
+    {
+        var s = CreateScenario();
+
+        IReadOnlyList<TacticalTimedTrajectorySegment> Build(
+            IReadOnlySet<CompanyDeployment> paused)
+        {
+            TacticalTimedTrajectorySegment Make(
+                CompanyDeployment company,
+                double fromX,
+                double toX)
+            {
+                bool stopped = paused.Contains(company);
+
+                return new TacticalTimedTrajectorySegment(
+                    company,
+                    new TacticalPoint(fromX, 0, 0),
+                    new TacticalPoint(
+                        stopped ? fromX : toX, 0, 0),
+                    0, 1,
+                    IsMoving: !stopped);
+            }
+
+            return new[]
+            {
+                Make(s.Front, 0, 100),
+                Make(s.Enemy, 100, 0)
+            };
+        }
+
+        var result = TacticalSimultaneousMovementResolver.Resolve(
+            s.Battle,
+            s.Engine.Diplomacy,
+            new[] { s.Front, s.Enemy },
+            Build,
+            hour: 4,
+            contactRadiusMeters: 5);
+
+        Assert.Contains(s.Front, result.PausedCompanies);
+        Assert.Contains(s.Enemy, result.PausedCompanies);
+
+        Assert.Equal(2, result.PausedCompanies.Count);
+        Assert.Equal(2, result.ResolutionPasses);
+
+        Assert.Single(result.PredictedEncounters);
+    }
+
+    [Fact]
+    public void InvalidTrajectoryIsRejected()
+    {
+        var s = CreateScenario();
+
+        var invalid = new[]
+        {
+            new TacticalTimedTrajectorySegment(
+                s.Front,
+                new TacticalPoint(0, 0, 0),
+                new TacticalPoint(100, 0, 0),
+                StartTime: 0.8,
+                EndTime: 0.2,
+                IsMoving: true)
+        };
+
+        Assert.Throws<InvalidOperationException>(() =>
+            TacticalSimultaneousContactDetector.Detect(
+                s.Battle,
+                s.Engine.Diplomacy,
+                invalid,
+                hour: 4,
+                contactRadiusMeters: 10));
+    }
 
 }
