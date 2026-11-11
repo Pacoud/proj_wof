@@ -111,6 +111,10 @@ public static class TacticalContactDetector
     private static bool CanParticipate(
         CompanyDeployment deployment)
     {
+
+        if (deployment.IsInTransit)
+        return false;
+        
         if (deployment.Role != CompanyDeploymentRole.FrontLine)
             return false;
 

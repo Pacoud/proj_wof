@@ -18,6 +18,13 @@ public sealed class CompanyDeployment
 
     public CompanyDeploymentRole Role { get; private set; }
 
+    public bool IsInTransit {get; private set; }
+
+    internal void SetInTransit(bool value)
+    {
+        IsInTransit = value;
+    }
+
     internal CompanyDeployment(
         Company company,
         BattleSector sector,

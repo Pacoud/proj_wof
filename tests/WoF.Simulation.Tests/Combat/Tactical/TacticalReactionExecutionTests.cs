@@ -66,7 +66,8 @@ public sealed class TacticalReactionExecutionTests
     private static Scenario CreateScenario(
         bool hasReserve = true,
         bool enemyInRear = false,
-        bool connectReserve = true)
+        bool connectReserve = true,
+        double transitContactDistanceMeters = 0)
     {
         var engine = new SimulationEngine();
 
@@ -211,7 +212,10 @@ public sealed class TacticalReactionExecutionTests
                 new TacticalBattalionReactionProfile(
                     2, 2, 10),
             reactionMovement:
-                new TacticalReactionMovementProfile(3000));
+                new TacticalReactionMovementProfile(3000,
+                frontLineExposureFraction: 0.25,
+                transitContactDistanceMeters:
+                transitContactDistanceMeters));
 
         var orchestrator = new TacticalHourlyCombatOrchestrator(
             battle,
@@ -561,5 +565,285 @@ public sealed class TacticalReactionExecutionTests
 
         Assert.Empty(s.Movements.PendingMovements);
     }
+
+
+
+    [Fact]
+    public void DirectReinforcementProgressesAlongItsConnection()
+    {
+        var s = CreateScenario();
+        var request = ReachConfirmedRupture(s);
+
+        var decision = s.Movements.Decide(
+            request,
+            TacticalReactionDecision.Approve,
+            company: s.Reserve);
+
+        Assert.Equal(2, decision.Movement!.Route.Count);
+        Assert.Equal(4000, decision.Movement.TotalDistanceMeters);
+
+        s.Engine.Tick(); // Heure 4 : 3000 / 4000 metres.
+
+        Assert.True(s.Reserve.IsInTransit);
+        Assert.Same(s.ReserveSector, s.Reserve.Sector);
+
+        var movement = Assert.Single(
+            s.Orchestrator.LastMovementPhase!.Active,
+            m => ReferenceEquals(m.Order.Company, s.Reserve));
+
+        Assert.Equal(3000, movement.DistanceTravelledMeters, 6);
+        Assert.Equal(0.75, movement.ProgressFraction, 6);
+
+        var position = s.Geometry.GetPosition(s.Reserve)!;
+
+        // Reserve = -4000 m, front = 0 m.
+        // 75 % du trajet => -1000 m.
+        Assert.Equal(-1000, position.Point.XMeters, 6);
+        Assert.Empty(
+            s.Orchestrator.LastMovementPhase.Completed);
+
+        s.Engine.Tick(); // Heure 5 : arrivee.
+
+        Assert.False(s.Reserve.IsInTransit);
+        Assert.Same(s.FrontSector, s.Reserve.Sector);
+        Assert.Equal(
+            CompanyDeploymentRole.FrontLine,
+            s.Reserve.Role);
+
+        Assert.Single(
+            s.Orchestrator.LastMovementPhase!.Completed,
+            c => ReferenceEquals(c.Order.Company, s.Reserve)
+                && c.Outcome == TacticalMovementOutcome.Arrived);
+    }
+
+    [Fact]
+    public void MultiSectorWithdrawalTraversesIntermediateWaypoints()
+    {
+        var s = CreateScenario(hasReserve: false);
+
+        // Ajouter un quatrieme secteur derriere Rear.
+        var farRear = new BattleSector(
+            4, "Far Rear", TerrainType.Plains);
+
+        s.Battle.Battlefield.AddSector(farRear);
+        s.Battle.Battlefield.Connect(
+            s.RearSector, farRear, 5000);
+
+        s.Geometry.DefineSector(
+            farRear, 7000, 0, 100);
+
+        var request = ReachConfirmedRupture(s);
+
+        var decision = s.Movements.Decide(
+            request,
+            TacticalReactionDecision.Approve,
+            company: s.Front,
+            destination: farRear);
+
+        var order = decision.Movement!;
+
+        Assert.Equal(
+            new[]
+            {
+                s.FrontSector,
+                s.RearSector,
+                farRear
+            },
+            order.Route);
+
+        Assert.Equal(7000, order.TotalDistanceMeters, 6);
+        Assert.Equal(6, order.ArrivalHour);
+
+        // Heure 4 : 2000 m jusqu'a Rear
+        // puis 1000 m sur Rear -> Far Rear.
+        s.Engine.Tick();
+
+        Assert.True(s.Front.IsInTransit);
+        Assert.Same(s.RearSector, s.Front.Sector);
+        Assert.Equal(
+            3000,
+            s.Geometry.GetPosition(s.Front)!.Point.XMeters,
+            6);
+
+        Assert.Equal(
+            CompanyDeploymentRole.FrontLine,
+            s.Front.Role);
+
+        var first = Assert.Single(
+            s.Orchestrator.LastMovementPhase!.Active,
+            m => ReferenceEquals(m.Order.Company, s.Front));
+
+        Assert.Equal(3000, first.DistanceTravelledMeters, 6);
+        Assert.Equal(3000.0 / 7000, first.ProgressFraction, 6);
+
+        // Heure 5 : encore 3000 m.
+        s.Engine.Tick();
+
+        Assert.Same(s.RearSector, s.Front.Sector);
+        Assert.Equal(
+            6000,
+            s.Geometry.GetPosition(s.Front)!.Point.XMeters,
+            6);
+
+        // Heure 6 : derniers 1000 m.
+        s.Engine.Tick();
+
+        Assert.False(s.Front.IsInTransit);
+        Assert.Same(farRear, s.Front.Sector);
+
+        Assert.Equal(
+            CompanyDeploymentRole.Reserve,
+            s.Front.Role);
+
+        Assert.Equal(
+            7000,
+            s.Geometry.GetPosition(s.Front)!.Point.XMeters,
+            6);
+
+        Assert.Single(
+            s.Orchestrator.LastMovementPhase!.Completed,
+            c => c.Outcome == TacticalMovementOutcome.Arrived
+                && ReferenceEquals(c.Order.Company, s.Front));
+
+        // Les pertes initiales restent les seules.
+        Assert.Equal(
+            20,
+            s.Front.Company.Composition!.Manpower.Current);
+    }
+
+    [Fact]
+    public void TransitContactPausesWithoutCausingCasualties()
+    {
+        var s = CreateScenario(
+            hasReserve: false,
+            transitContactDistanceMeters: 100);
+
+        var request = ReachConfirmedRupture(s);
+
+        s.Movements.Decide(
+            request,
+            TacticalReactionDecision.Approve,
+            company: s.Front,
+            destination: s.RearSector);
+
+        int before =
+            s.Front.Company.Composition!.Manpower.Current;
+
+        // L'ennemi se trouve a 20 m du point de depart.
+        s.Engine.Tick();
+
+        var phase = s.Orchestrator.LastMovementPhase!;
+
+        var contact = Assert.Single(
+            phase.Contacts,
+            c => ReferenceEquals(c.MovingCompany, s.Front));
+
+        Assert.Same(s.Enemy, contact.EnemyCompany);
+
+        var progress = Assert.Single(
+            phase.Active,
+            m => ReferenceEquals(m.Order.Company, s.Front));
+
+        Assert.True(progress.PausedByContact);
+        Assert.Equal(0, progress.DistanceTravelledMeters);
+
+        Assert.True(s.Movements.IsMoving(s.Front));
+
+        Assert.Equal(
+            before,
+            s.Front.Company.Composition!.Manpower.Current);
+
+        // Le contact n'a pas invente de perte humaine.
+        Assert.Empty(phase.Completed);
+    }
+
+    [Fact]
+    public void MovementResumesAfterTransitContactDisappears()
+    {
+        var s = CreateScenario(
+            hasReserve: false,
+            transitContactDistanceMeters: 100);
+
+        var request = ReachConfirmedRupture(s);
+
+        s.Movements.Decide(
+            request,
+            TacticalReactionDecision.Approve,
+            company: s.Front,
+            destination: s.RearSector);
+
+        s.Engine.Tick(); // Contact, mouvement suspendu.
+
+        Assert.True(s.Movements.IsMoving(s.Front));
+
+        // Eloigner l'ennemi du corridor Front -> Rear.
+        s.Geometry.RelocateCompany(
+            s.Enemy, s.ReserveSector);
+
+        s.Enemy.ApplyMovementArrival(
+            s.ReserveSector,
+            CompanyDeploymentRole.FrontLine);
+
+        s.Battle.NotifyDeploymentChanged(s.Enemy);
+
+        s.Engine.Tick(); // Le corridor est de nouveau libre.
+
+        Assert.False(s.Movements.IsMoving(s.Front));
+        Assert.Same(s.RearSector, s.Front.Sector);
+
+        Assert.Single(
+            s.Orchestrator.LastMovementPhase!.Completed,
+            c => ReferenceEquals(c.Order.Company, s.Front)
+                && c.Outcome == TacticalMovementOutcome.Arrived);
+    }
+
+    [Fact]
+    public void EnemyOccupationBlocksLaterWaypoint()
+    {
+        var s = CreateScenario(hasReserve: false);
+
+        var farRear = new BattleSector(
+            4, "Far Rear", TerrainType.Plains);
+
+        s.Battle.Battlefield.AddSector(farRear);
+        s.Battle.Battlefield.Connect(
+            s.RearSector, farRear, 5000);
+
+        s.Geometry.DefineSector(farRear, 7000, 0, 100);
+
+        var request = ReachConfirmedRupture(s);
+
+        s.Movements.Decide(
+            request,
+            TacticalReactionDecision.Approve,
+            company: s.Front,
+            destination: farRear);
+
+        s.Engine.Tick(); // Atteint Rear, puis commence le transit.
+
+        Assert.Same(s.RearSector, s.Front.Sector);
+
+        // L'ennemi occupe maintenant le secteur final.
+        s.Geometry.RelocateCompany(s.Enemy, farRear);
+
+        s.Enemy.ApplyMovementArrival(
+            farRear,
+            CompanyDeploymentRole.FrontLine);
+
+        s.Battle.NotifyDeploymentChanged(s.Enemy);
+
+        s.Engine.Tick();
+
+        Assert.False(s.Front.IsInTransit);
+
+        // Annulation au dernier secteur sur de la route.
+        Assert.Same(s.RearSector, s.Front.Sector);
+
+        Assert.Single(
+            s.Orchestrator.LastMovementPhase!.Completed,
+            c => ReferenceEquals(c.Order.Company, s.Front)
+                && c.Outcome == TacticalMovementOutcome.BlockedByEnemy);
+    }
+
 
 }

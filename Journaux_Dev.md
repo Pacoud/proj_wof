@@ -5374,7 +5374,7 @@ Relier progressivement les mouvements tactiques
 les résultats vers le commandement divisionnaire.
 
 
-# COMMIT # 
+# COMMIT e6e4b80133897b04ac06f51404b5e93bf97985d0 # 
 ## C2.4d.6 — Exécution contrôlée des réactions tactiques
 
 ### Objectif

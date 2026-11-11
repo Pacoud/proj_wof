@@ -428,4 +428,54 @@ public sealed class TacticalGeometryMap
             throw new InvalidOperationException(
                 "Cannot modify geometry of an ended battle.");
     }
+
+
+    /// <summary>
+    /// Met a jour la position d'une compagnie en transit.
+    ///
+    /// Contrairement a PlaceCompany, le point peut
+    /// se trouver entre deux enveloppes de secteurs.
+    /// Le systeme de mouvement valide la liaison.
+    /// </summary>
+    internal void MoveCompanyAlongConnection(
+        CompanyDeployment deployment,
+        TacticalPoint point)
+    {
+        ArgumentNullException.ThrowIfNull(deployment);
+
+        EnsureActive();
+
+        if (!_battle.ContainsDeployment(deployment)
+            || !deployment.IsInTransit)
+        {
+            throw new InvalidOperationException(
+                "Company is not in a valid tactical transit.");
+        }
+
+        if (!_byDeployment.TryGetValue(
+            deployment, out var previous))
+        {
+            throw new InvalidOperationException(
+                "Company has no tactical position.");
+        }
+
+        int index = _positions.FindIndex(p =>
+            ReferenceEquals(p, previous));
+
+        if (index < 0)
+            throw new InvalidOperationException(
+                "Tactical geometry index is inconsistent.");
+
+        var replacement = new CompanyTacticalPosition(
+            deployment,
+            point,
+            previous.FacingDegrees,
+            previous.FrontageMeters);
+
+        _positions[index] = replacement;
+        _byDeployment[deployment] = replacement;
+
+        Revision++;
+    }
+
 }

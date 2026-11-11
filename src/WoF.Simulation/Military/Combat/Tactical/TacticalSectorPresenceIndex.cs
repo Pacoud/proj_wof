@@ -112,9 +112,15 @@ public sealed class TacticalSectorPresenceIndex
 
             _footprints.Add(deployment, footprint);
 
-            // Le secteur principal reste toujours
-            // couvert par sa compagnie positionnee.
-            covering[primary].Add(deployment);
+            var primaryGeometry =
+                _geometry.GetSectorGeometry(primary);
+
+            if (!deployment.IsInTransit
+                || (primaryGeometry is not null
+                    && primaryGeometry.Contains(position.Point)))
+            {
+                covering[primary].Add(deployment);
+            }
 
             // Ne tester que les voisins directs :
             // pas tous les secteurs de la bataille.

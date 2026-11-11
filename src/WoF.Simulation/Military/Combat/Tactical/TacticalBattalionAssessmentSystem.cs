@@ -145,7 +145,9 @@ internal sealed class TacticalBattalionAssessmentSystem
                 : (double)pool.Current / pool.Authorized;
 
             double companyReadiness =
-                cohesion * availability;
+                deployment.IsInTransit
+                ? 0.0
+                : cohesion * availability;
 
             double roleWeight = deployment.Role switch
             {
@@ -167,7 +169,8 @@ internal sealed class TacticalBattalionAssessmentSystem
                 && ReferenceEquals(
                     deployment.Sector, priority)
                 && deployment.Role
-                    == CompanyDeploymentRole.FrontLine;
+                    == CompanyDeploymentRole.FrontLine
+                && !deployment.IsInTransit;
 
             double weight =
                 pool.Authorized * roleWeight
