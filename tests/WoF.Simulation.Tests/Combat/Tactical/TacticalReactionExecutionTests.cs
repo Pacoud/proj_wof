@@ -846,4 +846,185 @@ public sealed class TacticalReactionExecutionTests
     }
 
 
+
+    [Fact]
+    public void SpatialIndexReturnsNearbyCompaniesOnly()
+    {
+        var s = CreateScenario();
+
+        var index = new TacticalCompanySpatialIndex(
+            s.Battle, s.Geometry, cellSizeMeters: 250);
+
+        var candidates = index.QueryNearSegment(
+            new TacticalPoint(-100, 0, 0),
+            new TacticalPoint(100, 0, 0),
+            radiusMeters: 50);
+
+        Assert.Contains(s.Front, candidates);
+        Assert.Contains(s.Enemy, candidates);
+
+        // La reserve se trouve a -4000 metres.
+        Assert.DoesNotContain(s.Reserve, candidates);
+
+        Assert.Equal(3, index.Statistics.IndexedCompanies);
+        Assert.Equal(1, index.Statistics.Queries);
+    }
+
+    [Fact]
+    public void SpatialIndexSupportsNegativeCoordinates()
+    {
+        var s = CreateScenario();
+
+        var index = new TacticalCompanySpatialIndex(
+            s.Battle, s.Geometry, cellSizeMeters: 200);
+
+        var candidates = index.QueryNearSegment(
+            new TacticalPoint(-4500, -50, 0),
+            new TacticalPoint(-3500, 50, 0),
+            radiusMeters: 50);
+
+        Assert.Contains(s.Reserve, candidates);
+        Assert.DoesNotContain(s.Front, candidates);
+        Assert.DoesNotContain(s.Enemy, candidates);
+    }
+
+    [Fact]
+    public void SpatialIndexDeduplicatesCandidatesAcrossCells()
+    {
+        var s = CreateScenario();
+
+        var index = new TacticalCompanySpatialIndex(
+            s.Battle, s.Geometry, cellSizeMeters: 100);
+
+        var candidates = index.QueryNearSegment(
+            new TacticalPoint(-4000, 0, 0),
+            new TacticalPoint(2000, 0, 0),
+            radiusMeters: 50);
+
+        Assert.Equal(3, candidates.Count);
+
+        // Une compagnie n'apparait jamais deux fois,
+        // meme si la recherche traverse de nombreuses
+        // cellules de voisinage.
+        Assert.Single(
+            candidates,
+            d => ReferenceEquals(d, s.Enemy));
+
+        Assert.Equal(
+            s.Battle.Deployments.ToArray(),
+            candidates.ToArray());
+    }
+
+    [Fact]
+    public void GeometryChangeInvalidatesIndexUntilRefreshed()
+    {
+        var s = CreateScenario();
+
+        var index = new TacticalCompanySpatialIndex(
+            s.Battle, s.Geometry, cellSizeMeters: 200);
+
+        // Changer la position et l'affectation d'une
+        // compagnie en utilisant les APIs existantes.
+        s.Geometry.RelocateCompany(
+            s.Enemy, s.RearSector);
+
+        s.Enemy.ApplyMovementArrival(
+            s.RearSector,
+            CompanyDeploymentRole.FrontLine);
+
+        s.Battle.NotifyDeploymentChanged(s.Enemy);
+
+        // Une ancienne photographie de positions
+        // ne doit pas etre exploitee silencieusement.
+        Assert.Throws<InvalidOperationException>(() =>
+            index.QueryNearSegment(
+                new TacticalPoint(1900, 0, 0),
+                new TacticalPoint(2100, 0, 0),
+                radiusMeters: 25));
+
+        index.RefreshPosition(s.Enemy);
+
+        var nearRear = index.QueryNearSegment(
+            new TacticalPoint(1900, 0, 0),
+            new TacticalPoint(2100, 0, 0),
+            radiusMeters: 25);
+
+        Assert.Contains(s.Enemy, nearRear);
+
+        var nearFront = index.QueryNearSegment(
+            new TacticalPoint(-100, 0, 0),
+            new TacticalPoint(100, 0, 0),
+            radiusMeters: 25);
+
+        Assert.DoesNotContain(s.Enemy, nearFront);
+        Assert.Contains(s.Front, nearFront);
+    }
+
+    [Fact]
+    public void SpatialIndexRejectsInvalidConfiguration()
+    {
+        var s = CreateScenario();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new TacticalCompanySpatialIndex(
+                s.Battle, s.Geometry, cellSizeMeters: 0));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new TacticalCompanySpatialIndex(
+                s.Battle, s.Geometry, cellSizeMeters: double.NaN));
+
+        var index = new TacticalCompanySpatialIndex(
+            s.Battle, s.Geometry, cellSizeMeters: 200);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            index.QueryNearSegment(
+                new TacticalPoint(0, 0, 0),
+                new TacticalPoint(100, 0, 0),
+                radiusMeters: -1));
+    }
+
+    [Fact]
+    public void TransitContactUsesSpatialIndexWithoutChangingCombatRules()
+    {
+        var s = CreateScenario(
+            hasReserve: false,
+            transitContactDistanceMeters: 100);
+
+        var request = ReachConfirmedRupture(s);
+
+        s.Movements.Decide(
+            request,
+            TacticalReactionDecision.Approve,
+            company: s.Front,
+            destination: s.RearSector);
+
+        int manpowerBefore =
+            s.Front.Company.Composition!.Manpower.Current;
+
+        s.Engine.Tick();
+
+        // La rencontre deja attendue par C2.4d.7
+        // doit toujours exister.
+        Assert.Single(
+            s.Orchestrator.LastMovementPhase!.Contacts,
+            c => ReferenceEquals(c.MovingCompany, s.Front)
+                && ReferenceEquals(c.EnemyCompany, s.Enemy));
+
+        Assert.True(s.Front.IsInTransit);
+
+        var stats = s.Movements.LastSpatialIndexStatistics;
+
+        Assert.NotNull(stats);
+        Assert.Equal(3, stats.Value.IndexedCompanies);
+        Assert.True(stats.Value.Queries > 0);
+
+        // Aucune nouvelle victime n'est produite
+        // par l'indexation spatiale.
+        Assert.Equal(
+            manpowerBefore,
+            s.Front.Company.Composition!.Manpower.Current);
+    }
+
+
+
 }

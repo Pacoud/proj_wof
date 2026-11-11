@@ -14,10 +14,13 @@ internal sealed class TacticalReactionMovementProfile
     /// </summary>
     internal double TransitContactDistanceMeters { get; }
 
+    internal double SpatialCellSizeMeters { get; }
+
     internal TacticalReactionMovementProfile(
         double metersPerHour,
         double frontLineExposureFraction = 0.25,
-        double transitContactDistanceMeters = 0)
+        double transitContactDistanceMeters = 0,
+        double spatialCellSizeMeters = 250)
     {
         if (!double.IsFinite(metersPerHour)
             || metersPerHour <= 0)
@@ -48,5 +51,26 @@ internal sealed class TacticalReactionMovementProfile
 
         TransitContactDistanceMeters =
             transitContactDistanceMeters;
+
+
+        if (!double.IsFinite(spatialCellSizeMeters)
+            || spatialCellSizeMeters <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(spatialCellSizeMeters));
+        }
+
+        // Eviter qu'une recherche de contact ne
+        // consulte un voisinage disproportionne.
+        if (transitContactDistanceMeters > 0
+            && Math.Ceiling(
+                transitContactDistanceMeters / spatialCellSizeMeters) + 1 > 16)
+        {
+            throw new ArgumentException(
+                "Spatial cell size is too small for contact radius.",
+                nameof(spatialCellSizeMeters));
+        }
+
+        SpatialCellSizeMeters = spatialCellSizeMeters;  
     }
 }

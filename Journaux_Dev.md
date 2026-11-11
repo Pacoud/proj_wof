@@ -5491,3 +5491,230 @@ des positions, des missions et des réserves disponibles.
 
 Poursuivre la remontée des conséquences tactiques
 des compagnies vers les bataillons et les divisions.
+
+# COMMIT b0b2869bc69f5e933b73f2f805b695923e16040a # 
+
+## C2.4d.7 — Itinéraires multi-secteurs et progression tactique
+
+### Objectif
+Remplacer les transferts tactiques à arrivée différée
+par une progression géométrique suivie à chaque tick.
+
+Permettre aux compagnies de parcourir plusieurs
+secteurs successifs sans téléportation.
+
+### Fonctionnalités
+- Recherche du plus court itinéraire par Dijkstra.
+- Prise en compte des distances des connexions.
+- Évitement des secteurs ennemis intermédiaires.
+- Possibilité de renforcer un secteur final contesté.
+- Refus des itinéraires inexistants.
+- Validation de la géométrie de tous les secteurs.
+- Enregistrement de l'itinéraire complet dans l'ordre.
+- Distinction entre heure théorique et arrivée effective.
+- Suivi de la distance cumulée parcourue.
+- Progression horaire sur chaque liaison.
+- Interpolation des coordonnées tactiques.
+- Franchissement de plusieurs liaisons dans un tick.
+- Actualisation des secteurs aux points de passage.
+- Conservation du rôle tactique jusqu'à destination.
+- État explicite IsInTransit sur les compagnies.
+- Révision des index spatiaux pendant le transit.
+- Indisponibilité tactique temporaire dans les
+  évaluations de capacité des bataillons.
+- Exclusion des compagnies en transit des contacts
+  habituels de première ligne.
+- Détection expérimentale des contacts sur les liaisons.
+- Suspension de la progression en cas de proximité ennemie.
+- Reprise possible lorsque le contact disparaît.
+- Revalidation des secteurs avant franchissement.
+- Annulation d'un trajet devenu inaccessible.
+- Retour au dernier secteur atteint en cas d'annulation.
+- Bilans horaires des positions, progressions,
+  contacts et mouvements terminés.
+- Préservation des hommes, munitions et équipements.
+- Aucune perte ni désorganisation artificielle.
+
+### Architecture
+- TacticalRouteFinder :
+  recherche d'itinéraire sur le graphe tactique.
+
+- TacticalSectorRoute :
+  liste des secteurs successifs et distance totale.
+
+- CompanyDeployment :
+  identifie les compagnies actuellement en transit.
+
+- TacticalGeometryMap :
+  actualise les positions intermédiaires sur les liaisons.
+
+- TacticalReactionExecutionState :
+  conserve les itinéraires, traite la progression horaire,
+  les passages de secteur et les interruptions.
+
+- TacticalMovementProgress :
+  expose la position courante et la distance parcourue.
+
+- TacticalTransitContact :
+  signale un contact géométrique potentiel
+  pendant le déplacement.
+
+- TacticalSectorPresenceIndex :
+  évite de considérer automatiquement une compagnie
+  en transit comme occupant son ancien secteur.
+
+- TacticalBattalionAssessmentSystem :
+  n'attribue plus immédiatement la capacité de combat
+  d'une compagnie en transfert à sa mission précédente.
+
+### Intérêt des tests
+- Vérifier le choix du plus court trajet.
+- Vérifier l'évitement des secteurs interdits.
+- Refuser les chemins impossibles.
+- Tester la progression géométrique en cours de trajet.
+- Contrôler les distances cumulées par tick.
+- Vérifier les itinéraires traversant plusieurs secteurs.
+- Préserver la cohérence des secteurs intermédiaires.
+- Tester la suspension lors d'un contact ennemi.
+- Vérifier la reprise après disparition du contact.
+- Bloquer un mouvement si une destination devient ennemie.
+- Conserver les pertes humaines sans double application.
+- Préserver les anciens scénarios de C2.4d.6.
+
+### Limites actuelles
+- Pas de simulation sous-horaire.
+- Géométrie interpolée entre les centres des secteurs.
+- Distance de graphe pouvant différer de la distance
+  géométrique directe entre les centres.
+- Pas encore de polylignes routières détaillées.
+- Aucune accélération ni décélération des unités.
+- Vitesse de déplacement uniforme et expérimentale.
+- Terrain, fatigue et météo non intégrés au mouvement.
+- Pas encore de combat direct sur une liaison.
+- Les contacts de transit sont internes au moteur,
+  sans identification automatique par les unités.
+- Pas de pertes humaines causées par les contacts
+  de transit eux-mêmes.
+- Pas de recalcul automatique de route en cas de blocage.
+- Annulation ramenant la compagnie au dernier secteur
+  atteint, sans simulation du retour partiel sur la liaison.
+- Les autres unités mobiles sont traitées
+  séquentiellement durant le tick.
+- Pas encore de résolution simultanée des croisements.
+- Les contacts de transit ne sont pas encore transmis
+  à la chaîne de renseignement.
+- Pas de pathfinding tenant compte du coût de combat.
+- Pas encore de déplacement ordonné librement
+  en dehors des demandes tactiques de C2.4d.5.
+- Pas de sauvegarde dédiée de l'état des mouvements.
+
+### Suite
+C2.4d.8 — Contacts et engagements sur les liaisons.
+
+Étendre la détection tactique aux compagnies en transit,
+puis raccorder les rencontres aux tirs, à la suppression
+et aux pertes humaines sans créer de moteur parallèle.
+
+Introduire ensuite la résolution simultanée de plusieurs
+mouvements et la gestion des croisements de compagnies.
+
+Préparer enfin les ordres tactiques de manœuvre
+indépendants des seules réactions de rupture.
+
+# COMMIT # 
+
+## C2.4d.8a — Indexation spatiale des compagnies
+
+### Objectif
+Réduire le coût de recherche des contacts
+pendant les déplacements tactiques.
+
+Remplacer le parcours global des compagnies
+par une recherche spatiale locale, sans modifier
+les règles existantes de contact ou de combat.
+
+### Fonctionnalités
+- Création d'un index spatial par grille de hachage.
+- Cellules géométriques de taille configurable.
+- Une cellule de stockage par compagnie positionnée.
+- Recherche des unités candidates le long d'un segment.
+- Parcours des cellules traversées par la trajectoire.
+- Consultation des cellules voisines selon le rayon.
+- Prise en charge des coordonnées négatives.
+- Suppression des doublons de candidats.
+- Conservation de l'ordre des déploiements.
+- Actualisation locale après chaque déplacement.
+- Mise à jour lors des passages de secteur.
+- Mise à jour lors des arrivées et annulations.
+- Détection des index périmés via les révisions.
+- Statistiques de recherche et d'occupation.
+- Index construit une seule fois par tick concerné.
+- Aucune modification des ressources militaires.
+- Aucun nouveau calcul de tirs ou de pertes.
+- Compatibilité avec les contacts de C2.4d.7.
+
+### Architecture
+- TacticalCompanySpatialIndex :
+  index dynamique des positions des compagnies.
+
+- TacticalSpatialIndexStatistics :
+  expose les statistiques de fonctionnement.
+
+- TacticalReactionMovementProfile :
+  configure la taille des cellules spatiales.
+
+- TacticalReactionExecutionState :
+  construit l'index horaire, consulte les candidats
+  locaux et actualise les positions indexées.
+
+- TacticalGeometryMap :
+  reste la source des positions géométriques réelles.
+
+- TacticalBattle :
+  conserve les déploiements et leurs identités.
+
+### Intérêt des tests
+- Vérifier la sélection des unités proches.
+- Exclure les unités situées loin du mouvement.
+- Tester les coordonnées négatives.
+- Vérifier l'absence de candidats dupliqués.
+- Préserver l'ordre des déploiements.
+- Détecter les changements géométriques non indexés.
+- Valider le rafraîchissement local de l'index.
+- Rejeter les configurations invalides.
+- Préserver la détection des contacts de transit.
+- Vérifier l'absence de pertes humaines supplémentaires.
+- Préserver tous les anciens tests tactiques.
+
+### Limites actuelles
+- Indexation des positions, pas encore des
+  trajectoires simultanées complètes.
+- La résolution des mouvements reste séquentielle.
+- Les compagnies qui se croisent dans le même tick
+  peuvent encore nécessiter une détection spécifique.
+- Pas de calcul de distance temporelle minimale
+  entre deux trajectoires mobiles.
+- Les rayons de contact ne tiennent pas encore
+  compte de toute l'emprise des compagnies.
+- Les zones extrêmement denses restent coûteuses.
+- Taille des cellules encore expérimentale.
+- Certains autres traitements utilisent toujours
+  des parcours globaux.
+- Pas encore de benchmark de charge validé.
+- Aucun nouveau mécanisme de combat ajouté.
+
+### Suite
+C2.4d.8b — Détection simultanée des croisements.
+
+Préparer les trajectoires de toutes les compagnies
+mobiles avant leur application.
+
+Indexer les segments parcourus pendant chaque tick
+et rechercher les paires de trajectoires proches.
+
+Déterminer ensuite si deux compagnies se rapprochent
+au même moment, sans dépendre de l'ordre de traitement.
+
+Préparer le raccordement aux renseignements,
+aux tirs, à la suppression et aux pertes humaines
+dans C2.4d.8c.

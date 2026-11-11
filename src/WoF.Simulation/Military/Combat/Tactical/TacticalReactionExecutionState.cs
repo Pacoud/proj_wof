@@ -104,6 +104,8 @@ internal sealed class TacticalReactionExecutionState
         private set;
     }
 
+    internal TacticalSpatialIndexStatistics? LastSpatialIndexStatistics { get; private set; }
+
     internal IReadOnlyList<TacticalSectorMovementOrder>
         PendingMovements =>
             Array.AsReadOnly(
@@ -378,6 +380,18 @@ internal sealed class TacticalReactionExecutionState
     {
         EnsureCanAdvance(hour);
 
+        // Index construit une seule fois par heure,
+        // uniquement si des contacts de transit (compagnies)
+        // doivent etre recherches.
+        TacticalCompanySpatialIndex? spatialIndex =
+            _pending.Count > 0
+            && _profile.TransitContactDistanceMeters > 0
+                ? new TacticalCompanySpatialIndex(
+                    _battle,
+                    _geometry,
+                    _profile.SpatialCellSizeMeters)
+                : null;
+
         var completions = new List<TacticalMovementCompletion>();
         var contacts = new List<TacticalTransitContact>();
 
@@ -389,7 +403,7 @@ internal sealed class TacticalReactionExecutionState
             if (company.Company.Composition!.Manpower.Current <= 0)
             {
                 Cancel(state, TacticalMovementOutcome.UnitUnavailable,
-                    completions);
+                    completions, spatialIndex);
                 continue;
             }
 
@@ -418,7 +432,7 @@ internal sealed class TacticalReactionExecutionState
                 {
                     Cancel(state,
                         TacticalMovementOutcome.BlockedByEnemy,
-                        completions);
+                        completions, spatialIndex);
                     break;
                 }
 
@@ -462,7 +476,11 @@ internal sealed class TacticalReactionExecutionState
                     && _profile.TransitContactDistanceMeters > 0)
                 {
                     var contact = FindContact(
-                        hour, company, actual, proposed);
+                        hour,
+                         company,
+                          actual,
+                           proposed,
+                           spatialIndex!);
 
                     if (contact is not null)
                     {
@@ -483,6 +501,7 @@ internal sealed class TacticalReactionExecutionState
                 {
                     _geometry.MoveCompanyAlongConnection(
                         company, proposed);
+                        spatialIndex?.RefreshPosition(company);
                     continue;
                 }
 
@@ -497,13 +516,14 @@ internal sealed class TacticalReactionExecutionState
 
                     _battle.NotifyDeploymentChanged(company);
                     _battle.DefensiveState.Clear(company);
+                    spatialIndex?.RefreshPosition(company);
 
                     state.LegIndex++;
                     state.DistanceOnLeg = 0;
                     continue;
                 }
 
-                CompleteArrival(state, to, completions);
+                CompleteArrival(state, to, completions, spatialIndex);
             }
         }
 
@@ -533,6 +553,8 @@ internal sealed class TacticalReactionExecutionState
             Array.AsReadOnly(active),
             Array.AsReadOnly(contacts.ToArray()));
 
+        LastSpatialIndexStatistics =
+        spatialIndex?.Statistics;
         _lastAdvancedHour = hour;
         LastMovementPhase = result;
 
@@ -542,7 +564,8 @@ internal sealed class TacticalReactionExecutionState
     private void CompleteArrival(
         ActiveMovement state,
         BattleSector destination,
-        List<TacticalMovementCompletion> completions)
+        List<TacticalMovementCompletion> completions,
+        TacticalCompanySpatialIndex? spatialIndex)
     {
         var company = state.Order.Company;
 
@@ -569,6 +592,7 @@ internal sealed class TacticalReactionExecutionState
                 oldExposure.ExposedDepthMeters);
 
         _geometry.RelocateCompany(company, destination);
+        spatialIndex?.RefreshPosition(company);
 
         company.ApplyMovementArrival(
             destination, state.Order.ArrivalRole);
@@ -576,6 +600,7 @@ internal sealed class TacticalReactionExecutionState
         company.SetInTransit(false);
         _battle.NotifyDeploymentChanged(company);
         _battle.DefensiveState.Clear(company);
+        spatialIndex?.RefreshPosition(company);
 
         _battle.PersonnelExposure.Set(company, newExposure);
 
@@ -588,17 +613,20 @@ internal sealed class TacticalReactionExecutionState
     private void Cancel(
         ActiveMovement state,
         TacticalMovementOutcome outcome,
-        List<TacticalMovementCompletion> completions)
+        List<TacticalMovementCompletion> completions,
+        TacticalCompanySpatialIndex? spatialIndex)
     {
         var company = state.Order.Company;
 
         // Revenir au dernier secteur effectivement
         // atteint, et non a l'origine de toute la route.
         _geometry.RelocateCompany(company, company.Sector);
+        spatialIndex?.RefreshPosition(company);
 
         company.SetInTransit(false);
         _battle.NotifyDeploymentChanged(company);
         _battle.DefensiveState.Clear(company);
+        spatialIndex?.RefreshPosition(company);
 
         _pending.Remove(company);
 
@@ -646,7 +674,8 @@ internal sealed class TacticalReactionExecutionState
         long hour,
         CompanyDeployment moving,
         TacticalPoint start,
-        TacticalPoint end)
+        TacticalPoint end,
+        TacticalCompanySpatialIndex spatialIndex)
     {
         var country = moving.Company.ParentBattalion!
             .ParentDivision!.Country;
@@ -654,7 +683,11 @@ internal sealed class TacticalReactionExecutionState
         if (country is null)
             return null;
 
-        foreach (var enemy in _battle.Deployments)
+        foreach (var enemy in spatialIndex.QueryNearSegment(
+            start,
+            end,
+            _profile.TransitContactDistanceMeters
+        ))
         {
             if (ReferenceEquals(enemy, moving)
                 || enemy.Company.Composition!.Manpower.Current <= 0)
