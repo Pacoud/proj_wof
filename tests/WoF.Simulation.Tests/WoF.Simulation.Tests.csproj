@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\WoF.Simulation\WoF.Simulation.csproj" />
+    <ProjectReference Include="..\..\src\WoF.Benchmarks\WoF.Benchmarks.csproj" />
   </ItemGroup>
 
 </Project>

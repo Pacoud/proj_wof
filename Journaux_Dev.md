@@ -5815,3 +5815,161 @@ la suppression et la cohésion, sans second moteur de combat.
 
 Affiner ensuite les interruptions pour arrêter les unités
 au moment du contact plutôt qu'au début de l'heure.
+
+# COMMIT 6ca7491309b9627930949da6a4a96f627780bd23 # 
+
+## C2.4d.8c — Combats tactiques pendant les manœuvres
+
+### Objectif
+Permettre aux compagnies de combattre lorsqu'elles
+rencontrent des adversaires pendant leurs déplacements.
+
+Réutiliser intégralement les systèmes existants de
+détection, de tir, de munitions, de pertes,
+de suppression et de cohésion.
+
+### Fonctionnalités
+- Calcul du premier instant de contact physique.
+- Distinction entre prédiction et rencontre atteinte.
+- Positionnement des compagnies au point de contact.
+- Interruption des mouvements lors d'une rencontre.
+- Stabilisation des trajectoires et des contacts.
+- Contacts physiques vérifiés avant engagement.
+- Détection visuelle indépendante pour chaque camp.
+- Prise en compte des signatures et des obstacles.
+- Possibilité de combattre pour les unités en transit.
+- Participation des réserves surprises en mouvement.
+- Répartition des hommes exposés sans création d'effectifs.
+- Limitation des tirs au temps restant après le contact.
+- Intégration des tirs mobiles aux tirs stationnaires.
+- Une seule phase de tir par heure.
+- Une seule consommation des munitions.
+- Une seule application des pertes humaines.
+- Suppression et cohésion calculées par le moteur existant.
+- Maintien de la remontée des pertes vers les bataillons.
+- Bilans distincts des combats mobiles.
+- Aucun moteur de combat secondaire.
+- Aucun renseignement ennemi créé artificiellement.
+
+### Architecture
+- TacticalFirstMobileContactSolver :
+  détermine le premier instant de contact.
+
+- TacticalConfirmedMobileContact :
+  représente une rencontre physiquement atteinte.
+
+- TacticalMobileEngagementState :
+  conserve les paires réellement engagées
+  pour l'heure tactique courante.
+
+- TacticalReactionExecutionState :
+  prépare les mouvements, détecte les rencontres,
+  arrête les compagnies puis valide leurs positions.
+
+- TacticalContactDetector et TacticalContactEvaluator :
+  ajoutent les contacts mobiles aux candidats
+  de détection habituels.
+
+- TacticalDetectionSystem :
+  applique les règles de visibilité existantes.
+
+- TacticalDirectFireEvaluator :
+  autorise les tirs entre compagnies engagées
+  sur les liaisons.
+
+- TacticalHourlyCombatOrchestrator :
+  regroupe tous les tirs et applique une seule fois
+  leurs conséquences humaines et tactiques.
+
+### Intérêt des tests
+- Vérifier les vrais instants de contact.
+- Éliminer les faux croisements temporels.
+- Conserver les positions physiques cohérentes.
+- Empêcher les tirs sans visibilité ni localisation.
+- Garantir le respect des obstacles et des portées.
+- Vérifier les combats des unités mobiles.
+- Vérifier les effectifs des réserves engagées.
+- Vérifier la consommation unique des munitions.
+- Empêcher les doubles pertes humaines.
+- Vérifier la suppression et la cohésion.
+- Contrôler la remontée des pertes aux bataillons.
+- Préserver les combats stationnaires.
+- Garantir des résultats déterministes à graine fixée.
+- Préserver les tests des itérations précédentes.
+
+### Limites actuelles
+- Le combat reste résolu à l'échelle horaire.
+- Pas encore de salves individualisées à la seconde.
+- La durée de tir est approximée.
+- Les contacts utilisent les centres des compagnies.
+- Pas encore de largeur réelle des formations mobiles.
+- Les différences d'altitude ne définissent pas
+  encore une distance de contact tridimensionnelle.
+- Pas de doctrine spécifique aux embuscades.
+- Pas de comportement autonome de contournement.
+- Pas de repli automatique après un engagement mobile.
+- Les compagnies peuvent rester immobilisées en contact
+  jusqu'à l'évolution des ordres ou des conditions.
+- Pas encore de système détaillé de fatigue du mouvement.
+- Les performances de grandes batailles restent
+  à mesurer et à optimiser.
+- Le mode de combat mobile reste optionnel
+  pendant la phase de validation.
+
+### Suite
+C2.4d.8d — Benchmarks et optimisation des combats mobiles.
+
+Mesurer séparément :
+- la préparation des trajectoires ;
+- la recherche des rencontres ;
+- la détection visuelle ;
+- les autorisations et exécutions de tirs ;
+- la résolution des pertes ;
+- la suppression et la cohésion.
+
+Comparer des batailles dispersées et concentrées
+avec plusieurs centaines et milliers de compagnies.
+
+Identifier les goulots d'étranglement réels
+avant de poursuivre les mécanismes tactiques.
+
+
+
+# COMMIT # 
+
+### C2.4d.8d.3a — Enregistreur de performances
+
+**Objectif**
+
+Créer un outil facultatif pour mesurer les performances
+des différentes phases de combat tactique.
+
+**Fonctionnalités**
+
+- Mesure haute résolution avec Stopwatch.
+- Mesure des allocations mémoire du thread courant.
+- Identification des différentes phases tactiques.
+- Cumul des mesures répétées pour une même phase.
+- Comptage des appels par phase.
+- Capture indépendante des statistiques.
+- Réinitialisation entre les échantillons.
+- Tests unitaires de l'enregistreur.
+
+**Architecture**
+
+- TacticalBenchmarkPhase : identification des phases.
+- TacticalPhaseMeasurement : résultat d'une mesure.
+- TacticalPhaseTimingRecorder : collecte et agrégation.
+- StartMark : capture du début d'une mesure.
+
+**Limites actuelles**
+
+- Enregistreur non encore raccordé au moteur.
+- Mesures limitées au thread courant.
+- Aucun profilage du moteur complet à ce stade.
+- Le surcoût de l'instrumentation reste à mesurer.
+
+**Suite**
+
+C2.4d.8d.3b — Instrumentation des phases
+de TacticalHourlyCombatOrchestrator.

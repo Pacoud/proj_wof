@@ -1277,6 +1277,12 @@ public sealed class TacticalReactionExecutionTests
         s.Geometry.PlaceCompany(third, new TacticalPoint(x, -2000, 0), 0, 20);
         WeakenFront(s, third);
         ReachConfirmedRupture(s);
+        // Donner un identifiant de piste plus ancien au contact qui surviendra en second.
+        s.Perception.Apply(3, new[]
+        {
+            new TacticalObservationEvent(s.Reserve, third, s.Geometry.GetPosition(third)!.Point, origin.Id)
+        });
+
         ApproveMovement(s, s.Reserve);
         ApproveMovement(s, opponent);
         ApproveMovement(s, third, destination);
@@ -1293,7 +1299,16 @@ public sealed class TacticalReactionExecutionTests
                 c => ReferenceEquals(c.First, s.Reserve) && ReferenceEquals(c.Second, third));
             Assert.Equal(0.6, contact.ContactTimeFraction, 6);
             Assert.Equal(-200, contact.SecondPosition.YMeters, 6);
-            Assert.Equal(3, s.Battle.DirectFire.LastPhase!.Events.Count);
+            int? laterTrack = s.Perception.GetCurrentLocalizedTrackId(s.Reserve, third, 4);
+            int? earlierTrack = s.Perception.GetCurrentLocalizedTrackId(s.Reserve, opponent, 4);
+            Assert.NotNull(laterTrack);
+            Assert.NotNull(earlierTrack);
+            Assert.True(laterTrack < earlierTrack);
+
+            var reserveSalvo = Assert.Single(s.Battle.DirectFire.LastPhase!.Events,
+                salvo => ReferenceEquals(salvo.Shooter, s.Reserve));
+            Assert.Equal(earlierTrack.Value, reserveSalvo.TargetTrackId);
+            Assert.Equal(3, s.Battle.DirectFire.LastPhase.Events.Count);
             Assert.All(new[] { s.Reserve, opponent, third }, company =>
                 Assert.Single(s.Battle.DirectFire.LastPhase.Events,
                     salvo => ReferenceEquals(salvo.Shooter, company)));

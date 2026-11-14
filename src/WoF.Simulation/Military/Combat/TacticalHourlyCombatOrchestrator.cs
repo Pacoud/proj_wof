@@ -461,8 +461,9 @@ internal sealed class TacticalHourlyCombatOrchestrator
     /// <summary>
     /// Politique provisoire :
     /// - une salve maximum par compagnie et par heure ;
-    /// - premiere piste directement localisee
-    ///   permettant un tir autorise ;
+    /// - premiere piste directement localisee permettant un tir autorise ;
+    /// - en transit, priorite au contact confirme le plus tot dans l'heure,
+    ///   puis a l'ordre des pistes en cas d'egalite ;
     /// - pas de tir au-dela des ressources disponibles.
     ///
     /// Aucun renseignement d'une autre compagnie
@@ -542,6 +543,8 @@ internal sealed class TacticalHourlyCombatOrchestrator
             if (weapons <= 0)
                 continue;
 
+            TacticalFireOrder? selectedOrder = null;
+            double selectedContactTime = double.PositiveInfinity;
             foreach (var report in _perception.GetReports(shooter))
             {
                 if (!report.IsCurrentlyObserved
@@ -565,7 +568,7 @@ internal sealed class TacticalHourlyCombatOrchestrator
                     continue;
 
                 var mobileContact = _battle.MobileEngagements.Find(
-                shooter, target, hour);
+                    shooter, target, hour);
 
                 // Une cible ou un tireur en transit doit appartenir
                 // a une paire de contact mobile confirmee.
@@ -574,6 +577,11 @@ internal sealed class TacticalHourlyCombatOrchestrator
                 {
                     continue;
                 }
+
+                double contactTime = mobileContact?.ContactTimeFraction
+                    ?? double.PositiveInfinity;
+                if (selectedOrder is not null && contactTime >= selectedContactTime)
+                    continue;
 
                 var decision = TacticalDirectFireEvaluator.Evaluate(
                     _battle,
@@ -602,16 +610,20 @@ internal sealed class TacticalHourlyCombatOrchestrator
                 if (weaponsForThisTarget <= 0)
                     continue;
 
-                orders.Add(new TacticalFireOrder(
+                selectedOrder = new TacticalFireOrder(
                     shooter,
                     target,
                     _settings.Fire,
                     WeaponsCommitted: weaponsForThisTarget,
-                    RoundsPerWeapon: _settings.RoundsPerWeapon));
+                    RoundsPerWeapon: _settings.RoundsPerWeapon);
+                selectedContactTime = contactTime;
 
-                // Une seule cible pour cette compagnie.
-                break;
+                if (!shooter.IsInTransit)
+                    break;
             }
+
+            if (selectedOrder is not null)
+                orders.Add(selectedOrder);
         }
 
         return orders;

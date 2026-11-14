@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\WoF.Simulation\WoF.Simulation.csproj" />
+    <InternalsVisibleTo Include="WoF.Simulation.Tests" />
   </ItemGroup>
 
 </Project>
