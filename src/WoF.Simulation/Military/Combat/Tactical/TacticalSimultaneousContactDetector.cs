@@ -31,6 +31,13 @@ internal sealed record TacticalPredictedEncounter(
     TacticalPoint EstimatedPosition,
     double DistanceMeters);
 
+internal sealed record TacticalFirstMobileContactEvent(
+    CompanyDeployment First,
+    CompanyDeployment Second,
+    double TimeFraction,
+    TacticalPoint FirstPosition,
+    TacticalPoint SecondPosition);
+
 internal readonly record struct TacticalSweptContactStatistics(
     int SegmentCount,
     long BroadPhaseCandidates,
@@ -39,7 +46,8 @@ internal readonly record struct TacticalSweptContactStatistics(
 
 internal sealed record TacticalSimultaneousContactResult(
     IReadOnlyList<TacticalPredictedEncounter> Encounters,
-    TacticalSweptContactStatistics Statistics);
+    TacticalSweptContactStatistics Statistics,
+    IReadOnlyList<TacticalFirstMobileContactEvent> FirstContacts);
 
 internal static class TacticalSimultaneousContactDetector
 {
@@ -56,7 +64,8 @@ internal static class TacticalSimultaneousContactDetector
         DiplomacySystem diplomacy,
         IReadOnlyList<TacticalTimedTrajectorySegment> segments,
         long hour,
-        double contactRadiusMeters)
+        double contactRadiusMeters,
+        bool includeFirstContacts = false)
     {
         ArgumentNullException.ThrowIfNull(battle);
         ArgumentNullException.ThrowIfNull(diplomacy);
@@ -140,6 +149,10 @@ internal static class TacticalSimultaneousContactDetector
         var earliest =
             new Dictionary<(int First, int Second),
                 TacticalPredictedEncounter>();
+
+        var firstContacts = includeFirstContacts && contactRadiusMeters > 0
+        ? new Dictionary<(int First, int Second), TacticalFirstMobileContactEvent>()
+        : null;
 
         long candidates = 0;
         long exactChecks = 0;
@@ -244,6 +257,26 @@ internal static class TacticalSimultaneousContactDetector
                 {
                     earliest[key] = encounter;
                 }
+
+                if (firstContacts is not null)
+                {
+                    bool otherIsFirst = other.CompanyIndex == firstId;
+                    var firstSegment = otherIsFirst ? other.Segment : current.Segment;
+                    var secondSegment = otherIsFirst ? current.Segment : other.Segment;
+
+                    if (TacticalFirstMobileContactSolver.Find(
+                            firstSegment, secondSegment, contactRadiusMeters) is { } contact
+                        && (!firstContacts.TryGetValue(key, out var previous)
+                            || contact.TimeFraction < previous.TimeFraction))
+                    {
+                        firstContacts[key] = new TacticalFirstMobileContactEvent(
+                            orderedFirst,
+                            orderedSecond,
+                            contact.TimeFraction,
+                            contact.FirstPosition,
+                            contact.SecondPosition);
+                    }
+                }
             }
 
             active.Add(current);
@@ -256,13 +289,23 @@ internal static class TacticalSimultaneousContactDetector
             .Select(pair => pair.Value)
             .ToArray();
 
+        var orderedFirstContacts = firstContacts is null
+        ? Array.Empty<TacticalFirstMobileContactEvent>()
+        : firstContacts
+            .OrderBy(pair => pair.Value.TimeFraction)
+            .ThenBy(pair => pair.Key.First)
+            .ThenBy(pair => pair.Key.Second)
+            .Select(pair => pair.Value)
+            .ToArray();
+
         return new TacticalSimultaneousContactResult(
             Array.AsReadOnly(ordered),
             new TacticalSweptContactStatistics(
                 segments.Count,
                 candidates,
                 exactChecks,
-                ordered.Length));
+                ordered.Length),
+                Array.AsReadOnly(orderedFirstContacts));
     }
 
     private static bool AreEnemies(

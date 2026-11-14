@@ -16,6 +16,12 @@ internal readonly record struct TacticalHourlyCombatResult(
     int Killed,
     int Wounded);
 
+internal readonly record struct TacticalMobileCombatSummary(
+    long Hour,
+    int ConfirmedContacts,
+    int MobileOrdersIssued,
+    int MobileSalvosFired);
+
 /// <summary>
 /// Coordonne une heure de combat tactique.
 ///
@@ -43,6 +49,8 @@ internal sealed class TacticalHourlyCombatOrchestrator
         get;
         private set;
     }
+
+    internal TacticalMobileCombatSummary? LastMobileCombatSummary { get; private set; }
 
 
     internal TacticalBattalionReactionPhaseResult?
@@ -113,7 +121,8 @@ internal sealed class TacticalHourlyCombatOrchestrator
                 _battle,
                 _geometry,
                 _diplomacy,
-                _settings.ReactionMovement);
+                _settings.ReactionMovement,
+                _settings.EnableMobileCombat);
         }
 
     }
@@ -225,7 +234,22 @@ internal sealed class TacticalHourlyCombatOrchestrator
         // Les compagnies dont le transfert est acheve
         // arrivent avant la detection et les tirs
         // de cette nouvelle heure.
-        ReactionExecution?.AdvanceHour(hour);
+        var movementPhase = ReactionExecution?.AdvanceHour(hour);
+
+        var signatures = _signatures;
+
+        if (_settings.EnableMobileCombat)
+        {
+            var contacts = movementPhase?.ConfirmedMobileContacts
+                ?? Array.Empty<TacticalConfirmedMobileContact>();
+
+            _battle.MobileEngagements.Publish(
+                hour, contacts, _geometry, _diplomacy,
+                _settings.ReactionMovement!.TransitContactDistanceMeters);
+
+            if (contacts.Count > 0)
+                signatures = PrepareMobileCombatParticipants(contacts);
+        }
 
         // 1. Mise a jour du renseignement.
         TacticalDetectionSystem.Update(
@@ -233,7 +257,7 @@ internal sealed class TacticalHourlyCombatOrchestrator
             _geometry,
             _diplomacy,
             _perception,
-            _signatures,
+            signatures,
             hour,
             _settings.Detection);
 
@@ -368,9 +392,70 @@ internal sealed class TacticalHourlyCombatOrchestrator
 
         LastBattalionReactionPhase = reactionPhase;
         _lastCompletedHour = hour;
+        LastMobileCombatSummary = _settings.EnableMobileCombat
+            ? SummarizeMobileCombat(hour, orders, fire)
+            : null;
         LastResult = result;
 
         return result;
+    }
+
+    private TacticalMobileCombatSummary SummarizeMobileCombat(
+        long hour,
+        IReadOnlyList<TacticalFireOrder> orders,
+        TacticalFirePhaseResult fire)
+    {
+        int mobileOrders = 0;
+        int mobileSalvos = 0;
+        for (int i = 0; i < orders.Count; i++)
+        {
+            var order = orders[i];
+            if (_battle.MobileEngagements.Find(order.Shooter, order.Target, hour) is null)
+                continue;
+
+            mobileOrders++;
+            if (fire.Outcomes[i].Status == TacticalFireOrderStatus.Fired)
+                mobileSalvos++;
+        }
+
+        return new TacticalMobileCombatSummary(
+            hour, _battle.MobileEngagements.GetContacts(hour).Count,
+            mobileOrders, mobileSalvos);
+    }
+
+    private TacticalSignatureFrame PrepareMobileCombatParticipants(
+        IReadOnlyList<TacticalConfirmedMobileContact> contacts)
+    {
+        var participants = new HashSet<CompanyDeployment>(
+            ReferenceEqualityComparer.Instance);
+        foreach (var contact in contacts)
+        {
+            participants.Add(contact.First);
+            participants.Add(contact.Second);
+        }
+
+        // La signature de mouvement vaut pour cette passe de detection.
+        var signatures = _signatures.WithMovingParticipants(participants);
+        double exposedFraction = _settings.ReactionMovement!.FrontLineExposureFraction;
+
+        foreach (var company in participants)
+        {
+            var exposure = _battle.PersonnelExposure.Get(company);
+            int desiredExposed = (int)Math.Ceiling(exposure.Total * exposedFraction);
+            int additional = desiredExposed - exposure.Exposed;
+            if (additional <= 0)
+                continue;
+
+            int fromReserve = Math.Min(additional, exposure.Reserve);
+            int fromShelter = additional - fromReserve;
+            _battle.PersonnelExposure.Set(company, new TacticalPersonnelExposure(
+                exposed: desiredExposed,
+                sheltered: exposure.Sheltered - fromShelter,
+                reserve: exposure.Reserve - fromReserve,
+                exposedDepthMeters: exposure.ExposedDepthMeters));
+        }
+
+        return signatures;
     }
 
     /// <summary>
@@ -390,13 +475,26 @@ internal sealed class TacticalHourlyCombatOrchestrator
         foreach (var shooter in _battle.Deployments)
         {
 
-            // Une compagnie en cours de transfert ne participe
-            // pas aux salves automatiques.
-            if (ReactionExecution?.IsMoving(shooter) == true)
+
+            bool mobileParticipant =
+                _settings.EnableMobileCombat
+                && _battle.MobileEngagements.IsParticipant(
+                    shooter, hour);
+
+            // Une compagnie en transit ne tire que
+            // si elle participe a un contact confirme.
+            if (ReactionExecution?.IsMoving(shooter) == true
+                && !mobileParticipant)
+            {
                 continue;
-                
-            if (shooter.Role != CompanyDeploymentRole.FrontLine)
+            }
+
+            if (shooter.Role != CompanyDeploymentRole.FrontLine
+                && !mobileParticipant)
+            {
                 continue;
+            }
+
 
             var resources = shooter.Company.Composition!;
 
@@ -466,6 +564,17 @@ internal sealed class TacticalHourlyCombatOrchestrator
                 if (target is null)
                     continue;
 
+                var mobileContact = _battle.MobileEngagements.Find(
+                shooter, target, hour);
+
+                // Une cible ou un tireur en transit doit appartenir
+                // a une paire de contact mobile confirmee.
+                if ((shooter.IsInTransit || target.IsInTransit)
+                    && mobileContact is null)
+                {
+                    continue;
+                }
+
                 var decision = TacticalDirectFireEvaluator.Evaluate(
                     _battle,
                     _geometry,
@@ -479,11 +588,25 @@ internal sealed class TacticalHourlyCombatOrchestrator
                 if (!decision.CanFire)
                     continue;
 
+                int weaponsForThisTarget = weapons;
+
+                if (mobileContact is not null)
+                {
+                    double remainingHour = Math.Clamp(
+                        1.0 - mobileContact.ContactTimeFraction, 0, 1);
+
+                    weaponsForThisTarget = (int)Math.Floor(
+                        weapons * remainingHour + 1e-9);
+                }
+
+                if (weaponsForThisTarget <= 0)
+                    continue;
+
                 orders.Add(new TacticalFireOrder(
                     shooter,
                     target,
                     _settings.Fire,
-                    WeaponsCommitted: weapons,
+                    WeaponsCommitted: weaponsForThisTarget,
                     RoundsPerWeapon: _settings.RoundsPerWeapon));
 
                 // Une seule cible pour cette compagnie.

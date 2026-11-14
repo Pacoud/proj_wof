@@ -59,6 +59,11 @@ public sealed class TacticalBattle
 
     internal long DeploymentRevision { get; private set; }
 
+    internal TacticalMobileEngagementState MobileEngagements
+    {
+        get;
+    }
+
 
 
 
@@ -79,6 +84,9 @@ public sealed class TacticalBattle
 
         Engagement = engagement;
         Battlefield = battlefield;
+
+        MobileEngagements =
+        new TacticalMobileEngagementState(this);
 
         Deployments = _deployments.AsReadOnly();
 

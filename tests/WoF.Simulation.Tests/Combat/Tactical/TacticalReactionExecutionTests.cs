@@ -24,7 +24,9 @@ public sealed class TacticalReactionExecutionTests
         CompanyDeployment Enemy,
         BattleSector FrontSector,
         BattleSector ReserveSector,
-        BattleSector RearSector);
+        BattleSector RearSector,
+        TacticalPerceptionState Perception,
+        TacticalSignatureFrame Signatures);
 
     private static Division MakeDivision(
         Country country,
@@ -79,7 +81,11 @@ public sealed class TacticalReactionExecutionTests
         double transitContactDistanceMeters = 0,
         bool useSimultaneousContacts = false,
         bool includeEnemyReserve = false,
-        bool includeSecondEnemyBattalion = false)
+        bool includeSecondEnemyBattalion = false,
+        bool enableMobileCombat = false,
+        double movementSpeed = 3000,
+        double killedProbability = 0,
+        int extraEnemyCompanies = 0)
     {
         var engine = new SimulationEngine();
 
@@ -89,7 +95,7 @@ public sealed class TacticalReactionExecutionTests
 
         var friendly = MakeDivision(france, province, 2);
         int enemyCompanyCount = 1 + (includeEnemyReserve ? 1 : 0)
-            + (includeSecondEnemyBattalion ? 1 : 0);
+            + (includeSecondEnemyBattalion ? 1 : 0) + extraEnemyCompanies;
         var enemy = MakeDivision(germany, province, enemyCompanyCount,
             splitLastCompany: includeSecondEnemyBattalion);
 
@@ -208,11 +214,14 @@ public sealed class TacticalReactionExecutionTests
                 maxAcousticRangeMeters: 0,
                 fieldOfViewDegrees: 360,
                 localizationCellMeters: 25),
-            fire: new TacticalDirectFireProfile(250),
-            hit: new TacticalHitProfile(2, 1, 0.5),
+            fire: new TacticalDirectFireProfile(250,
+                fireArcDegrees: enableMobileCombat ? 360 : 120),
+            hit: killedProbability > 0
+                ? new TacticalHitProfile(0.001, 0, 10)
+                : new TacticalHitProfile(2, 1, 0.5),
             defense: new TacticalDefenseProfile(
                 1, 1, 1, 0, 0, 0),
-            effects: new TacticalPersonnelEffectProfile(0, 0),
+            effects: new TacticalPersonnelEffectProfile(killedProbability, 0),
             maxWeaponsPerCompany: 10,
             roundsPerWeapon: 3,
             baseSeed: 12345,
@@ -227,16 +236,19 @@ public sealed class TacticalReactionExecutionTests
                 new TacticalBattalionReactionProfile(
                     2, 2, 10),
             reactionMovement:
-                new TacticalReactionMovementProfile(3000,
+                new TacticalReactionMovementProfile(movementSpeed,
                 frontLineExposureFraction: 0.25,
                 transitContactDistanceMeters: transitContactDistanceMeters,
-                useSimultaneousContacts: useSimultaneousContacts));
+                useSimultaneousContacts: useSimultaneousContacts),
+            enableMobileCombat: enableMobileCombat);
 
+        var perception = new TacticalPerceptionState(battle);
+        var signatures = new TacticalSignatureFrame(battle);
         var orchestrator = new TacticalHourlyCombatOrchestrator(
             battle,
             geometry,
-            new TacticalPerceptionState(battle),
-            new TacticalSignatureFrame(battle),
+            perception,
+            signatures,
             engine.Diplomacy,
             settings);
 
@@ -257,7 +269,9 @@ public sealed class TacticalReactionExecutionTests
             enemyDeployment,
             frontSector,
             reserveSector,
-            rearSector);
+            rearSector,
+            perception,
+            signatures);
     }
 
     private static TacticalBattalionReactionRequest
@@ -974,12 +988,368 @@ public sealed class TacticalReactionExecutionTests
         Assert.Equal(secondPersonnel, second.Company.Composition!.Manpower.Current);
     }
 
+    private static CompanyDeployment DeployOpposingReserve(Scenario s)
+    {
+        Relocate(s, s.Reserve, s.RearSector);
+        var opponent = s.Battle.DeployCompany(
+            s.Enemy.Company.ParentBattalion!.Companies[1],
+            s.FrontSector, CompanyDeploymentRole.Reserve);
+        s.Geometry.PlaceCompany(opponent, new TacticalPoint(0, 0, 0), 90, 20);
+        WeakenFront(s, s.Enemy);
+        return opponent;
+    }
+
+    [Theory]
+    [InlineData(100, false)]
+    [InlineData(10, true)]
+    public void MobileContactPreparesExposureAndSignature(
+        int reserveBefore, bool withConcealment)
+    {
+        var s = CreateScenario(
+            enemyInRear: true,
+            transitContactDistanceMeters: 200,
+            useSimultaneousContacts: true,
+            includeEnemyReserve: true,
+            enableMobileCombat: true);
+
+        var enemyReserve = DeployOpposingReserve(s);
+        s.Battle.PersonnelExposure.Set(s.Reserve, new TacticalPersonnelExposure(
+            exposed: 0, sheltered: 100 - reserveBefore, reserve: reserveBefore,
+            exposedDepthMeters: 30));
+        if (withConcealment)
+        {
+            s.Signatures.Set(s.Reserve, new TacticalUnitSignature(
+                TacticalActivity.Stationary, TacticalConcealment.Strong));
+        }
+
+        ReachConfirmedRupture(s);
+        ApproveMovement(s, s.Reserve);
+        ApproveMovement(s, enemyReserve);
+        s.Engine.Tick();
+
+        long hour = s.Engine.Clock.CurrentHour;
+        var contact = Assert.Single(s.Battle.MobileEngagements.GetContacts(hour));
+        Assert.Same(s.Reserve, contact.First);
+        Assert.Same(enemyReserve, contact.Second);
+        Assert.Equal(0.3, contact.ContactTimeFraction, 6);
+        var exposure = s.Battle.PersonnelExposure.Get(s.Reserve);
+        Assert.Equal(25, exposure.Exposed);
+        Assert.Equal(Math.Max(reserveBefore - 25, 0), exposure.Reserve);
+        Assert.Equal(75 - exposure.Reserve, exposure.Sheltered);
+        Assert.Equal(30, exposure.ExposedDepthMeters);
+        Assert.Equal(100, exposure.Total);
+        Assert.Equal(100, s.Reserve.Company.Composition!.Manpower.Current);
+        Assert.Equal(CompanyDeploymentRole.Reserve, s.Reserve.Role);
+
+        Assert.True(s.Perception.HasCurrentLocalization(s.Reserve, enemyReserve, hour));
+        // A 200 m, la signature Moving reste sous le seuil avec dissimulation forte.
+        Assert.Equal(!withConcealment,
+            s.Perception.HasCurrentLocalization(enemyReserve, s.Reserve, hour));
+        if (withConcealment)
+        {
+            Assert.True(s.Signatures.TryGet(s.Reserve, out var original));
+            Assert.Equal(TacticalActivity.Stationary, original!.Activity);
+            Assert.Equal(TacticalConcealment.Strong, original.Concealment);
+        }
+        else
+        {
+            Assert.False(s.Signatures.TryGet(s.Reserve, out _));
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OppositeMobileOrdersStopAtFirstContactAndFireOncePerCompany(
+        bool reverseApprovalOrder)
+    {
+        var s = CreateScenario(
+            enemyInRear: true, transitContactDistanceMeters: 200,
+            useSimultaneousContacts: true, includeEnemyReserve: true,
+            enableMobileCombat: true);
+        var opponent = DeployOpposingReserve(s);
+        ReachConfirmedRupture(s);
+        ApproveMovement(s, reverseApprovalOrder ? opponent : s.Reserve);
+        ApproveMovement(s, reverseApprovalOrder ? s.Reserve : opponent);
+
+        s.Engine.Tick();
+
+        var result = s.Orchestrator.LastMovementPhase!;
+        var contact = Assert.Single(result.ConfirmedMobileContacts!);
+        Assert.Equal(0.3, contact.ContactTimeFraction, 6);
+        Assert.Equal(1.0 / 3, Assert.Single(result.PredictedEncounters!).TimeFraction, 6);
+        Assert.Equal(1100, contact.FirstPosition.XMeters, 6);
+        Assert.Equal(900, contact.SecondPosition.XMeters, 6);
+        Assert.Empty(result.Completed);
+        Assert.Equal(2, result.Active.Count);
+        var fire = s.Battle.DirectFire.LastPhase!;
+        Assert.Equal(4, fire.Hour);
+        Assert.Equal(2, fire.Events.Count);
+        foreach (var company in new[] { s.Reserve, opponent })
+        {
+            var target = ReferenceEquals(company, s.Reserve) ? opponent : s.Reserve;
+            var salvo = Assert.Single(fire.Events, e => ReferenceEquals(e.Shooter, company));
+            Assert.Equal(7, salvo.WeaponsCommitted);
+            Assert.Equal(21, salvo.RoundsExpended);
+            Assert.Equal(979, company.Company.Composition!.Ammunition.GetAvailable(
+                AmmunitionType.SmallArms));
+            Assert.Equal(CompanyDeploymentRole.Reserve, company.Role);
+            Assert.True(company.IsInTransit);
+            Assert.Equal(900, Assert.Single(result.Active,
+                m => ReferenceEquals(m.Order.Company, company)).DistanceTravelledMeters, 6);
+
+            var report = Assert.Single(s.Perception.GetReports(company));
+            Assert.Equal(s.Geometry.GetPosition(target)!.Point, report.LastKnownPosition);
+        }
+
+        Assert.Equal(contact.FirstPosition, s.Geometry.GetPosition(s.Reserve)!.Point);
+        Assert.Equal(contact.SecondPosition, s.Geometry.GetPosition(opponent)!.Point);
+        Assert.Equal(new TacticalMobileCombatSummary(4, 1, 2, 2),
+            s.Orchestrator.LastMobileCombatSummary!.Value);
+    }
+
+    [Theory]
+    [InlineData(true, 3000, 0.3)]
+    [InlineData(false, 1000, 0.9)]
+    public void VisibilityAndRemainingTimeLimitMobileFire(bool obstacle, double speed, double time)
+    {
+        var s = CreateScenario(
+            enemyInRear: true, transitContactDistanceMeters: 200,
+            useSimultaneousContacts: true, includeEnemyReserve: true,
+            enableMobileCombat: true, movementSpeed: speed);
+        var opponent = DeployOpposingReserve(s);
+        ReachConfirmedRupture(s);
+        ApproveMovement(s, s.Reserve);
+        ApproveMovement(s, opponent);
+        if (obstacle)
+        {
+            s.Geometry.AddLineObstacle(new TacticalLineObstacle(
+                1, "Crête", TacticalLineObstacleKind.Ridge,
+                1000, -30, 1000, 30, topElevationMeters: 120));
+        }
+
+        s.Engine.Tick();
+
+        var contact = Assert.Single(s.Battle.MobileEngagements.GetContacts(4));
+        Assert.Equal(time, contact.ContactTimeFraction, 6);
+        Assert.Equal(!obstacle, s.Perception.HasCurrentLocalization(s.Reserve, opponent, 4));
+        Assert.Equal(!obstacle, s.Perception.HasCurrentLocalization(opponent, s.Reserve, 4));
+        Assert.Equal(new TacticalMobileCombatSummary(
+            4, 1, obstacle ? 0 : 2, obstacle ? 0 : 2),
+            s.Orchestrator.LastMobileCombatSummary!.Value);
+        Assert.All(s.Battle.DirectFire.LastPhase!.Events, salvo =>
+        {
+            Assert.Equal(1, salvo.WeaponsCommitted);
+            Assert.Equal(3, salvo.RoundsExpended);
+        });
+    }
+
     [Fact]
-    public void OrdersCrossingAtDifferentTimesContinue()
+    public void CompanyWithoutAmmunitionCannotFireDuringConfirmedMobileContact()
+    {
+        var s = CreateScenario(
+            enemyInRear: true, transitContactDistanceMeters: 200,
+            useSimultaneousContacts: true, includeEnemyReserve: true,
+            enableMobileCombat: true);
+        var opponent = DeployOpposingReserve(s);
+        var ammunition = s.Reserve.Company.Composition!.Ammunition;
+        Assert.True(ammunition.TryConsume(AmmunitionType.SmallArms,
+            ammunition.GetAvailable(AmmunitionType.SmallArms)));
+        ReachConfirmedRupture(s);
+        ApproveMovement(s, s.Reserve);
+        ApproveMovement(s, opponent);
+
+        s.Engine.Tick();
+
+        Assert.True(s.Perception.HasCurrentLocalization(s.Reserve, opponent, 4));
+        Assert.Equal(new TacticalMobileCombatSummary(4, 1, 1, 1),
+            s.Orchestrator.LastMobileCombatSummary!.Value);
+        Assert.Same(opponent, Assert.Single(s.Battle.DirectFire.LastPhase!.Events).Shooter);
+        Assert.Equal(0, ammunition.GetAvailable(AmmunitionType.SmallArms));
+    }
+
+    [Fact]
+    public void UnavailableCompanyDoesNotFightOrAcquireNewCasualties()
+    {
+        var s = CreateScenario(
+            enemyInRear: true, transitContactDistanceMeters: 200,
+            useSimultaneousContacts: true, includeEnemyReserve: true,
+            enableMobileCombat: true);
+        var opponent = DeployOpposingReserve(s);
+        ReachConfirmedRupture(s);
+        ApproveMovement(s, s.Reserve);
+        ApproveMovement(s, opponent);
+        var manpower = s.Reserve.Company.Composition!.Manpower;
+        manpower.ApplyCasualties(new PersonnelCasualtyReport(100, 0, 0));
+        s.Battle.PersonnelExposure.Set(s.Reserve, new TacticalPersonnelExposure(0, 0, 0, 20));
+
+        s.Engine.Tick();
+
+        var completion = Assert.Single(s.Orchestrator.LastMovementPhase!.Completed,
+            c => ReferenceEquals(c.Order.Company, s.Reserve));
+        Assert.Equal(TacticalMovementOutcome.UnitUnavailable, completion.Outcome);
+        Assert.Empty(s.Battle.MobileEngagements.GetContacts(4));
+        Assert.Empty(s.Battle.DirectFire.LastPhase!.Events);
+        Assert.Empty(s.Battle.DirectFire.LastCasualtyPhase!.Companies);
+        Assert.Equal(0, manpower.Current);
+    }
+
+    [Fact]
+    public void RepeatedMobileContactAppliesOnlyTheCurrentHoursLosses()
+    {
+        var s = CreateScenario(
+            enemyInRear: true, transitContactDistanceMeters: 200,
+            useSimultaneousContacts: true, includeEnemyReserve: true,
+            enableMobileCombat: true, killedProbability: 1);
+        var opponent = DeployOpposingReserve(s);
+        ReachConfirmedRupture(s);
+        ApproveMovement(s, s.Reserve);
+        ApproveMovement(s, opponent);
+        var companies = new[] { s.Reserve, opponent };
+
+        for (long hour = 4; hour <= 5; hour++)
+        {
+            var before = companies.Select(company =>
+            {
+                var battalion = company.Company.ParentBattalion!;
+                return (
+                    Company: company.Company.Composition!.Manpower.Current,
+                    Battalion: battalion.GetResourceTotals().Personnel.Available,
+                    Division: battalion.ParentDivision!.GetCurrentResourceTotals().Personnel.Available);
+            }).ToArray();
+
+            s.Engine.Tick();
+
+            var fire = s.Battle.DirectFire.LastPhase!;
+            Assert.Equal(hour, fire.Hour);
+            Assert.Equal(2, fire.Events.Count);
+            var casualties = s.Battle.DirectFire.LastCasualtyPhase!;
+            Assert.Equal(hour, casualties.Hour);
+            Assert.Equal(2, casualties.Companies.Count);
+            var suppression = s.Battle.DirectFire.LastSuppressionPhase!;
+            Assert.Equal(hour, suppression.Hour);
+            var contact = Assert.Single(s.Battle.MobileEngagements.GetContacts(hour));
+            Assert.Equal(hour == 4 ? 0.3 : 0, contact.ContactTimeFraction, 6);
+            Assert.Empty(s.Battle.MobileEngagements.GetContacts(hour - 1));
+
+            for (int i = 0; i < companies.Length; i++)
+            {
+                var company = companies[i];
+                var applied = Assert.Single(casualties.Companies,
+                    report => ReferenceEquals(report.Target, company));
+                int lost = applied.Casualties.Total;
+                Assert.True(lost > 0);
+                int after = company.Company.Composition!.Manpower.Current;
+                Assert.Equal(before[i].Company, applied.AvailableBefore);
+                Assert.Equal(before[i].Company - lost, after);
+                Assert.Equal(after, applied.AvailableAfter);
+                Assert.Equal(after, s.Battle.PersonnelExposure.Get(company).Total);
+                var battalion = company.Company.ParentBattalion!;
+                Assert.Equal(before[i].Battalion - lost,
+                    battalion.GetResourceTotals().Personnel.Available);
+                Assert.Equal(before[i].Division - lost,
+                    battalion.ParentDivision!.GetCurrentResourceTotals().Personnel.Available);
+                var pressure = Assert.Single(suppression.Targets,
+                    report => ReferenceEquals(report.Target, company));
+                Assert.True(pressure.PressureAdded > 0);
+                Assert.True(s.Battle.Cohesion.Get(company) < 100);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MobileStopCanCreateAContactWithAThirdCompany(bool crossesStop)
+    {
+        var s = CreateScenario(
+            enemyInRear: true, transitContactDistanceMeters: 200,
+            useSimultaneousContacts: true, includeEnemyReserve: true,
+            includeSecondEnemyBattalion: true, enableMobileCombat: true);
+        var opponent = DeployOpposingReserve(s);
+        double x = crossesStop ? 1100 : -2000;
+        var origin = AddSector(s, 4, x, -2000);
+        var destination = AddSector(s, 5, x, 1000);
+        s.Battle.Battlefield.Connect(origin, destination, 3000);
+        var battalion = s.Enemy.Company.ParentBattalion!.ParentDivision!.Battalions[1];
+        var third = s.Battle.DeployCompany(
+            battalion.Companies[0], origin, CompanyDeploymentRole.FrontLine);
+        s.Geometry.PlaceCompany(third, new TacticalPoint(x, -2000, 0), 0, 20);
+        WeakenFront(s, third);
+        ReachConfirmedRupture(s);
+        ApproveMovement(s, s.Reserve);
+        ApproveMovement(s, opponent);
+        ApproveMovement(s, third, destination);
+
+        s.Engine.Tick();
+
+        var phase = s.Orchestrator.LastMovementPhase!;
+        Assert.Single(phase.PredictedEncounters!);
+        if (crossesStop)
+        {
+            Assert.Equal(3, phase.SimultaneousResolution!.ResolutionPasses);
+            Assert.Contains(third, phase.SimultaneousResolution.PausedCompanies);
+            var contact = Assert.Single(phase.ConfirmedMobileContacts!,
+                c => ReferenceEquals(c.First, s.Reserve) && ReferenceEquals(c.Second, third));
+            Assert.Equal(0.6, contact.ContactTimeFraction, 6);
+            Assert.Equal(-200, contact.SecondPosition.YMeters, 6);
+            Assert.Equal(3, s.Battle.DirectFire.LastPhase!.Events.Count);
+            Assert.All(new[] { s.Reserve, opponent, third }, company =>
+                Assert.Single(s.Battle.DirectFire.LastPhase.Events,
+                    salvo => ReferenceEquals(salvo.Shooter, company)));
+        }
+        else
+        {
+            Assert.Single(phase.ConfirmedMobileContacts!);
+            Assert.Same(third, Assert.Single(phase.Completed).Order.Company);
+            Assert.Same(destination, third.Sector);
+        }
+    }
+
+    [Fact]
+    public void DistantDeploymentsDoNotIncreaseExactMobileContactChecks()
+    {
+        Assert.Equal(MeasureMobileContactChecks(0), MeasureMobileContactChecks(128));
+    }
+
+    private static (long ExactChecks, long Candidates) MeasureMobileContactChecks(int distantCount)
+    {
+        var s = CreateScenario(
+            enemyInRear: true, transitContactDistanceMeters: 200,
+            useSimultaneousContacts: true, includeEnemyReserve: true,
+            enableMobileCombat: true, extraEnemyCompanies: distantCount);
+        var opponent = DeployOpposingReserve(s);
+        var battalion = opponent.Company.ParentBattalion!;
+        for (int i = 0; i < distantCount; i++)
+        {
+            double x = 10000 + 1000 * i;
+            var sector = AddSector(s, 4 + i, x, 0);
+            var deployment = s.Battle.DeployCompany(
+                battalion.Companies[2 + i], sector, CompanyDeploymentRole.Reserve);
+            s.Geometry.PlaceCompany(deployment, new TacticalPoint(x, 0, 0), 0, 20);
+        }
+
+        // Les réserves éloignées ne changent pas la paire qui reçoit les ordres.
+        ReachConfirmedRupture(s);
+        ApproveMovement(s, s.Reserve);
+        ApproveMovement(s, opponent);
+        s.Engine.Tick();
+
+        var phase = s.Orchestrator.LastMovementPhase!;
+        Assert.Single(phase.ConfirmedMobileContacts!);
+        var resolution = phase.SimultaneousResolution!;
+        Assert.True(resolution.ExactPairChecks > 0);
+        return (resolution.ExactPairChecks, resolution.BroadPhaseCandidates);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OrdersCrossingAtDifferentTimesContinue(bool enableMobileCombat)
     {
         var s = CreateScenario(
             hasReserve: false, transitContactDistanceMeters: 100,
-            useSimultaneousContacts: true);
+            useSimultaneousContacts: true, enableMobileCombat: enableMobileCombat);
         var enemyOrigin = AddSector(s, 4, 1000, -3000);
         var enemyDestination = AddSector(s, 5, 1000, 1000);
         s.Battle.Battlefield.Connect(enemyOrigin, enemyDestination, 4000);
@@ -994,6 +1364,16 @@ public sealed class TacticalReactionExecutionTests
         var phase = s.Orchestrator.LastMovementPhase!;
         Assert.Empty(phase.PredictedEncounters!);
         Assert.Empty(phase.SimultaneousResolution!.PausedCompanies);
+        if (enableMobileCombat)
+        {
+            Assert.Empty(phase.ConfirmedMobileContacts!);
+            Assert.Equal(new TacticalMobileCombatSummary(4, 0, 0, 0),
+                s.Orchestrator.LastMobileCombatSummary!.Value);
+        }
+        else
+        {
+            Assert.Null(s.Orchestrator.LastMobileCombatSummary);
+        }
         Assert.Same(s.Front, Assert.Single(phase.Completed).Order.Company);
         Assert.Same(s.RearSector, s.Front.Sector);
         var continuing = Assert.Single(phase.Active);
@@ -1063,12 +1443,14 @@ public sealed class TacticalReactionExecutionTests
         }
     }
 
-    [Fact]
-    public void InvalidPendingMovementLeavesOtherDeploymentsUntouched()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InvalidPendingMovementLeavesOtherDeploymentsUntouched(bool enableMobileCombat)
     {
         var s = CreateScenario(
             hasReserve: false, enemyInRear: true, transitContactDistanceMeters: 100,
-            useSimultaneousContacts: true);
+            useSimultaneousContacts: true, enableMobileCombat: enableMobileCombat);
         var firstDestination = AddSector(s, 4, 0, 1000);
         var secondDestination = AddSector(s, 5, 2000, 1000);
         s.Battle.Battlefield.Connect(s.FrontSector, firstDestination, 1000);
@@ -1591,5 +1973,130 @@ public sealed class TacticalReactionExecutionTests
                 hour: 4,
                 contactRadiusMeters: 10));
     }
+
+
+
+
+    [Fact]
+    public void FirstMobileContactOccursBeforePositionsOverlap()
+    {
+        var s = CreateScenario();
+
+        var first = new TacticalTimedTrajectorySegment(
+            s.Front,
+            new TacticalPoint(0, 0, 0),
+            new TacticalPoint(100, 0, 0),
+            0, 1,
+            IsMoving: true);
+
+        var second = new TacticalTimedTrajectorySegment(
+            s.Enemy,
+            new TacticalPoint(200, 0, 0),
+            new TacticalPoint(100, 0, 0),
+            0, 1,
+            IsMoving: true);
+
+        var result = TacticalFirstMobileContactSolver.Find(
+            first,
+            second,
+            radiusMeters: 20);
+
+        Assert.NotNull(result);
+
+        Assert.Equal(
+            0.9, result.Value.TimeFraction, 6);
+
+        Assert.Equal(
+            90, result.Value.FirstPosition.XMeters, 6);
+
+        Assert.Equal(
+            110, result.Value.SecondPosition.XMeters, 6);
+
+        Assert.Equal(
+            20, result.Value.DistanceMeters, 6);
+    }
+
+    [Fact]
+    public void MobileContactDoesNotExistAtDifferentPassageTimes()
+    {
+        var s = CreateScenario();
+
+        var first = new TacticalTimedTrajectorySegment(
+            s.Front,
+            new TacticalPoint(0, 0, 0),
+            new TacticalPoint(100, 0, 0),
+            0, 1,
+            IsMoving: true);
+
+        var second = new TacticalTimedTrajectorySegment(
+            s.Enemy,
+            new TacticalPoint(50, -150, 0),
+            new TacticalPoint(50, 50, 0),
+            0, 1,
+            IsMoving: true);
+
+        var result = TacticalFirstMobileContactSolver.Find(
+            first,
+            second,
+            radiusMeters: 5);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void StationaryEnemyCanBeReachedByMovingCompany()
+    {
+        var s = CreateScenario();
+
+        var moving = new TacticalTimedTrajectorySegment(
+            s.Front,
+            new TacticalPoint(0, 0, 0),
+            new TacticalPoint(100, 0, 0),
+            0, 1,
+            IsMoving: true);
+
+        var stationary = new TacticalTimedTrajectorySegment(
+            s.Enemy,
+            new TacticalPoint(50, 0, 0),
+            new TacticalPoint(50, 0, 0),
+            0, 1,
+            IsMoving: false);
+
+        var result = TacticalFirstMobileContactSolver.Find(
+            moving,
+            stationary,
+            radiusMeters: 10);
+
+        Assert.NotNull(result);
+
+        Assert.Equal(
+            0.4, result.Value.TimeFraction, 6);
+
+        Assert.Equal(
+            40, result.Value.FirstPosition.XMeters, 6);
+
+        Assert.Equal(
+            50, result.Value.SecondPosition.XMeters, 6);
+    }
+
+    [Fact]
+    public void InvalidMobileContactRadiusIsRejected()
+    {
+        var s = CreateScenario();
+
+        var moving = new TacticalTimedTrajectorySegment(
+            s.Front,
+            new TacticalPoint(0, 0, 0),
+            new TacticalPoint(100, 0, 0),
+            0, 1,
+            IsMoving: true);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            TacticalFirstMobileContactSolver.Find(
+                moving,
+                moving,
+                radiusMeters: 0));
+    }
+
 
 }

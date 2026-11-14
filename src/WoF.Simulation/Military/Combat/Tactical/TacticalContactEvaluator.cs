@@ -40,7 +40,8 @@ public static class TacticalContactEvaluator
     public static IReadOnlyList<TacticalEvaluatedContact> Evaluate(
         TacticalBattle battle,
         TacticalGeometryMap geometry,
-        DiplomacySystem diplomacy)
+        DiplomacySystem diplomacy,
+        long? currentHour =null)
     {
         ArgumentNullException.ThrowIfNull(battle);
         ArgumentNullException.ThrowIfNull(geometry);
@@ -56,7 +57,8 @@ public static class TacticalContactEvaluator
         // les candidats produits par C2.2a.
         var candidates = TacticalContactDetector.Detect(
             battle,
-            diplomacy);
+            diplomacy,
+            currentHour);
 
         var results = new List<TacticalEvaluatedContact>(
             candidates.Count);

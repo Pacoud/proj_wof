@@ -80,6 +80,24 @@ public sealed class TacticalSignatureFrame
         _signatures[deployment] = signature;
     }
 
+    internal TacticalSignatureFrame WithMovingParticipants(
+        IEnumerable<CompanyDeployment> participants)
+    {
+        var frame = new TacticalSignatureFrame(_battle);
+        foreach (var (company, signature) in _signatures)
+            frame._signatures.Add(company, signature);
+
+        foreach (var company in participants)
+        {
+            TryGet(company, out var signature);
+            frame.Set(company, new TacticalUnitSignature(
+                TacticalActivity.Moving,
+                signature?.Concealment ?? TacticalConcealment.None));
+        }
+
+        return frame;
+    }
+
     public bool TryGet(
         CompanyDeployment deployment,
         out TacticalUnitSignature? signature)

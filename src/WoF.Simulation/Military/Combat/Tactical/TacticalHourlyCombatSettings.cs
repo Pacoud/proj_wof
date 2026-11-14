@@ -33,6 +33,7 @@ internal sealed class TacticalHourlyCombatSettings
     internal int MaxWeaponsPerCompany { get; }
     internal int RoundsPerWeapon { get; }
     internal ulong BaseSeed { get; }
+    internal bool EnableMobileCombat { get; }
 
     internal TacticalHourlyCombatSettings(
         TacticalDetectionProfile detection,
@@ -47,7 +48,8 @@ internal sealed class TacticalHourlyCombatSettings
         TacticalCohesionProfile? cohesion = null,
         TacticalBattalionAssessmentProfile? battalionAssessment = null,
         TacticalBattalionReactionProfile? battalionReactions = null,
-        TacticalReactionMovementProfile? reactionMovement = null)
+        TacticalReactionMovementProfile? reactionMovement = null,
+        bool enableMobileCombat = false )
     {
         Detection = detection
             ?? throw new ArgumentNullException(nameof(detection));
@@ -124,7 +126,25 @@ internal sealed class TacticalHourlyCombatSettings
         ReactionMovement = reactionMovement;
 
 
+        if (enableMobileCombat
+        && (reactionMovement is null
+        || !reactionMovement.UseSimultaneousContacts
+        || reactionMovement.TransitContactDistanceMeters <= 0
+        || suppression is null
+        || cohesion is null))
+    {
+        throw new ArgumentException(
+            "Mobile combat requires simultaneous movements, " +
+            "a contact radius, suppression and cohesion.",
+            nameof(enableMobileCombat));
     }
+
+    EnableMobileCombat = enableMobileCombat;
+
+
+    }
+
+
 
 
 

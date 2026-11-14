@@ -5720,7 +5720,7 @@ aux tirs, à la suppression et aux pertes humaines
 dans C2.4d.8c.
 
 
-# COMMIT # 
+# COMMIT  60b8688b218e92cdf92630b435ea82889ca03a65# 
 
 ## C2.4d.8b — Détection simultanée des croisements
 

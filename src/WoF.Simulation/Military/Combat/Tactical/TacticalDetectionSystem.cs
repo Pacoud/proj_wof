@@ -95,7 +95,8 @@ public static class TacticalDetectionSystem
         var contacts = TacticalContactEvaluator.Evaluate(
             battle,
             geometry,
-            diplomacy);
+            diplomacy,
+            currentHour);
 
         var observations = new List<TacticalObservationEvent>();
 

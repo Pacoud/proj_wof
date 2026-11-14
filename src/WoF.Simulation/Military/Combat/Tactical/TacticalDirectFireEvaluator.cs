@@ -131,14 +131,20 @@ internal static class TacticalDirectFireEvaluator
             return Denied(TacticalDirectFireStatus.NotEnemies);
         }
 
-        // C2.4a : seuls les combattants de premiere ligne
-        // participent aux tirs directs.
-        if (attacker.Role != CompanyDeploymentRole.FrontLine
-            || target.Role != CompanyDeploymentRole.FrontLine)
+            bool normalFrontlineCombat =
+                attacker.Role == CompanyDeploymentRole.FrontLine
+                && target.Role == CompanyDeploymentRole.FrontLine
+                && !attacker.IsInTransit
+                && !target.IsInTransit;
+
+            bool confirmedMobileCombat =
+                battle.MobileEngagements.Find(
+                attacker, target, currentHour) is not null;
+
+        if (!normalFrontlineCombat && !confirmedMobileCombat)
         {
             return Denied(TacticalDirectFireStatus.NotFrontLine);
         }
-
         var attackerResources = attacker.Company.Composition!;
         var targetResources = target.Company.Composition!;
 

@@ -10,7 +10,8 @@ namespace WoF.Simulation.Military.Combat.Tactical;
 public enum TacticalContactTopology
 {
     SameSector,
-    ConnectedSectors
+    ConnectedSectors,
+    MobileEncounter
 }
 
 /// <summary>
@@ -33,7 +34,8 @@ public static class TacticalContactDetector
     /// </summary>
     public static IReadOnlyList<TacticalContactCandidate> Detect(
         TacticalBattle battle,
-        DiplomacySystem diplomacy)
+        DiplomacySystem diplomacy,
+        long? currentHour = null)
     {
         ArgumentNullException.ThrowIfNull(battle);
         ArgumentNullException.ThrowIfNull(diplomacy);
@@ -102,6 +104,20 @@ public static class TacticalContactDetector
                         diplomacy,
                         contacts);
                 }
+            }
+        }
+
+        if (currentHour is long hour)
+        {
+            foreach (var mobile in battle.MobileEngagements.GetContacts(hour))
+            {
+                TryAdd(
+                    mobile.First,
+                    mobile.Second,
+                    TacticalContactTopology.MobileEncounter,
+                    connectionDistance: null,
+                    diplomacy,
+                    contacts);
             }
         }
 
