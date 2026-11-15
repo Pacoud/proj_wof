@@ -6076,3 +6076,448 @@ aux mesures détaillées.
 Permettre les exports JSON et CSV des temps et
 allocations par phase, comparer le même scénario
 avec et sans instrumentation et quantifier son coût.
+
+# COMMIT c3f75568be75c813b1f5212be62e600d9385078e # 
+
+### C2.4d.8d.3d — Export des performances par phase
+
+**Objectif**
+
+Raccorder l'instrumentation du moteur tactique au
+runner de benchmarks pour identifier les phases
+les plus coûteuses de la simulation.
+
+**Fonctionnalités**
+
+- Option facultative --phases pour le mode full.
+- Transmission du recorder à l'orchestrateur.
+- Réinitialisation après préparation des batailles.
+- Collecte des mesures après chaque tick chronométré.
+- Durée et allocations par phase.
+- Comptage des appels de chaque phase.
+- Statistiques agrégées : moyenne, médiane et P95.
+- Export JSON des mesures individuelles et agrégées.
+- Export CSV avec colonnes dédiées à chaque phase.
+- Préservation du format CSV existant sans --phases.
+- Tests de reproductibilité et de non-régression.
+- Comparaison du coût du benchmark instrumenté
+  avec celui du benchmark classique.
+
+**Architecture**
+
+- TacticalMobileBenchmarkScenarioFactory :
+  accepte un enregistreur facultatif.
+
+- TacticalMobileCombatBenchmark :
+  pilote la collecte, calcule les statistiques
+  et exporte les résultats.
+
+- TacticalPhaseTimingRecorder :
+  conserve les mesures exclusives par phase.
+
+- TacticalHourlyCombatOrchestrator :
+  exécute le combat avec ou sans instrumentation.
+
+- TacticalReactionExecutionState :
+  fournit les temps détaillés des mouvements.
+
+**Limites actuelles**
+
+- La précision des mesures dépend du matériel.
+- L'instrumentation introduit un léger surcoût.
+- Certaines opérations de synthèse restent hors mesure.
+- Les allocations concernent le thread courant.
+- Les benchmarks à grande échelle restent à réaliser.
+- Aucune optimisation du moteur dans cette sous-étape.
+
+**Suite**
+
+C2.4d.8d.4 — Campagne de benchmarks à grande échelle.
+
+Comparer les performances sur 100, 500, 1000
+et 3000 compagnies, en variantes dispersées
+et concentrées.
+
+Identifier les phases dominantes puis préparer
+les optimisations ciblées de C2.4d.8d.5.
+
+# COMMIT # 
+### Itérations d'optimisations 
+
+### C2.4d.8d.5a.1 — Evaluation paresseuse de la visibilité
+
+**Objectif**
+
+Réduire les calculs géométriques et les allocations
+pendant la détection tactique, particulièrement
+dans les batailles concentrées.
+
+**Modifications**
+
+- Conservation des candidats de contact existants.
+- Suppression de l'évaluation géométrique complète
+  systématique dans TacticalDetectionSystem.Update.
+- Vérification anticipée des signatures.
+- Filtrage préalable selon la portée visuelle.
+- Calcul de l'orientation uniquement si nécessaire.
+- Evaluation des obstacles uniquement lorsqu'une
+  observation visuelle est potentiellement possible.
+- Préservation indépendante des observations sonores.
+- Aucun changement des règles militaires.
+
+**Architecture**
+
+TacticalDetectionSystem utilise directement
+les candidats de TacticalContactDetector.
+
+TacticalContactEvaluator reste inchangé et
+disponible pour les autres systèmes.
+
+**Validation**
+
+- Tests des limites de portée.
+- Tests de détection acoustique.
+- Tests des observations bidirectionnelles.
+- Régression sur la suite tactique existante.
+- Benchmarks avant/après à 500 compagnies.
+
+**Limites**
+
+- Les paires candidates sont toujours matérialisées.
+- Pas encore d'index spatial pour la détection visuelle.
+- Le coût des pistes et des ordres de tir reste inchangé.
+- Les gains doivent être confirmés par benchmark.
+
+**Suite**
+
+C2.4d.8d.5a.2 — Selon les résultats, réduire
+les allocations et la construction des candidats
+dans les batailles très denses.
+
+**Résultats** 
+
+Les résultats des benchmarks apres opti sont peu concluants bien qu'une petite optimisation a été notée, donc il faut explorer d'autres solutions. 
+
+
+### C2.4d.8d.5a.2 — Parcours direct des contacts candidats
+
+**Objectif**
+
+Réduire les allocations et les coûts intermédiaires
+de la détection tactique dans les batailles denses.
+
+**Modifications**
+
+- Ajout de TacticalContactDetector.VisitCandidates.
+- Parcours direct des paires ennemies.
+- Préservation de l'ordre et des règles de sélection.
+- Conservation de l'API historique Detect.
+- Suppression de la liste intermédiaire de candidats
+  dans TacticalDetectionSystem.Update.
+- Préservation de l'application atomique des observations.
+
+**Validation prévue**
+
+- Test d'identité des candidats et de leur ordre.
+- Suite complète des tests militaires.
+- Benchmarks full 500 sparse et full 500 dense.
+- Comparaison des temps et allocations avant/après.
+
+**Limites**
+
+- Le nombre de paires examinées reste inchangé.
+- Les observations sont toujours matérialisées.
+- La complexité des secteurs très denses reste à traiter.
+- Les gains doivent être confirmés par benchmark.
+
+**Suite**
+
+Selon les résultats : profilage plus fin de
+TacticalPerceptionState et de la détection géométrique.
+
+
+### C2.4d.8d.5a.3 — Instantané de détection tactique
+
+**Objectif**
+
+Réduire les calculs répétés dans la détection
+tactique, particulièrement dans les batailles denses.
+
+**Modifications**
+
+- Instantané par passe des positions tactiques.
+- Instantané des signatures visuelles et acoustiques.
+- Calcul unique de la portée visuelle par compagnie.
+- Calcul unique de distance par paire candidate.
+- Calcul direct de l'orientation relative.
+- Suppression des relations spatiales intermédiaires
+  dans le chemin de détection.
+- Préservation des candidats et observations existants.
+- Aucune donnée conservée entre deux heures.
+
+**Validation prévue**
+
+- Tests de renouvellement des signatures.
+- Tests de visibilité directionnelle.
+- Suite complète des tests tactiques.
+- Comparaison militaire avant/après.
+- Benchmarks sparse et dense à 500 compagnies.
+
+**Limites**
+
+- Le nombre de paires candidates reste inchangé.
+- Les observations et pistes restent matérialisées.
+- Le coût de TacticalPerceptionState n'est pas optimisé.
+- Aucun nouvel index spatial n'est introduit.
+
+**Suite**
+
+Analyser le coût résiduel de la détection et
+déterminer si une indexation spatiale spécifique
+ou une optimisation de la perception est justifiée.
+
+
+### C2.4d.8d.5a.5 — Visibilité sans obstacles
+
+**Objectif**
+
+Réduire le coût de la détection visuelle
+lorsqu'aucun obstacle géométrique n'est présent.
+
+**Modifications**
+
+- Chemin rapide pour les corridors sans obstacle.
+- Suppression des TacticalSightResult temporaires
+  sur ce chemin d'exécution.
+- Préservation des contraintes numériques.
+- Conservation de l'évaluateur historique
+  pour tous les corridors avec obstacles.
+- Aucune modification des règles de perception.
+
+**Validation prévue**
+
+- Test de visibilité sans obstacle.
+- Test des corridors de longueur quasi nulle.
+- Test de blocage par obstacle.
+- Suite complète des tests tactiques.
+- Comparaison des résultats militaires.
+- Benchmarks sparse et dense à 500 compagnies.
+
+**Limites**
+
+- Aucun filtrage spatial supplémentaire.
+- Les TacticalObservationEvent restent alloués.
+- Le coût de TacticalPerceptionState.Apply
+  reste inchangé.
+- Les gains CPU restent à mesurer.
+
+**Suite**
+
+Optimisation ciblée de la validation
+des secteurs dans TacticalPerceptionState.Apply,
+particulièrement pour les scénarios dispersés.
+
+
+### C2.4d.8d.5a.6 — Validation rapide des secteurs
+
+**Objectif**
+
+Supprimer la recherche linéaire répétée des
+secteurs lors de la validation des observations.
+
+**Modifications**
+
+- Ajout de TacticalBattlefield.ContainsSectorId.
+- Réutilisation du dictionnaire des secteurs existant.
+- Suppression du parcours LINQ Any pour chaque
+  observation.
+- Préservation de la validation atomique des pistes.
+- Aucun changement des règles de perception.
+
+**Tests**
+
+- Recherche par identifiant.
+- Prise en compte des nouveaux secteurs.
+- Rejet des identifiants inconnus.
+- Absence de mutation sur observation invalide.
+- Suite complète de non-régression.
+
+**Limites**
+
+- Le nombre d'observations reste inchangé.
+- Le traitement des pistes conserve ses allocations.
+- Le gain dépend du nombre de secteurs par bataille.
+
+**Suite**
+
+Analyser le coût résiduel des allocations dans
+TacticalPerceptionState.Apply et déterminer
+si le dimensionnement des collections temporaires
+peut être amélioré.
+
+
+### C2.4d.8d.5a.7 — Préallocation des paires d'observation
+
+**Objectif**
+
+Réduire les redimensionnements de la collection
+temporaire utilisée pour détecter les observations
+dupliquées dans TacticalPerceptionState.Apply.
+
+**Modifications**
+
+- Initialisation du HashSet avec observations.Count.
+- Réduction des agrandissements de sa table interne.
+- Conservation de la validation atomique.
+- Aucun changement du traitement des pistes.
+
+**Validation**
+
+- Test de plusieurs observations distinctes.
+- Rejet des doublons sans mutation partielle.
+- Conservation des identifiants des pistes.
+- Suite complète des tests tactiques.
+- Benchmarks sparse et dense.
+
+**Limites**
+
+- Les événements d'observation restent alloués.
+- Les dictionnaires de pistes restent inchangés.
+- Le nombre de contacts à traiter reste identique.
+- Les gains de performance restent à mesurer.
+
+**Suite**
+
+Examiner les allocations persistantes de pistes
+et les coûts de génération des contacts en dense.
+
+
+### C2.4d.8d.5a.8 — Détection omnidirectionnelle
+
+**Objectif**
+
+Supprimer les calculs d'orientation inutiles
+lorsque le champ de vision couvre 360 degrés.
+
+**Modifications**
+
+- Chemin rapide pour FieldOfViewDegrees == 360.
+- Suppression de Math.Atan2 sur ce chemin.
+- Suppression des conversions d'angles inutiles.
+- Préservation du calcul historique pour les
+  champs de vision inférieurs à 360 degrés.
+- Aucun changement des règles de détection.
+
+**Validation prévue**
+
+- Observation d'une cible située derrière l'unité.
+- Conservation du comportement à champ limité.
+- Respect de la portée visuelle.
+- Respect des obstacles.
+- Suite complète de non-régression.
+- Benchmarks sparse et dense.
+
+**Limites**
+
+- Les paires candidates sont toujours parcourues.
+- Les observations valides restent matérialisées.
+- Aucun changement de complexité algorithmique.
+
+**Suite**
+
+Réexaminer le coût des paires candidates
+dans les secteurs très denses et préparer
+une optimisation structurelle du parcours.
+
+
+### C2.4d.8d.5b.1 — Parcours fusionné des trajectoires
+
+**Objectif**
+
+Réduire les parcours redondants de la liste des
+segments actifs lors de la détection des contacts
+entre compagnies en mouvement.
+
+**Modifications**
+
+- Fusion du retrait des segments expirés et
+  de l'examen des contacts candidats.
+- Compactage en place de la liste active.
+- Conservation de l'ordre des segments.
+- Suppression des parcours RemoveAll séparés.
+- Aucun changement des règles géométriques
+  ou temporelles de détection.
+
+**Validation prévue**
+
+- Test de stabilité de l'ordre d'entrée.
+- Comparaison des statistiques avant/après.
+- Conservation des premiers contacts.
+- Suite complète des tests militaires.
+- Benchmarks sparse et dense à 500 compagnies.
+
+**Limites**
+
+- Les paires spatialement proches restent examinées.
+- Le coût des calculs de premier contact est inchangé.
+- La complexité du pire cas reste quadratique.
+- Les gains doivent être confirmés par benchmark.
+
+**Suite**
+
+C2.4d.8d.5b.2 — Selon les mesures,
+réduire le coût des comparaisons géométriques
+et diplomatiques dans les mouvements denses.
+
+### OPT-C2.4d.8d.5 — Optimisation des combats tactiques
+
+**Statut :** Première série d'optimisations validée.
+
+**Objectif**
+
+Améliorer les performances des combats tactiques, notamment dans les situations de forte concentration de compagnies, sans modifier les résultats de la simulation.
+
+**Optimisations réalisées**
+
+- Évaluation conditionnelle des lignes de vue.
+- Suppression des listes intermédiaires de contacts candidats.
+- Préparation d'un instantané des signatures et positions.
+- Chemin rapide de visibilité sans obstacles.
+- Validation des secteurs par dictionnaire.
+- Préallocation des collections temporaires de perception.
+- Suppression des calculs angulaires pour une vision à 360°.
+- Fusion des parcours de segments actifs dans la détection des contacts mobiles.
+
+**Résultats mesurés**
+
+Sur le scénario dense à 500 compagnies :
+
+- Tick complet : 148,513 ms initialement, contre environ 122 ms après optimisations.
+- Détection tactique : 72,141 ms initialement, contre 41,143 ms après 5a.8.
+- Détection des contacts mobiles : réduction de 4,3 % lors de 5b.1.
+
+Sur le scénario sparse :
+
+- Détection tactique : 3,754 ms initialement, contre 0,958 ms après 5a.8.
+- Détection des contacts mobiles : réduction de 32,8 % lors de 5b.1.
+
+Les résultats proviennent de campagnes de benchmarks distinctes et restent sensibles à la variabilité des latences.
+
+**Validation**
+
+- 584 tests réussis.
+- Build Release sans erreur ni avertissement.
+- Résultats militaires identiques.
+- Conservation des contacts, des trajectoires et des instants de première rencontre.
+- Conservation du déterminisme des scénarios testés.
+
+**Limites actuelles**
+
+- Le pire cas de la détection spatiale reste quadratique.
+- Les secteurs très denses produisent toujours un grand nombre de comparaisons.
+- Les P95 présentent encore une variabilité significative.
+- Une optimisation structurelle reste nécessaire pour les batailles massives.
+
+**Suite prévue**
+
+C2.4d.8d.5b.2 — Réduction des calculs répétés lors de la détection des contacts mobiles, puis validation par benchmarks et tests de non-régression.

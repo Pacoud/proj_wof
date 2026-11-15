@@ -265,4 +265,26 @@ public static class TacticalSightEvaluator
     {
         return ax * by - ay * bx;
     }
+
+
+
+    internal static bool IsClearWithoutObstacles(
+        TacticalPoint observer,
+        TacticalPoint target,
+        double horizontalDistanceMeters)
+    {
+        // Reproduit les conditions de validite
+        // de Evaluate() pour un corridor sans obstacle.
+        //
+        // Le controle de l'absence d'obstacles
+        // appartient a l'appelant.
+
+        return double.IsFinite(horizontalDistanceMeters)
+            && horizontalDistanceMeters > ParameterEpsilon
+            && double.IsFinite(
+                observer.GroundElevationMeters + 1.7)
+            && double.IsFinite(
+                target.GroundElevationMeters + 1.7);
+    }
+
 }

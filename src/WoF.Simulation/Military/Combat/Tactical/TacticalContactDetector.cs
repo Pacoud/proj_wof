@@ -37,11 +37,28 @@ public static class TacticalContactDetector
         DiplomacySystem diplomacy,
         long? currentHour = null)
     {
+        var contacts = new List<TacticalContactCandidate>();
+        VisitCandidates(battle, diplomacy, currentHour,
+            (first, second, topology, distance) =>
+                contacts.Add(new TacticalContactCandidate(first, second, topology, distance)));
+
+        return battle.Engagement.IsActive
+            ? contacts.AsReadOnly()
+            : Array.Empty<TacticalContactCandidate>();
+    }
+
+    internal static void VisitCandidates(
+        TacticalBattle battle,
+        DiplomacySystem diplomacy,
+        long? currentHour,
+        Action<CompanyDeployment, CompanyDeployment, TacticalContactTopology, double?> visitor)
+    {
         ArgumentNullException.ThrowIfNull(battle);
         ArgumentNullException.ThrowIfNull(diplomacy);
+        ArgumentNullException.ThrowIfNull(visitor);
 
         if (!battle.Engagement.IsActive)
-            return Array.Empty<TacticalContactCandidate>();
+            return;
 
         // Index local : une seule traversée des déploiements.
         var bySector =
@@ -59,8 +76,6 @@ public static class TacticalContactDetector
             bySector[deployment.Sector].Add(deployment);
         }
 
-        var contacts = new List<TacticalContactCandidate>();
-
         // 1. Candidats présents dans un même secteur.
         foreach (var sector in battle.Battlefield.Sectors
                      .OrderBy(s => s.Id))
@@ -72,13 +87,13 @@ public static class TacticalContactDetector
             {
                 for (int j = i + 1; j < units.Count; j++)
                 {
-                    TryAdd(
+                    TryVisit(
                         units[i],
                         units[j],
                         TacticalContactTopology.SameSector,
                         connectionDistance: null,
                         diplomacy,
-                        contacts);
+                        visitor);
                 }
             }
         }
@@ -96,13 +111,13 @@ public static class TacticalContactDetector
             {
                 foreach (var second in secondSector)
                 {
-                    TryAdd(
+                    TryVisit(
                         first,
                         second,
                         TacticalContactTopology.ConnectedSectors,
                         connection.DistanceMeters,
                         diplomacy,
-                        contacts);
+                        visitor);
                 }
             }
         }
@@ -111,17 +126,15 @@ public static class TacticalContactDetector
         {
             foreach (var mobile in battle.MobileEngagements.GetContacts(hour))
             {
-                TryAdd(
+                TryVisit(
                     mobile.First,
                     mobile.Second,
                     TacticalContactTopology.MobileEncounter,
                     connectionDistance: null,
                     diplomacy,
-                    contacts);
+                    visitor);
             }
         }
-
-        return contacts.AsReadOnly();
     }
 
     private static bool CanParticipate(
@@ -140,13 +153,13 @@ public static class TacticalContactDetector
             && composition.Manpower.Current > 0;
     }
 
-    private static void TryAdd(
+    private static void TryVisit(
         CompanyDeployment first,
         CompanyDeployment second,
         TacticalContactTopology topology,
         double? connectionDistance,
         DiplomacySystem diplomacy,
-        List<TacticalContactCandidate> contacts)
+        Action<CompanyDeployment, CompanyDeployment, TacticalContactTopology, double?> visitor)
     {
         var firstCountry =
             first.Company.ParentBattalion?.ParentDivision?.Country;
@@ -160,10 +173,6 @@ public static class TacticalContactDetector
         if (!diplomacy.AreAtWar(firstCountry, secondCountry))
             return;
 
-        contacts.Add(new TacticalContactCandidate(
-            first,
-            second,
-            topology,
-            connectionDistance));
+        visitor(first, second, topology, connectionDistance);
     }
 }

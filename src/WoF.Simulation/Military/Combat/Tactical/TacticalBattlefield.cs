@@ -57,6 +57,15 @@ public sealed class TacticalBattlefield
             && ReferenceEquals(existing, sector);
     }
 
+    /// <summary>
+    /// Verifie l'existence d'un secteur par son identifiant
+    /// sans parcourir la liste des secteurs.
+    /// </summary>
+    internal bool ContainsSectorId(int sectorId)
+    {
+        return _sectorsById.ContainsKey(sectorId);
+    }
+
     public void Connect(
         BattleSector a,
         BattleSector b,

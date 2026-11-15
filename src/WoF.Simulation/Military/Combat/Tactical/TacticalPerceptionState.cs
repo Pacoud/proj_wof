@@ -274,7 +274,7 @@ public sealed class TacticalPerceptionState
 
         // Valider toute la passe avant de modifier l'état.
         var pairs = new HashSet<
-            (CompanyDeployment, CompanyDeployment)>();
+            (CompanyDeployment, CompanyDeployment)>(observations.Count);
 
         foreach (var observation in observations)
         {
@@ -355,8 +355,8 @@ public sealed class TacticalPerceptionState
                 "Invalid knowledge level.");
         }
 
-        if (!_battle.Battlefield.Sectors.Any(
-            s => s.Id == observation.ObservedSectorId))
+        if (!_battle.Battlefield.ContainsSectorId(
+            observation.ObservedSectorId))
         {
             throw new InvalidOperationException(
                 "Observed sector does not belong to the battle.");

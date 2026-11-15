@@ -157,15 +157,35 @@ internal static class TacticalSimultaneousContactDetector
         long candidates = 0;
         long exactChecks = 0;
 
+
         foreach (var current in entries)
         {
-            // Ecarter les enveloppes deja depassees.
-            active.RemoveAll(other =>
-                other.MaxX + contactRadiusMeters
-                < current.MinX);
+            int writeIndex = 0;
+            int originalActiveCount = active.Count;
 
-            foreach (var other in active)
+            // Parcours unique :
+            // 1. Ecarter les enveloppes expirees.
+            // 2. Conserver les survivants dans leur ordre initial.
+            // 3. Effectuer les comparaisons sur ces survivants.
+            for (int readIndex = 0;
+                readIndex < originalActiveCount;
+                readIndex++)
             {
+                var other = active[readIndex];
+
+                if (other.MaxX + contactRadiusMeters
+                    < current.MinX)
+                {
+                    continue;
+                }
+
+                // Compactage en place de la liste active.
+                // Les references restent dans le meme ordre.
+                if (writeIndex != readIndex)
+                    active[writeIndex] = other;
+
+                writeIndex++;
+
                 if (other.CompanyIndex == current.CompanyIndex)
                     continue;
 
@@ -277,6 +297,15 @@ internal static class TacticalSimultaneousContactDetector
                             contact.SecondPosition);
                     }
                 }
+            }
+
+            // Supprimer uniquement la fin devenue obsolete.
+            // Un seul RemoveRange au maximum par segment.
+            if (writeIndex < originalActiveCount)
+            {
+                active.RemoveRange(
+                    writeIndex,
+                    originalActiveCount - writeIndex);
             }
 
             active.Add(current);

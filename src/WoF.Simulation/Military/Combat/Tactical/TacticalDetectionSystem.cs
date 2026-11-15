@@ -66,6 +66,14 @@ public sealed class TacticalDetectionProfile
 /// </summary>
 public static class TacticalDetectionSystem
 {
+
+
+    private readonly record struct DetectionEntry(
+        CompanyTacticalPosition? Position,
+        TacticalUnitSignature? Signature,
+        double VisualRangeMeters);
+
+
     public static void Update(
         TacticalBattle battle,
         TacticalGeometryMap geometry,
@@ -92,81 +100,256 @@ public static class TacticalDetectionSystem
 
         perception.EnsureCanUpdate(currentHour);
 
-        var contacts = TacticalContactEvaluator.Evaluate(
-            battle,
-            geometry,
-            diplomacy,
-            currentHour);
+        // Instantane local a cette passe.
+        // Aucun cache persistant entre les heures.
+        var entries = new Dictionary<
+            CompanyDeployment, DetectionEntry>(
+            battle.Deployments.Count,
+            ReferenceEqualityComparer.Instance);
+
+        foreach (var company in battle.Deployments)
+        {
+            signatures.TryGet(company, out var signature);
+
+            var position = geometry.GetPosition(company);
+
+            double visualRange = signature is null
+                ? 0
+                : CalculateVisualRange(signature, profile);
+
+            entries.Add(
+                company,
+                new DetectionEntry(
+                    position,
+                    signature,
+                    visualRange));
+        }
 
         var observations = new List<TacticalObservationEvent>();
 
-        foreach (var contact in contacts)
-        {
-            var first = contact.Candidate.First;
-            var second = contact.Candidate.Second;
+        TacticalContactDetector.VisitCandidates(
+            battle,
+            diplomacy,
+            currentHour,
+            (first, second, topology, connectionDistance) =>
+            {
+                var firstEntry = entries[first];
+                var secondEntry = entries[second];
 
-            // La premiere compagnie observe la seconde.
-            var firstObservation = TryDetect(
-                geometry,
-                signatures,
-                first,
-                second,
-                contact.FirstToSecondSight,
-                profile);
+                var firstPosition = firstEntry.Position;
+                var secondPosition = secondEntry.Position;
 
-            if (firstObservation is not null)
-                observations.Add(firstObservation);
+                // Les deux directions sont impossibles
+                // sans positions valides.
+                if (firstPosition is null
+                    || secondPosition is null)
+                {
+                    return;
+                }
 
-            // La seconde observe la premiere.
-            var secondObservation = TryDetect(
-                geometry,
-                signatures,
-                second,
-                first,
-                contact.SecondToFirstSight,
-                profile);
+                // Aucune observation si les deux
+                // signatures sont absentes.
+                if (firstEntry.Signature is null
+                    && secondEntry.Signature is null)
+                {
+                    return;
+                }
 
-            if (secondObservation is not null)
-                observations.Add(secondObservation);
-        }
+                // Distance symetrique : un seul calcul
+                // pour les deux directions.
+                double distance =
+                    firstPosition.Point.HorizontalDistanceTo(
+                        secondPosition.Point);
 
-        // Une seule application par passe :
-        // les anciennes pistes non actualisees
-        // deviennent perimees.
+                var firstObservation = TryDetect(
+                    geometry,
+                    first,
+                    second,
+                    firstEntry,
+                    secondEntry,
+                    distance,
+                    profile);
+
+                if (firstObservation is not null)
+                    observations.Add(firstObservation);
+
+                var secondObservation = TryDetect(
+                    geometry,
+                    second,
+                    first,
+                    secondEntry,
+                    firstEntry,
+                    distance,
+                    profile);
+
+                if (secondObservation is not null)
+                    observations.Add(secondObservation);
+            });
+
+        // La validation et l'application restent
+        // atomiques, apres toute la collecte.
         perception.Apply(currentHour, observations);
     }
 
+
+
+
+
     private static TacticalObservationEvent? TryDetect(
         TacticalGeometryMap geometry,
-        TacticalSignatureFrame signatures,
         CompanyDeployment observer,
         CompanyDeployment target,
-        TacticalSightResult sight,
+        DetectionEntry observerEntry,
+        DetectionEntry targetEntry,
+        double distance,
         TacticalDetectionProfile profile)
     {
-        if (!signatures.TryGet(
-            target,
-            out var signature)
-            || signature is null)
+        var signature = targetEntry.Signature;
+
+        if (signature is null)
+            return null;
+
+        var observerPosition = observerEntry.Position;
+        var targetPosition = targetEntry.Position;
+
+        if (observerPosition is null
+            || targetPosition is null)
         {
-            // Ne jamais supposer qu'une compagnie
-            // sans signature est exposee.
             return null;
         }
-
-        var observerPosition = geometry.GetPosition(observer);
-        var targetPosition = geometry.GetPosition(target);
-
-        if (observerPosition is null || targetPosition is null)
-            return null;
-
-        var spatial = geometry.Measure(observer, target);
-
-        double distance = spatial.HorizontalDistanceMeters;
 
         if (!double.IsFinite(distance) || distance <= 0)
             return null;
 
+        if (distance <= targetEntry.VisualRangeMeters)
+        {
+            var a = observerPosition.Point;
+            var b = targetPosition.Point;
+
+            bool inFieldOfView =
+                profile.FieldOfViewDegrees == 360.0;
+
+            // Lorsque le champ de vision couvre 360°,
+            // aucune orientation ne peut exclure la cible.
+            //
+            // La distance a deja ete verifiee :
+            // elle est finie et strictement positive.
+            if (!inFieldOfView)
+            {
+                double dx = b.XMeters - a.XMeters;
+                double dy = b.YMeters - a.YMeters;
+
+                // Calcul historique conserve pour
+                // les champs de vision inferieurs a 360°.
+                double bearing =
+                    (Math.Atan2(dx, dy) * 180.0 / Math.PI
+                    + 360.0) % 360.0;
+
+                double relativeBearing =
+                    (bearing - observerPosition.FacingDegrees
+                    + 360.0) % 360.0;
+
+                double deviation = Math.Min(
+                    relativeBearing,
+                    360.0 - relativeBearing);
+
+                inFieldOfView =
+                    deviation <= profile.FieldOfViewDegrees / 2.0;
+            }
+
+            if (inFieldOfView)
+            {
+
+            
+            
+                bool hasClearSight;
+
+                if (geometry.LineObstacles.Count == 0)
+                {
+                    // Pas d'intersection a calculer.
+                    // Pas d'objet TacticalSightResult a allouer.
+                    hasClearSight =
+                        TacticalSightEvaluator.IsClearWithoutObstacles(
+                            a,
+                            b,
+                            distance);
+                }
+                else
+                {
+                    // Tous les cas avec obstacles conservent
+                    // exactement l'evaluateur historique.
+                    hasClearSight =
+                        TacticalSightEvaluator.Evaluate(
+                            geometry,
+                            observer,
+                            target).Status
+                        == TacticalSightStatus.ClearOfKnownObstacles;
+                }
+
+                if (hasClearSight)
+                {
+                    TacticalPoint estimatedPosition = new(
+                        RoundToCell(
+                            b.XMeters,
+                            profile.LocalizationCellMeters),
+                        RoundToCell(
+                            b.YMeters,
+                            profile.LocalizationCellMeters),
+                        RoundToCell(
+                            b.GroundElevationMeters,
+                            10));
+
+                    return new TacticalObservationEvent(
+                        observer,
+                        target,
+                        estimatedPosition,
+                        target.Sector.Id,
+                        TacticalKnowledgeLevel.Located,
+                        PositionUncertaintyMeters:
+                            profile.LocalizationCellMeters,
+                        EstimatedCompanyType: null);
+                }
+            
+        }
+        }
+        // Toujours independant de la visibilite.
+        bool canHear =
+            signature.Activity == TacticalActivity.Firing
+            && profile.MaxAcousticRangeMeters > 0
+            && distance <= profile.MaxAcousticRangeMeters;
+
+        if (canHear)
+        {
+            return new TacticalObservationEvent(
+                observer,
+                target,
+                ObservedPosition: null,
+                ObservedSectorId: target.Sector.Id,
+                KnowledgeLevel: TacticalKnowledgeLevel.Suspected,
+                PositionUncertaintyMeters: null,
+                EstimatedCompanyType: null);
+        }
+
+        return null;
+    }
+
+
+
+    private static double RoundToCell(
+        double value,
+        double cellSize)
+    {
+        return Math.Round(
+            value / cellSize,
+            MidpointRounding.AwayFromZero) * cellSize;
+    }
+
+
+
+    private static double CalculateVisualRange(
+        TacticalUnitSignature signature,
+        TacticalDetectionProfile profile)
+    {
         double activityFactor = signature.Activity switch
         {
             TacticalActivity.Stationary => 1.0,
@@ -185,91 +368,9 @@ public static class TacticalDetectionSystem
                 "Unknown tactical concealment.")
         };
 
-        double visualRange =
-            profile.MaxVisualRangeMeters
+        return profile.MaxVisualRangeMeters
             * activityFactor
             * concealmentFactor;
-
-        bool withinVisualRange = distance <= visualRange;
-
-        bool inFieldOfView = false;
-
-        if (spatial.RelativeBearingDegrees is double angle)
-        {
-            double deviation = Math.Min(
-                angle,
-                360.0 - angle);
-
-            inFieldOfView =
-                deviation <= profile.FieldOfViewDegrees / 2.0;
-        }
-
-        bool canObserveVisually =
-            sight.Status
-                == TacticalSightStatus.ClearOfKnownObstacles
-            && withinVisualRange
-            && inFieldOfView;
-
-        if (canObserveVisually)
-        {
-            // Position estimee sur une grille grossiere.
-            // Nous n'exposons pas les coordonnees
-            // reelles avec une precision absolue.
-            TacticalPoint estimatedPosition = new(
-                RoundToCell(
-                    targetPosition.Point.XMeters,
-                    profile.LocalizationCellMeters),
-                RoundToCell(
-                    targetPosition.Point.YMeters,
-                    profile.LocalizationCellMeters),
-                RoundToCell(
-                    targetPosition.Point.GroundElevationMeters,
-                    10));
-
-            return new TacticalObservationEvent(
-                observer,
-                target,
-                estimatedPosition,
-                target.Sector.Id,
-                TacticalKnowledgeLevel.Located,
-                PositionUncertaintyMeters:
-                    profile.LocalizationCellMeters,
-                EstimatedCompanyType: null);
-        }
-
-        // Les tirs constituent une signature sonore
-        // meme si un obstacle masque le corridor.
-        //
-        // L'acoustique n'utilise pas encore un modele
-        // directionnel de propagation du son.
-        bool canHear =
-            signature.Activity == TacticalActivity.Firing
-            && profile.MaxAcousticRangeMeters > 0
-            && distance <= profile.MaxAcousticRangeMeters;
-
-        if (canHear)
-        {
-            // Approximation du secteur source :
-            // pas de coordonnees, ni d'identification.
-            return new TacticalObservationEvent(
-                observer,
-                target,
-                ObservedPosition: null,
-                ObservedSectorId: target.Sector.Id,
-                KnowledgeLevel: TacticalKnowledgeLevel.Suspected,
-                PositionUncertaintyMeters: null,
-                EstimatedCompanyType: null);
-        }
-
-        return null;
     }
 
-    private static double RoundToCell(
-        double value,
-        double cellSize)
-    {
-        return Math.Round(
-            value / cellSize,
-            MidpointRounding.AwayFromZero) * cellSize;
-    }
 }

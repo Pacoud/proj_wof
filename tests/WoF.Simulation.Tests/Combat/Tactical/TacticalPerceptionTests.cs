@@ -432,4 +432,147 @@ public sealed class TacticalPerceptionTests
         Assert.Empty(s.Perception.GetReports(german));
         Assert.Equal(2, s.Battle.Deployments.Count);
     }
+
+
+
+    [Fact]
+    public void SectorIdLookupReflectsBattlefieldUpdates()
+    {
+        var field = new TacticalBattlefield();
+
+        var first = new BattleSector(
+            1, "Premier", TerrainType.Plains);
+
+        var second = new BattleSector(
+            2, "Second", TerrainType.Forest);
+
+        Assert.False(field.ContainsSectorId(1));
+        Assert.False(field.ContainsSectorId(2));
+
+        field.AddSector(first);
+
+        Assert.True(field.ContainsSectorId(1));
+        Assert.False(field.ContainsSectorId(2));
+
+        field.AddSector(second);
+
+        Assert.True(field.ContainsSectorId(1));
+        Assert.True(field.ContainsSectorId(2));
+        Assert.False(field.ContainsSectorId(999));
+    }
+
+
+    [Fact]
+    public void InvalidSectorObservationDoesNotMutateTracks()
+    {
+        var s = CreateScenario();
+        var (french, german) = PlacePair(s);
+
+        var valid = new TacticalObservationEvent(
+            french,
+            german,
+            new TacticalPoint(100, 0, 100),
+            s.Sector.Id);
+
+        s.Perception.Apply(1, [valid]);
+
+        var before = Assert.Single(
+            s.Perception.GetReports(french));
+
+        var invalid = valid with
+        {
+            ObservedSectorId = 999
+        };
+
+        Assert.Throws<InvalidOperationException>(() =>
+            s.Perception.Apply(
+                2,
+                [valid, invalid]));
+
+        var after = Assert.Single(
+            s.Perception.GetReports(french));
+
+        Assert.Equal(before, after);
+    }
+
+
+
+    [Fact]
+    public void MultipleObservationsPreserveTracksAndAtomicity()
+    {
+        var s = CreateScenario();
+
+        var frenchA = s.DeployFrench(0);
+        var frenchB = s.DeployFrench(1);
+        var germanA = s.DeployGerman();
+
+        var germanB = s.Battle.DeployCompany(
+            s.German.Battalions[0].Companies[1],
+            s.Sector,
+            CompanyDeploymentRole.FrontLine);
+
+        TacticalObservationEvent[] observations =
+        [
+            new(frenchA, germanA,
+                new TacticalPoint(100, 0, 100), s.Sector.Id),
+
+            new(frenchA, germanB,
+                new TacticalPoint(110, 0, 100), s.Sector.Id),
+
+            new(frenchB, germanA,
+                new TacticalPoint(100, 0, 100), s.Sector.Id),
+
+            new(frenchB, germanB,
+                new TacticalPoint(110, 0, 100), s.Sector.Id)
+        ];
+
+        // Quatre paires distinctes.
+        s.Perception.Apply(1, observations);
+
+        var beforeA = s.Perception.GetReports(frenchA).ToArray();
+        var beforeB = s.Perception.GetReports(frenchB).ToArray();
+
+        Assert.Equal(2, beforeA.Length);
+        Assert.Equal(2, beforeB.Length);
+
+        // La deuxieme passe contient un doublon.
+        // L'etat ne doit pas etre partiellement modifie.
+        Assert.Throws<InvalidOperationException>(() =>
+            s.Perception.Apply(
+                2,
+                [observations[0], observations[0]]));
+
+        Assert.Equal(
+            beforeA,
+            s.Perception.GetReports(frenchA).ToArray());
+
+        Assert.Equal(
+            beforeB,
+            s.Perception.GetReports(frenchB).ToArray());
+
+        // La passe valide doit reutiliser les pistes.
+        s.Perception.Apply(2, observations);
+
+        var afterA = s.Perception.GetReports(frenchA);
+        var afterB = s.Perception.GetReports(frenchB);
+
+        Assert.Equal(
+            beforeA.Select(r => r.TrackId),
+            afterA.Select(r => r.TrackId));
+
+        Assert.Equal(
+            beforeB.Select(r => r.TrackId),
+            afterB.Select(r => r.TrackId));
+
+        Assert.All(
+            afterA,
+            r => Assert.Equal(2L, r.LastObservedHour));
+
+        Assert.All(
+            afterB,
+            r => Assert.Equal(2L, r.LastObservedHour));
+    }
+
+
+
 }

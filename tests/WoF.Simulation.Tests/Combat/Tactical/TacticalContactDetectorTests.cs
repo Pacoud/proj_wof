@@ -392,4 +392,88 @@ public sealed class TacticalContactDetectorTests
             deploymentsBefore,
             battle.Deployments.Count);
     }
+
+
+
+    [Fact]
+    public void VisitCandidatesPreservesContactOrderAndTopology()
+    {
+        var (battle, diplomacy, french, german,
+            hill, forest, _) = CreateScenario();
+
+        var frenchHill = battle.DeployCompany(
+            CompanyAt(french, 0),
+            hill,
+            CompanyDeploymentRole.FrontLine);
+
+        var frenchForest = battle.DeployCompany(
+            CompanyAt(french, 1),
+            forest,
+            CompanyDeploymentRole.FrontLine);
+
+        var germanHill = battle.DeployCompany(
+            CompanyAt(german, 0),
+            hill,
+            CompanyDeploymentRole.FrontLine);
+
+        var germanForest = battle.DeployCompany(
+            CompanyAt(german, 1),
+            forest,
+            CompanyDeploymentRole.FrontLine);
+
+        var visited = new List<TacticalContactCandidate>();
+
+        TacticalContactDetector.VisitCandidates(
+            battle,
+            diplomacy,
+            currentHour: null,
+            (first, second, topology, distance) =>
+            {
+                visited.Add(new TacticalContactCandidate(
+                    first, second, topology, distance));
+            });
+
+        Assert.Collection(
+            visited,
+            contact =>
+            {
+                Assert.Same(frenchHill, contact.First);
+                Assert.Same(germanHill, contact.Second);
+                Assert.Equal(
+                    TacticalContactTopology.SameSector,
+                    contact.Topology);
+            },
+            contact =>
+            {
+                Assert.Same(frenchForest, contact.First);
+                Assert.Same(germanForest, contact.Second);
+                Assert.Equal(
+                    TacticalContactTopology.SameSector,
+                    contact.Topology);
+            },
+            contact =>
+            {
+                Assert.Same(frenchHill, contact.First);
+                Assert.Same(germanForest, contact.Second);
+                Assert.Equal(
+                    TacticalContactTopology.ConnectedSectors,
+                    contact.Topology);
+                Assert.Equal(800.0, contact.ConnectionDistanceMeters);
+            },
+            contact =>
+            {
+                Assert.Same(germanHill, contact.First);
+                Assert.Same(frenchForest, contact.Second);
+                Assert.Equal(
+                    TacticalContactTopology.ConnectedSectors,
+                    contact.Topology);
+                Assert.Equal(800.0, contact.ConnectionDistanceMeters);
+            });
+
+        // L'API historique conserve les memes resultats.
+        Assert.Equal(
+            TacticalContactDetector.Detect(battle, diplomacy),
+            visited);
+    }
+
 }

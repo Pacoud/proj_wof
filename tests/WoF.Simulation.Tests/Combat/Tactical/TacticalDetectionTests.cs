@@ -543,4 +543,423 @@ public sealed class TacticalDetectionTests
         Assert.Throws<InvalidOperationException>(() =>
             Update(s, localFrame, hour: 4));
     }
+
+
+
+
+    [Theory]
+    [InlineData(200.0, true)]
+    [InlineData(200.01, false)]
+    public void OptimizedDetectionPreservesVisualRangeBoundary(
+        double targetDistance,
+        bool expectedDetection)
+    {
+        var s = CreateScenario(
+            targetX: targetDistance,
+            targetY: 0);
+
+        var frame = Frame(
+            s,
+            TacticalActivity.Stationary,
+            TacticalConcealment.None);
+
+        Update(
+            s,
+            frame,
+            hour: 1,
+            profile: Profile(
+                visual: 200,
+                acoustic: 0,
+                fov: 360));
+
+        var reports = s.Perception.GetReports(s.Observer);
+
+        if (expectedDetection)
+        {
+            var report = Assert.Single(reports);
+
+            Assert.Equal(
+                TacticalKnowledgeLevel.Located,
+                report.CurrentObservationLevel);
+        }
+        else
+        {
+            Assert.Empty(reports);
+        }
+    }
+
+
+
+    [Fact]
+    public void OptimizedDetectionPreservesAcousticOnlyContact()
+    {
+        var s = CreateScenario(
+            targetX: 123,
+            targetY: 17,
+            observerFacing: 270);
+
+        AddRidge(s);
+
+        var frame = Frame(
+            s,
+            TacticalActivity.Firing,
+            TacticalConcealment.Strong);
+
+        Update(
+            s,
+            frame,
+            hour: 1,
+            profile: Profile(
+                visual: 20,
+                acoustic: 300,
+                fov: 90));
+
+        var report = Assert.Single(
+            s.Perception.GetReports(s.Observer));
+
+        Assert.Equal(
+            TacticalKnowledgeLevel.Suspected,
+            report.CurrentObservationLevel);
+
+        Assert.Null(report.LastKnownPosition);
+        Assert.Null(report.LastLocatedHour);
+        Assert.True(report.IsCurrentlyObserved);
+    }
+
+
+
+    [Fact]
+    public void OptimizedDetectionPreservesBidirectionalObservations()
+    {
+        var s = CreateScenario();
+
+        var frame = Frame(
+            s,
+            TacticalActivity.Firing,
+            TacticalConcealment.None);
+
+        // L'observateur francais possede lui aussi
+        // une signature visible par son adversaire.
+        frame.Set(
+            s.Observer,
+            new TacticalUnitSignature(
+                TacticalActivity.Stationary,
+                TacticalConcealment.None));
+
+        Update(
+            s,
+            frame,
+            hour: 1,
+            profile: Profile(
+                visual: 250,
+                acoustic: 300,
+                fov: 360));
+
+        var frenchReport = Assert.Single(
+            s.Perception.GetReports(s.Observer));
+
+        var germanReport = Assert.Single(
+            s.Perception.GetReports(s.Target));
+
+        Assert.Equal(
+            TacticalKnowledgeLevel.Located,
+            frenchReport.CurrentObservationLevel);
+
+        Assert.Equal(
+            TacticalKnowledgeLevel.Located,
+            germanReport.CurrentObservationLevel);
+
+        // La deuxieme compagnie francaise n'a
+        // pas de position geometrique.
+        Assert.Empty(
+            s.Perception.GetReports(s.SecondObserver));
+
+        Assert.NotNull(frenchReport.LastKnownPosition);
+        Assert.NotNull(germanReport.LastKnownPosition);
+    }
+
+
+    [Fact]
+    public void DetectionSnapshotDoesNotPersistAcrossHours()
+    {
+        var s = CreateScenario(
+            targetX: 170,
+            targetY: 0);
+
+        var firstFrame = Frame(
+            s,
+            TacticalActivity.Stationary,
+            TacticalConcealment.Strong);
+
+        Update(
+            s,
+            firstFrame,
+            hour: 1,
+            profile: Profile(visual: 150, acoustic: 0));
+
+        Assert.Empty(s.Perception.GetReports(s.Observer));
+
+        var secondFrame = Frame(
+            s,
+            TacticalActivity.Moving,
+            TacticalConcealment.None);
+
+        Update(
+            s,
+            secondFrame,
+            hour: 2,
+            profile: Profile(visual: 150, acoustic: 0));
+
+        var report = Assert.Single(
+            s.Perception.GetReports(s.Observer));
+
+        Assert.Equal(
+            TacticalKnowledgeLevel.Located,
+            report.CurrentObservationLevel);
+
+        Assert.Equal(2L, report.LastLocatedHour);
+
+        // Plus aucune signature observable.
+        Update(
+            s,
+            new TacticalSignatureFrame(s.Battle),
+            hour: 3,
+            profile: Profile(visual: 150, acoustic: 0));
+
+        report = Assert.Single(
+            s.Perception.GetReports(s.Observer));
+
+        Assert.False(report.IsCurrentlyObserved);
+        Assert.Equal(2L, report.LastLocatedHour);
+    }
+
+
+
+    [Fact]
+    public void DetectionSnapshotPreservesDirectionalVisibility()
+    {
+        var s = CreateScenario(
+            targetX: 100,
+            targetY: 0,
+            observerFacing: 90);
+
+        var frame = Frame(
+            s,
+            TacticalActivity.Stationary,
+            TacticalConcealment.None);
+
+        frame.Set(
+            s.Observer,
+            new TacticalUnitSignature(
+                TacticalActivity.Stationary,
+                TacticalConcealment.None));
+
+        Update(
+            s,
+            frame,
+            hour: 1,
+            profile: Profile(
+                visual: 200,
+                acoustic: 0,
+                fov: 90));
+
+        // L'observateur regarde vers l'est.
+        var observedTarget = Assert.Single(
+            s.Perception.GetReports(s.Observer));
+
+        Assert.Equal(
+            TacticalKnowledgeLevel.Located,
+            observedTarget.CurrentObservationLevel);
+
+        // La cible regarde aussi vers l'est.
+        // L'observateur se trouve derriere elle.
+        Assert.Empty(s.Perception.GetReports(s.Target));
+    }
+
+
+    [Theory]
+    [InlineData(123.0, 17.0, true)]
+    [InlineData(5e-11, 0.0, false)]
+    public void NoObstacleFastPathMatchesReferenceSight(
+        double targetX,
+        double targetY,
+        bool expectedVisible)
+    {
+        var s = CreateScenario(
+            targetX: targetX,
+            targetY: targetY,
+            observerFacing: 90);
+
+        Assert.Empty(s.Geometry.LineObstacles);
+
+        var reference = TacticalSightEvaluator.Evaluate(
+            s.Geometry,
+            s.Observer,
+            s.Target);
+
+        Assert.Equal(
+            expectedVisible,
+            reference.Status ==
+                TacticalSightStatus.ClearOfKnownObstacles);
+
+        Update(
+            s,
+            Frame(
+                s,
+                TacticalActivity.Stationary,
+                TacticalConcealment.None),
+            hour: 1,
+            profile: Profile(
+                visual: 200,
+                acoustic: 0,
+                fov: 360));
+
+        var reports = s.Perception.GetReports(s.Observer);
+
+        if (expectedVisible)
+        {
+            var report = Assert.Single(reports);
+
+            Assert.Equal(
+                TacticalKnowledgeLevel.Located,
+                report.CurrentObservationLevel);
+        }
+        else
+        {
+            Assert.Empty(reports);
+        }
+    }
+
+    [Fact]
+    public void FastPathDoesNotBypassRealObstacles()
+    {
+        var s = CreateScenario();
+
+        AddRidge(s);
+
+        Assert.NotEmpty(s.Geometry.LineObstacles);
+
+        var reference = TacticalSightEvaluator.Evaluate(
+            s.Geometry,
+            s.Observer,
+            s.Target);
+
+        Assert.Equal(
+            TacticalSightStatus.BlockedByObstacle,
+            reference.Status);
+
+        Update(
+            s,
+            Frame(
+                s,
+                TacticalActivity.Stationary,
+                TacticalConcealment.None),
+            hour: 1,
+            profile: Profile(
+                visual: 200,
+                acoustic: 0));
+
+        Assert.Empty(
+            s.Perception.GetReports(s.Observer));
+    }
+
+
+
+    [Fact]
+    public void FullCircleFieldOfViewDetectsBehindObserver()
+    {
+        var fullCircle = CreateScenario(
+            targetX: 100,
+            targetY: 0,
+            observerFacing: 270);
+
+        Update(
+            fullCircle,
+            Frame(
+                fullCircle,
+                TacticalActivity.Stationary,
+                TacticalConcealment.None),
+            hour: 1,
+            profile: Profile(
+                visual: 200,
+                acoustic: 0,
+                fov: 360));
+
+        var report = Assert.Single(
+            fullCircle.Perception.GetReports(
+                fullCircle.Observer));
+
+        Assert.Equal(
+            TacticalKnowledgeLevel.Located,
+            report.CurrentObservationLevel);
+
+        // Meme position, mais champ limite a 90°.
+        var narrow = CreateScenario(
+            targetX: 100,
+            targetY: 0,
+            observerFacing: 270);
+
+        Update(
+            narrow,
+            Frame(
+                narrow,
+                TacticalActivity.Stationary,
+                TacticalConcealment.None),
+            hour: 1,
+            profile: Profile(
+                visual: 200,
+                acoustic: 0,
+                fov: 90));
+
+        Assert.Empty(
+            narrow.Perception.GetReports(narrow.Observer));
+    }
+
+    [Fact]
+    public void FullCircleFieldOfViewStillRespectsObstacles()
+    {
+        var s = CreateScenario();
+        AddRidge(s);
+
+        Update(
+            s,
+            Frame(
+                s,
+                TacticalActivity.Stationary,
+                TacticalConcealment.None),
+            hour: 1,
+            profile: Profile(
+                visual: 200,
+                acoustic: 0,
+                fov: 360));
+
+        Assert.Empty(
+            s.Perception.GetReports(s.Observer));
+    }
+
+    [Fact]
+    public void FullCircleFieldOfViewStillRespectsRange()
+    {
+        var s = CreateScenario(
+            targetX: 350,
+            targetY: 0,
+            observerFacing: 270);
+
+        Update(
+            s,
+            Frame(
+                s,
+                TacticalActivity.Stationary,
+                TacticalConcealment.None),
+            hour: 1,
+            profile: Profile(
+                visual: 200,
+                acoustic: 0,
+                fov: 360));
+
+        Assert.Empty(
+            s.Perception.GetReports(s.Observer));
+    }
+
+
 }

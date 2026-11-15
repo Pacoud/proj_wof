@@ -227,5 +227,53 @@ public sealed class TacticalMobileBenchmarkScenarioFactoryTests
             (indices[o.Company], o.IssuedHour, o.ArrivalHour, o.TotalDistanceMeters,
              string.Join(",", o.Route.Select(s => s.Id)))).ToArray();
     }
+
+
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ContactSweepPreservesResultsWhenSegmentsAreReordered(
+        bool dense)
+    {
+        var scenario =
+            TacticalMobileBenchmarkScenarioFactory.CreateDetector(
+                new(
+                    TotalCompanies: 52,
+                    MobilityPercent: 100,
+                    Density: Density(dense),
+                    Seed: 12345));
+
+        long hour = scenario.Battle.Engagement.StartHour;
+
+        var original = TacticalSimultaneousContactDetector.Detect(
+            scenario.Battle,
+            scenario.Diplomacy,
+            scenario.Trajectories,
+            hour,
+            scenario.ContactRadiusMeters,
+            includeFirstContacts: true);
+
+        var reversed = TacticalSimultaneousContactDetector.Detect(
+            scenario.Battle,
+            scenario.Diplomacy,
+            scenario.Trajectories.Reverse().ToArray(),
+            hour,
+            scenario.ContactRadiusMeters,
+            includeFirstContacts: true);
+
+        Assert.Equal(
+            original.Statistics,
+            reversed.Statistics);
+
+        Assert.Equal(
+            original.Encounters,
+            reversed.Encounters);
+
+        Assert.Equal(
+            original.FirstContacts,
+            reversed.FirstContacts);
+    }
+
 }
 
