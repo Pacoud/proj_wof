@@ -68,7 +68,8 @@ public sealed class TacticalHourlyCombatOrchestratorTests
         bool enableSuppression = false,
         bool enableCohesion = false,
         bool enableBattalionAssessment = false,
-        bool enableBattalionReactions = false)
+        bool enableBattalionReactions = false,
+        TacticalPhaseTimingRecorder? timingRecorder = null)
     {
         var engine = new SimulationEngine();
 
@@ -230,7 +231,8 @@ public sealed class TacticalHourlyCombatOrchestratorTests
             perception,
             signatures,
             engine.Diplomacy,
-            settings);
+            settings,
+            timingRecorder);
 
         engine.Engagements.AttachTacticalBattle(battle);
 
@@ -869,6 +871,110 @@ public sealed class TacticalHourlyCombatOrchestratorTests
                 .Personnel.Available);
     }
 
+
+
+
+    [Fact]
+    public void InstrumentedTickRecordsExecutedPhases()
+    {
+        var recorder = new TacticalPhaseTimingRecorder();
+
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true,
+            enableBattalionAssessment: true,
+            enableBattalionReactions: true,
+            timingRecorder: recorder);
+
+        s.Engine.Tick();
+
+        var measurements = recorder.Snapshot();
+
+        var expectedPhases = new[]
+        {
+            TacticalBenchmarkPhase.Validation,
+            TacticalBenchmarkPhase.MobileParticipantPreparation,
+            TacticalBenchmarkPhase.Detection,
+            TacticalBenchmarkPhase.FireOrderPlanning,
+            TacticalBenchmarkPhase.FireExecution,
+            TacticalBenchmarkPhase.PersonnelContacts,
+            TacticalBenchmarkPhase.PersonnelEffects,
+            TacticalBenchmarkPhase.CasualtyApplication,
+            TacticalBenchmarkPhase.ExposureReconciliation,
+            TacticalBenchmarkPhase.Suppression,
+            TacticalBenchmarkPhase.Cohesion,
+            TacticalBenchmarkPhase.BattalionAssessment,
+            TacticalBenchmarkPhase.BattalionReactions
+        };
+
+        Assert.Equal(
+            expectedPhases.Length,
+            measurements.Count);
+
+        foreach (var phase in expectedPhases)
+        {
+            var measurement = Assert.Single(
+                measurements,
+                m => m.Phase == phase);
+
+            Assert.Equal(1, measurement.Calls);
+
+            Assert.True(double.IsFinite(
+                measurement.Milliseconds));
+
+            Assert.True(measurement.Milliseconds >= 0);
+
+            Assert.True(measurement.AllocatedBytes >= 0);
+        }
+    }
+
+    [Fact]
+    public void InstrumentationDoesNotChangeMilitaryResults()
+    {
+        var recorder = new TacticalPhaseTimingRecorder();
+
+        var normal = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true,
+            enableBattalionAssessment: true);
+
+        var measured = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true,
+            enableBattalionAssessment: true,
+            timingRecorder: recorder);
+
+        normal.Engine.Tick();
+        measured.Engine.Tick();
+
+        Assert.Equal(
+            normal.Orchestrator.LastResult,
+            measured.Orchestrator.LastResult);
+
+        Assert.Equal(
+            normal.French.Company.Composition!.Manpower.Current,
+            measured.French.Company.Composition!.Manpower.Current);
+
+        Assert.Equal(
+            normal.German.Company.Composition!.Manpower.Current,
+            measured.German.Company.Composition!.Manpower.Current);
+
+        Assert.Equal(
+            normal.French.Company.Composition!.Ammunition
+                .GetAvailable(AmmunitionType.SmallArms),
+            measured.French.Company.Composition!.Ammunition
+                .GetAvailable(AmmunitionType.SmallArms));
+
+        Assert.Equal(
+            normal.Battle.Cohesion.Get(normal.French),
+            measured.Battle.Cohesion.Get(measured.French));
+
+        Assert.Equal(
+            normal.Battle.DirectFire.LastPhase!.Events.Count,
+            measured.Battle.DirectFire.LastPhase!.Events.Count);
+
+        Assert.NotEmpty(recorder.Snapshot());
+    }
 
 
 

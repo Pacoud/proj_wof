@@ -39,6 +39,7 @@ internal sealed class TacticalHourlyCombatOrchestrator
     private readonly TacticalSignatureFrame _signatures;
     private readonly DiplomacySystem _diplomacy;
     private readonly TacticalHourlyCombatSettings _settings;
+    private readonly TacticalPhaseTimingRecorder? _timingRecorder;
 
     private long? _lastCompletedHour;
 
@@ -87,7 +88,8 @@ internal sealed class TacticalHourlyCombatOrchestrator
         TacticalPerceptionState perception,
         TacticalSignatureFrame signatures,
         DiplomacySystem diplomacy,
-        TacticalHourlyCombatSettings settings)
+        TacticalHourlyCombatSettings settings,
+        TacticalPhaseTimingRecorder? timingRecorder = null)
     {
         _battle = battle
             ?? throw new ArgumentNullException(nameof(battle));
@@ -106,6 +108,8 @@ internal sealed class TacticalHourlyCombatOrchestrator
 
         _settings = settings
             ?? throw new ArgumentNullException(nameof(settings));
+
+        _timingRecorder = timingRecorder;
 
         if (!ReferenceEquals(geometry.Battle, battle)
             || !ReferenceEquals(perception.Battle, battle)
@@ -227,31 +231,63 @@ internal sealed class TacticalHourlyCombatOrchestrator
     /// Execute l'ensemble de la chaine pour une heure.
     /// N'avance pas lui-meme l'horloge generale.
     /// </summary>
+
     internal TacticalHourlyCombatResult Run(long hour)
     {
+        var timer = _timingRecorder;
+
+        // 0. Validation avant toute mutation.
+        var validationMark = timer?.Start();
+
         ValidateCanRun(hour);
 
-        // Les compagnies dont le transfert est acheve
-        // arrivent avant la detection et les tirs
-        // de cette nouvelle heure.
+        if (validationMark is { } validationStart)
+        {
+            timer!.Stop(
+                TacticalBenchmarkPhase.Validation,
+                validationStart);
+        }
+
+        // Les mouvements seront instrumentes en detail
+        // pendant C2.4d.8d.3c.
         var movementPhase = ReactionExecution?.AdvanceHour(hour);
+
+        // Preparation des participants aux contacts mobiles.
+        var mobileMark = timer?.Start();
 
         var signatures = _signatures;
 
         if (_settings.EnableMobileCombat)
         {
-            var contacts = movementPhase?.ConfirmedMobileContacts
+            var contacts =
+                movementPhase?.ConfirmedMobileContacts
                 ?? Array.Empty<TacticalConfirmedMobileContact>();
 
             _battle.MobileEngagements.Publish(
-                hour, contacts, _geometry, _diplomacy,
-                _settings.ReactionMovement!.TransitContactDistanceMeters);
+                hour,
+                contacts,
+                _geometry,
+                _diplomacy,
+                _settings.ReactionMovement!
+                    .TransitContactDistanceMeters);
 
             if (contacts.Count > 0)
-                signatures = PrepareMobileCombatParticipants(contacts);
+            {
+                signatures =
+                    PrepareMobileCombatParticipants(contacts);
+            }
         }
 
-        // 1. Mise a jour du renseignement.
+        if (mobileMark is { } mobileStart)
+        {
+            timer!.Stop(
+                TacticalBenchmarkPhase.MobileParticipantPreparation,
+                mobileStart);
+        }
+
+        // 1. Detection et renseignement.
+        var detectionMark = timer?.Start();
+
         TacticalDetectionSystem.Update(
             _battle,
             _geometry,
@@ -261,12 +297,28 @@ internal sealed class TacticalHourlyCombatOrchestrator
             hour,
             _settings.Detection);
 
-        // 2. Ordres provisoires, uniquement sur
-        // des pistes actuellement localisees.
+        if (detectionMark is { } detectionStart)
+        {
+            timer!.Stop(
+                TacticalBenchmarkPhase.Detection,
+                detectionStart);
+        }
+
+        // 2. Construction des ordres de tir.
+        var planningMark = timer?.Start();
+
         var orders = BuildFireOrders(hour);
 
-        // 3. Execution effective, avec consommation
-        // des munitions une seule fois.
+        if (planningMark is { } planningStart)
+        {
+            timer!.Stop(
+                TacticalBenchmarkPhase.FireOrderPlanning,
+                planningStart);
+        }
+
+        // 3. Execution unique de la phase de tir.
+        var fireMark = timer?.Start();
+
         var fire = _battle.DirectFire.Execute(
             orders,
             _geometry,
@@ -274,48 +326,93 @@ internal sealed class TacticalHourlyCombatOrchestrator
             _perception,
             hour);
 
+        if (fireMark is { } fireStart)
+        {
+            timer!.Stop(
+                TacticalBenchmarkPhase.FireExecution,
+                fireStart);
+        }
+
         ulong phaseSeed = unchecked(
             _settings.BaseSeed
             + (ulong)hour * 0x9E3779B97F4A7C15UL);
 
-        // 4. Contacts avec les soldats exposes.
+        // 4. Contacts entre projectiles et personnel.
+        var contactsMark = timer?.Start();
+
         _battle.DirectFire.ResolvePersonnelLastPhase(
             _settings.Hit,
             _settings.Defense,
             seed: phaseSeed ^ 0xA0761D6478BD642FUL);
 
-        // 5. Consequences humaines simulees.
+        if (contactsMark is { } contactsStart)
+        {
+            timer!.Stop(
+                TacticalBenchmarkPhase.PersonnelContacts,
+                contactsStart);
+        }
+
+        // 5. Calcul des effets humains.
+        var effectsMark = timer?.Start();
+
         _battle.DirectFire.ResolvePersonnelEffectsLastPhase(
             _settings.Effects,
             seed: phaseSeed ^ 0xE7037ED1A0B428DBUL);
 
-        // 6. Application aux compagnies.
+        if (effectsMark is { } effectsStart)
+        {
+            timer!.Stop(
+                TacticalBenchmarkPhase.PersonnelEffects,
+                effectsStart);
+        }
+
+        // 6. Application unique des pertes.
+        var casualtiesMark = timer?.Start();
+
         var casualties =
             _battle.DirectFire.ApplyPersonnelEffectsLastPhase();
 
-        // 7. Synchroniser les hommes exposes restants
-        // pour que l'heure suivante soit preparable.
+        if (casualtiesMark is { } casualtiesStart)
+        {
+            timer!.Stop(
+                TacticalBenchmarkPhase.CasualtyApplication,
+                casualtiesStart);
+        }
+
+        // 7. Synchronisation des effectifs exposes.
+        var exposureMark = timer?.Start();
+
         _battle.PersonnelExposure.ReconcileAppliedCasualties(
             casualties);
 
+        if (exposureMark is { } exposureStart)
+        {
+            timer!.Stop(
+                TacticalBenchmarkPhase.ExposureReconciliation,
+                exposureStart);
+        }
 
-        // La suppression s'applique egalement lorsque
-        // les salves n'ont provoque aucune victime.
-
+        // 8. Suppression.
         TacticalSuppressionPhaseResult? suppressionResult = null;
 
         if (_settings.Suppression is not null)
         {
+            var suppressionMark = timer?.Start();
+
             suppressionResult =
                 _battle.DirectFire.ResolveSuppressionLastPhase(
                     _settings.Hit,
                     _settings.Suppression);
+
+            if (suppressionMark is { } suppressionStart)
+            {
+                timer!.Stop(
+                    TacticalBenchmarkPhase.Suppression,
+                    suppressionStart);
+            }
         }
 
-        // La cohesion est mise a jour APRES :
-        // 1. les pertes humaines appliquees,
-        // 2. l'actualisation des combattants exposes,
-        // 3. la resolution de la suppression.
+        // 9. Cohesion apres pertes et suppression.
         if (_settings.Cohesion is not null)
         {
             if (suppressionResult is null
@@ -325,16 +422,26 @@ internal sealed class TacticalHourlyCombatOrchestrator
                     "Cohesion requires completed suppression.");
             }
 
+            var cohesionMark = timer?.Start();
+
             _battle.Cohesion.ApplyHour(
                 hour,
                 casualties,
                 suppressionResult,
                 _settings.Suppression,
                 _settings.Cohesion);
+
+            if (cohesionMark is { } cohesionStart)
+            {
+                timer!.Stop(
+                    TacticalBenchmarkPhase.Cohesion,
+                    cohesionStart);
+            }
         }
 
-        // Synthese apres la mise a jour des compagnies.
-        // Aucun nouveau degat ni tirage aleatoire.
+        // 10. Evaluation des bataillons.
+        var assessmentMark = timer?.Start();
+
         var battalionReports =
             _settings.BattalionAssessment is null
                 ? Array.Empty<TacticalBattalionAssessment>()
@@ -342,21 +449,35 @@ internal sealed class TacticalHourlyCombatOrchestrator
                     .EvaluateAll(_settings.BattalionAssessment)
                     .ToArray();
 
+        if (assessmentMark is { } assessmentStart)
+        {
+            timer!.Stop(
+                TacticalBenchmarkPhase.BattalionAssessment,
+                assessmentStart);
+        }
 
-            // Les reactions lisent les resultats de C2.4d.4.
-            // Elles ne calculent pas de nouvelles pertes.
-            TacticalBattalionReactionPhaseResult? reactionPhase = null;
+        // 11. Reactions tactiques.
+        TacticalBattalionReactionPhaseResult? reactionPhase = null;
 
-            if (_settings.BattalionReactions is not null)
+        if (_settings.BattalionReactions is not null)
+        {
+            var reactionsMark = timer?.Start();
+
+            reactionPhase = _battle.BattalionReactions.ApplyHour(
+                hour,
+                battalionReports,
+                _settings.BattalionAssessment!,
+                _settings.BattalionReactions);
+
+            if (reactionsMark is { } reactionsStart)
             {
-                reactionPhase = _battle.BattalionReactions.ApplyHour(
-                    hour,
-                    battalionReports,
-                    _settings.BattalionAssessment!,
-                    _settings.BattalionReactions);
+                timer!.Stop(
+                    TacticalBenchmarkPhase.BattalionReactions,
+                    reactionsStart);
             }
+        }
 
-
+        // 12. Calcul du bilan horaire.
         int killed = 0;
         int wounded = 0;
 
@@ -385,20 +506,22 @@ internal sealed class TacticalHourlyCombatOrchestrator
             Killed: killed,
             Wounded: wounded);
 
-        
-
         LastBattalionAssessments =
             Array.AsReadOnly(battalionReports);
 
         LastBattalionReactionPhase = reactionPhase;
+
         _lastCompletedHour = hour;
+
         LastMobileCombatSummary = _settings.EnableMobileCombat
             ? SummarizeMobileCombat(hour, orders, fire)
             : null;
+
         LastResult = result;
 
         return result;
     }
+
 
     private TacticalMobileCombatSummary SummarizeMobileCombat(
         long hour,

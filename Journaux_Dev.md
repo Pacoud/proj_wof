@@ -5935,7 +5935,7 @@ avant de poursuivre les mécanismes tactiques.
 
 
 
-# COMMIT # 
+# COMMIT 27037e540ff4ee1890174e5a4ac02257322671c5 # 
 
 ### C2.4d.8d.3a — Enregistreur de performances
 
@@ -5973,3 +5973,52 @@ des différentes phases de combat tactique.
 
 C2.4d.8d.3b — Instrumentation des phases
 de TacticalHourlyCombatOrchestrator.
+
+
+# COMMIT # 
+
+### C2.4d.8d.3b — Instrumentation de l'orchestrateur
+
+**Objectif**
+
+Mesurer individuellement les phases du combat tactique
+sans modifier les décisions militaires.
+
+**Fonctionnalités**
+
+- Enregistreur facultatif dans l'orchestrateur.
+- Mesure de la validation initiale.
+- Mesure de la préparation des participants mobiles.
+- Mesure de la détection tactique.
+- Mesure de la préparation des ordres de tir.
+- Mesure de l'exécution des tirs.
+- Mesure des contacts et effets sur le personnel.
+- Mesure de l'application des pertes.
+- Mesure de la réconciliation des effectifs exposés.
+- Mesure de la suppression et de la cohésion.
+- Mesure des évaluations et réactions des bataillons.
+- Tests de non-régression avec et sans instrumentation.
+
+**Architecture**
+
+- TacticalHourlyCombatOrchestrator :
+  accepte un TacticalPhaseTimingRecorder facultatif.
+- TacticalBenchmarkPhase :
+  identifie les opérations mesurées.
+- TacticalPhaseTimingRecorder :
+  collecte et cumule les statistiques.
+
+**Limites actuelles**
+
+- Détail interne des déplacements non encore instrumenté.
+- Runner non encore raccordé aux nouvelles mesures.
+- Les allocations des threads secondaires ne sont pas mesurées.
+- Le surcoût de l'instrumentation reste à quantifier.
+- Les benchmarks à grande échelle restent à effectuer.
+
+**Suite**
+
+C2.4d.8d.3c — Instrumentation de
+TacticalReactionExecutionState :
+préparation des trajectoires, détection,
+stabilisation et application des mouvements.
