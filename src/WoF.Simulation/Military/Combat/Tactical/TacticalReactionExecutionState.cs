@@ -104,6 +104,7 @@ internal sealed class TacticalReactionExecutionState
     private readonly TacticalGeometryMap _geometry;
     private readonly DiplomacySystem _diplomacy;
     private readonly TacticalReactionMovementProfile _profile;
+    private readonly TacticalPhaseTimingRecorder? _timingRecorder;
 
     private readonly Dictionary<
         CompanyDeployment, ActiveMovement> _pending =
@@ -132,7 +133,8 @@ internal sealed class TacticalReactionExecutionState
         TacticalGeometryMap geometry,
         DiplomacySystem diplomacy,
         TacticalReactionMovementProfile profile,
-        bool enableMobileCombat = false
+        bool enableMobileCombat = false,
+        TacticalPhaseTimingRecorder? timingRecorder = null
         )
     {
         _battle = battle
@@ -148,6 +150,8 @@ internal sealed class TacticalReactionExecutionState
             ?? throw new ArgumentNullException(nameof(profile));
 
         _enableMobileCombat = enableMobileCombat;
+
+        _timingRecorder = timingRecorder;
 
         if (!ReferenceEquals(geometry.Battle, battle))
             throw new InvalidOperationException(
@@ -571,62 +575,85 @@ internal sealed class TacticalReactionExecutionState
             hour, completions, Array.Empty<TacticalTransitContact>(), resolution);
     }
 
-    private TacticalMovementPhaseResult AdvanceHourWithMobileCombat(long hour)
+    private TacticalMovementPhaseResult AdvanceHourWithMobileCombat(
+        long hour)
     {
+        var timer = _timingRecorder;
+
+        // 1. Photographie et preparation des trajectoires.
+        var preparationMark = timer?.Start();
+
         var deployments = _battle.Deployments.ToArray();
+
         var positions = deployments.ToDictionary(
             company => company,
             company => _geometry.GetPosition(company)?.Point,
-            (IEqualityComparer<CompanyDeployment>)ReferenceEqualityComparer.Instance);
+            (IEqualityComparer<CompanyDeployment>)
+                ReferenceEqualityComparer.Instance);
+
         var occupants = deployments.ToLookup(
             company => company.Sector,
-            (IEqualityComparer<BattleSector>)ReferenceEqualityComparer.Instance);
+            (IEqualityComparer<BattleSector>)
+                ReferenceEqualityComparer.Instance);
 
         var plans = new Dictionary<CompanyDeployment, MovementPlan>(
             ReferenceEqualityComparer.Instance);
+
         var timelines = new Dictionary<
-            CompanyDeployment, IReadOnlyList<TacticalTimedTrajectorySegment>>(
+            CompanyDeployment,
+            IReadOnlyList<TacticalTimedTrajectorySegment>>(
             ReferenceEqualityComparer.Instance);
+
         var movementEnds = new Dictionary<CompanyDeployment, double>(
             ReferenceEqualityComparer.Instance);
 
-        // 1. Préparer tous les trajets à partir du même état initial.
         foreach (var company in deployments)
         {
             if (_pending.TryGetValue(company, out var state))
             {
-                var plan = PrepareMovement(state, positions[company]!.Value, occupants);
+                var plan = PrepareMovement(
+                    state, positions[company]!.Value, occupants);
+
                 var movingSegments = plan.Trajectory
                     .Where(segment => segment.IsMoving)
                     .ToArray();
 
                 if (movingSegments.Length != plan.Steps.Count)
-                    throw new InvalidOperationException("Movement steps and timeline disagree.");
+                {
+                    throw new InvalidOperationException(
+                        "Movement steps and timeline disagree.");
+                }
 
                 plans.Add(company, plan);
                 timelines.Add(company, plan.Trajectory);
 
                 if (movingSegments.Length > 0)
-                    movementEnds.Add(company, movingSegments[^1].EndTime);
+                {
+                    movementEnds.Add(
+                        company, movingSegments[^1].EndTime);
+                }
             }
             else if (positions[company] is TacticalPoint point)
             {
                 timelines.Add(company, new[]
                 {
                     new TacticalTimedTrajectorySegment(
-                        company, point, point, 0, 1, IsMoving: false)
+                        company, point, point, 0, 1,
+                        IsMoving: false)
                 });
             }
         }
 
         var stops = new Dictionary<CompanyDeployment, double>(
             ReferenceEqualityComparer.Instance);
+
         var encounters = new Dictionary<
             (CompanyDeployment First, CompanyDeployment Second),
             TacticalFirstMobileContactEvent>();
 
         IReadOnlyList<TacticalPredictedEncounter> initialPredictions =
             Array.Empty<TacticalPredictedEncounter>();
+
         int passes = 0;
         long candidates = 0;
         long exactChecks = 0;
@@ -644,22 +671,49 @@ internal sealed class TacticalReactionExecutionState
                 return;
 
             stops.Add(company, time);
-            timelines[company] = TruncateTimeline(timelines[company], time);
+            timelines[company] =
+                TruncateTimeline(timelines[company], time);
         }
 
-        // 2. Retenir le prochain arrêt, puis recalculer les rencontres.
+        if (preparationMark is { } preparationStart)
+        {
+            timer!.Stop(
+                TacticalBenchmarkPhase.MovementPreparation,
+                preparationStart);
+        }
+
+        // 2. Detection et stabilisation des rencontres.
         while (movementEnds.Count > 0)
         {
             if (++passes > movementEnds.Count + 1)
-                throw new InvalidOperationException("Mobile contacts did not stabilize.");
+            {
+                throw new InvalidOperationException(
+                    "Mobile contacts did not stabilize.");
+            }
+
+            // Mesurer chaque recherche spatiale.
+            var detectionMark = timer?.Start();
 
             var detection = TacticalSimultaneousContactDetector.Detect(
                 _battle,
                 _diplomacy,
-                timelines.Values.SelectMany(segments => segments).ToArray(),
+                timelines.Values
+                    .SelectMany(segments => segments)
+                    .ToArray(),
                 hour,
                 _profile.TransitContactDistanceMeters,
                 includeFirstContacts: true);
+
+            if (detectionMark is { } detectionStart)
+            {
+                timer!.Stop(
+                    TacticalBenchmarkPhase.MovementContactDetection,
+                    detectionStart);
+            }
+
+            // Mesurer la resolution des arrêts,
+            // sans recompter la detection.
+            var stabilizationMark = timer?.Start();
 
             if (passes == 1)
                 initialPredictions = detection.Encounters;
@@ -667,36 +721,61 @@ internal sealed class TacticalReactionExecutionState
             candidates += detection.Statistics.BroadPhaseCandidates;
             exactChecks += detection.Statistics.ExactPairChecks;
 
-            // FirstContacts est déjà trié par instant.
-            var next = detection.FirstContacts.FirstOrDefault(contact =>
-                CanStop(contact.First, contact.TimeFraction)
-                || CanStop(contact.Second, contact.TimeFraction));
+            var next = detection.FirstContacts.FirstOrDefault(
+                contact =>
+                    CanStop(contact.First, contact.TimeFraction)
+                    || CanStop(contact.Second, contact.TimeFraction));
 
             if (next is null)
             {
                 foreach (var contact in detection.FirstContacts)
-                    encounters.TryAdd((contact.First, contact.Second), contact);
+                {
+                    encounters.TryAdd(
+                        (contact.First, contact.Second),
+                        contact);
+                }
+
+                if (stabilizationMark is { } finalStart)
+                {
+                    timer!.Stop(
+                        TacticalBenchmarkPhase.MovementStabilization,
+                        finalStart);
+                }
 
                 break;
             }
 
-            // Conserver les contacts atteints jusqu'au prochain arrêt inclus.
             foreach (var contact in detection.FirstContacts)
             {
                 if (contact.TimeFraction > next.TimeFraction)
                     break;
 
-                encounters.TryAdd((contact.First, contact.Second), contact);
+                encounters.TryAdd(
+                    (contact.First, contact.Second),
+                    contact);
+
                 StopAt(contact.First, contact.TimeFraction);
                 StopAt(contact.Second, contact.TimeFraction);
             }
+
+            if (stabilizationMark is { } stabilizationStart)
+            {
+                timer!.Stop(
+                    TacticalBenchmarkPhase.MovementStabilization,
+                    stabilizationStart);
+            }
         }
 
-        // 3. Projeter les positions finales avant de modifier la carte.
-        var finalPositions = new Dictionary<CompanyDeployment, TacticalPoint>(
-            ReferenceEqualityComparer.Instance);
-        var stillInTransit = new HashSet<CompanyDeployment>(
-            ReferenceEqualityComparer.Instance);
+        // 3. Projection et validation des positions finales.
+        var positionMark = timer?.Start();
+
+        var finalPositions =
+            new Dictionary<CompanyDeployment, TacticalPoint>(
+                ReferenceEqualityComparer.Instance);
+
+        var stillInTransit =
+            new HashSet<CompanyDeployment>(
+                ReferenceEqualityComparer.Instance);
 
         foreach (var (company, timeline) in timelines)
         {
@@ -714,12 +793,14 @@ internal sealed class TacticalReactionExecutionState
                 {
                     int finalLeg = state.LegIndex
                         + plan.Steps.Count(step => step.AtWaypoint);
+
                     var finalSector = state.Order.Route[finalLeg];
 
                     if (plan.Cancellation is not null)
                     {
-                        // Cancel ramène la compagnie au centre du dernier secteur atteint.
-                        point = SectorCenter(finalSector, _geometry.GetSectorGeometry(finalSector)!);
+                        point = SectorCenter(
+                            finalSector,
+                            _geometry.GetSectorGeometry(finalSector)!);
                     }
                     else if (finalLeg < state.Order.Route.Count - 1)
                     {
@@ -732,67 +813,133 @@ internal sealed class TacticalReactionExecutionState
         }
 
         const double positionTolerance = 0.01;
-        double radius = _profile.TransitContactDistanceMeters;
+
+        double radius =
+            _profile.TransitContactDistanceMeters;
 
         var projectedContacts = encounters.Values
             .Where(contact =>
-                (stillInTransit.Contains(contact.First) || stillInTransit.Contains(contact.Second))
+                (stillInTransit.Contains(contact.First)
+                    || stillInTransit.Contains(contact.Second))
                 && finalPositions[contact.First].HorizontalDistanceTo(
-                    finalPositions[contact.Second]) <= radius + positionTolerance)
+                    finalPositions[contact.Second])
+                        <= radius + positionTolerance)
             .OrderBy(contact => contact.TimeFraction)
             .ToArray();
 
-        // 4. Appliquer les plans validés.
-        var completions = new List<TacticalMovementCompletion>();
+        if (positionMark is { } positionStart)
+        {
+            timer!.Stop(
+                TacticalBenchmarkPhase.MovementPositionValidation,
+                positionStart);
+        }
+
+        // 4. Application physique des mouvements.
+        var applicationMark = timer?.Start();
+
+        var completions =
+            new List<TacticalMovementCompletion>();
+
         foreach (var (company, plan) in plans)
         {
             var state = _pending[company];
-            state.PausedByContact = stops.TryGetValue(company, out double stopTime);
+
+            state.PausedByContact =
+                stops.TryGetValue(company, out double stopTime);
 
             if (state.PausedByContact)
             {
-                ApplyPlanUntil(state, plan, stopTime, completions);
+                ApplyPlanUntil(
+                    state, plan, stopTime, completions);
+
                 continue;
             }
 
             foreach (var step in plan.Steps)
-                ApplyStep(state, step, completions, spatialIndex: null);
+            {
+                ApplyStep(
+                    state,
+                    step,
+                    completions,
+                    spatialIndex: null);
+            }
 
-            if (plan.Cancellation is TacticalMovementOutcome outcome)
-                Cancel(state, outcome, completions, spatialIndex: null);
+            if (plan.Cancellation
+                is TacticalMovementOutcome outcome)
+            {
+                Cancel(
+                    state,
+                    outcome,
+                    completions,
+                    spatialIndex: null);
+            }
         }
 
-        // 5. Confirmer les contacts à partir des positions réellement appliquées.
-        var confirmed = new List<TacticalConfirmedMobileContact>();
+        if (applicationMark is { } applicationStart)
+        {
+            timer!.Stop(
+                TacticalBenchmarkPhase.MovementApplication,
+                applicationStart);
+        }
+
+        // 5. Confirmation et publication des contacts.
+        var confirmationMark = timer?.Start();
+
+        var confirmed =
+            new List<TacticalConfirmedMobileContact>();
+
         foreach (var contact in projectedContacts)
         {
             var first = _geometry.GetPosition(contact.First);
             var second = _geometry.GetPosition(contact.Second);
 
             if (first is null || second is null
-                || (!contact.First.IsInTransit && !contact.Second.IsInTransit)
-                || first.Point.HorizontalDistanceTo(second.Point) > radius + positionTolerance)
+                || (!contact.First.IsInTransit
+                    && !contact.Second.IsInTransit)
+                || first.Point.HorizontalDistanceTo(second.Point)
+                    > radius + positionTolerance)
             {
                 continue;
             }
 
-            confirmed.Add(new TacticalConfirmedMobileContact(
-                hour, contact.First, contact.Second, contact.TimeFraction,
-                first.Point, second.Point));
+            confirmed.Add(
+                new TacticalConfirmedMobileContact(
+                    hour,
+                    contact.First,
+                    contact.Second,
+                    contact.TimeFraction,
+                    first.Point,
+                    second.Point));
         }
 
         var resolution = new TacticalSimultaneousMovementResolution(
-            new HashSet<CompanyDeployment>(stops.Keys, ReferenceEqualityComparer.Instance),
+            new HashSet<CompanyDeployment>(
+                stops.Keys,
+                ReferenceEqualityComparer.Instance),
             initialPredictions,
             passes,
             candidates,
             exactChecks);
 
         LastSpatialIndexStatistics = null;
-        return PublishMovementPhase(
-            hour, completions, Array.Empty<TacticalTransitContact>(),
-            resolution, confirmed.AsReadOnly());
+
+        var result = PublishMovementPhase(
+            hour,
+            completions,
+            Array.Empty<TacticalTransitContact>(),
+            resolution,
+            confirmed.AsReadOnly());
+
+        if (confirmationMark is { } confirmationStart)
+        {
+            timer!.Stop(
+                TacticalBenchmarkPhase.MovementConfirmation,
+                confirmationStart);
+        }
+
+        return result;
     }
+
 
     private static IReadOnlyList<TacticalTimedTrajectorySegment> TruncateTimeline(
         IReadOnlyList<TacticalTimedTrajectorySegment> timeline,

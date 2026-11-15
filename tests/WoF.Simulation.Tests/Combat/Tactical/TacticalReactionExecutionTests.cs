@@ -85,7 +85,8 @@ public sealed class TacticalReactionExecutionTests
         bool enableMobileCombat = false,
         double movementSpeed = 3000,
         double killedProbability = 0,
-        int extraEnemyCompanies = 0)
+        int extraEnemyCompanies = 0,
+        TacticalPhaseTimingRecorder? timingRecorder = null)
     {
         var engine = new SimulationEngine();
 
@@ -250,7 +251,8 @@ public sealed class TacticalReactionExecutionTests
             perception,
             signatures,
             engine.Diplomacy,
-            settings);
+            settings,
+            timingRecorder);
 
         engine.Engagements.AttachTacticalBattle(battle);
 
@@ -2112,6 +2114,157 @@ public sealed class TacticalReactionExecutionTests
                 moving,
                 radiusMeters: 0));
     }
+
+
+
+
+    [Fact]
+    public void MobileCombatRecordsMovementSubphases()
+    {
+        var recorder = new TacticalPhaseTimingRecorder();
+
+        var s = CreateScenario(
+            enemyInRear: true,
+            transitContactDistanceMeters: 200,
+            useSimultaneousContacts: true,
+            includeEnemyReserve: true,
+            enableMobileCombat: true,
+            timingRecorder: recorder);
+
+        var opponent = DeployOpposingReserve(s);
+
+        ReachConfirmedRupture(s);
+
+        ApproveMovement(s, s.Reserve);
+        ApproveMovement(s, opponent);
+
+        // Ne mesurer que l'heure du contact.
+        recorder.Reset();
+
+        s.Engine.Tick();
+
+        var measurements = recorder.Snapshot();
+
+        var phases = new[]
+        {
+            TacticalBenchmarkPhase.MovementPreparation,
+            TacticalBenchmarkPhase.MovementContactDetection,
+            TacticalBenchmarkPhase.MovementStabilization,
+            TacticalBenchmarkPhase.MovementPositionValidation,
+            TacticalBenchmarkPhase.MovementApplication,
+            TacticalBenchmarkPhase.MovementConfirmation
+        };
+
+        foreach (var phase in phases)
+        {
+            var measurement = Assert.Single(
+                measurements,
+                m => m.Phase == phase);
+
+            Assert.True(measurement.Calls >= 1);
+            Assert.True(double.IsFinite(measurement.Milliseconds));
+            Assert.True(measurement.Milliseconds >= 0);
+            Assert.True(measurement.AllocatedBytes >= 0);
+        }
+
+        // Chaque passage dans la boucle doit avoir
+        // exactement une mesure de detection.
+        var detection = Assert.Single(
+            measurements,
+            m => m.Phase ==
+                TacticalBenchmarkPhase.MovementContactDetection);
+
+        var movement = s.Orchestrator.LastMovementPhase!;
+
+        Assert.Equal(
+            movement.SimultaneousResolution!.ResolutionPasses,
+            detection.Calls);
+
+        Assert.Single(movement.ConfirmedMobileContacts!);
+    }
+
+
+
+
+    [Fact]
+    public void MovementInstrumentationDoesNotChangeCombat()
+    {
+        var recorder = new TacticalPhaseTimingRecorder();
+
+        var normal = CreateScenario(
+            enemyInRear: true,
+            transitContactDistanceMeters: 200,
+            useSimultaneousContacts: true,
+            includeEnemyReserve: true,
+            enableMobileCombat: true);
+
+        var measured = CreateScenario(
+            enemyInRear: true,
+            transitContactDistanceMeters: 200,
+            useSimultaneousContacts: true,
+            includeEnemyReserve: true,
+            enableMobileCombat: true,
+            timingRecorder: recorder);
+
+        var normalOpponent = DeployOpposingReserve(normal);
+        var measuredOpponent = DeployOpposingReserve(measured);
+
+        ReachConfirmedRupture(normal);
+        ReachConfirmedRupture(measured);
+
+        ApproveMovement(normal, normal.Reserve);
+        ApproveMovement(normal, normalOpponent);
+
+        ApproveMovement(measured, measured.Reserve);
+        ApproveMovement(measured, measuredOpponent);
+
+        recorder.Reset();
+
+        normal.Engine.Tick();
+        measured.Engine.Tick();
+
+        Assert.Equal(
+            normal.Orchestrator.LastResult,
+            measured.Orchestrator.LastResult);
+
+        Assert.Equal(
+            normal.Orchestrator.LastMobileCombatSummary,
+            measured.Orchestrator.LastMobileCombatSummary);
+
+        var a = Assert.Single(
+            normal.Orchestrator.LastMovementPhase!
+                .ConfirmedMobileContacts!);
+
+        var b = Assert.Single(
+            measured.Orchestrator.LastMovementPhase!
+                .ConfirmedMobileContacts!);
+
+        Assert.Equal(a.ContactTimeFraction, b.ContactTimeFraction);
+        Assert.Equal(a.FirstPosition, b.FirstPosition);
+        Assert.Equal(a.SecondPosition, b.SecondPosition);
+
+        Assert.Equal(
+            normal.Geometry.GetPosition(normal.Reserve)!.Point,
+            measured.Geometry.GetPosition(measured.Reserve)!.Point);
+
+        Assert.Equal(
+            normal.Reserve.Company.Composition!.Manpower.Current,
+            measured.Reserve.Company.Composition!.Manpower.Current);
+
+        Assert.Equal(
+            normal.Reserve.Company.Composition!.Ammunition
+                .GetAvailable(AmmunitionType.SmallArms),
+            measured.Reserve.Company.Composition!.Ammunition
+                .GetAvailable(AmmunitionType.SmallArms));
+
+        Assert.Equal(
+            normal.Battle.Cohesion.Get(normal.Reserve),
+            measured.Battle.Cohesion.Get(measured.Reserve));
+
+        Assert.NotEmpty(recorder.Snapshot());
+    }
+
+
 
 
 }

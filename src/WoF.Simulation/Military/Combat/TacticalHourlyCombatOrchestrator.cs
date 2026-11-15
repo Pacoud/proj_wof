@@ -126,7 +126,8 @@ internal sealed class TacticalHourlyCombatOrchestrator
                 _geometry,
                 _diplomacy,
                 _settings.ReactionMovement,
-                _settings.EnableMobileCombat);
+                _settings.EnableMobileCombat,
+                _timingRecorder);
         }
 
     }

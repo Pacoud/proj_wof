@@ -5975,7 +5975,7 @@ C2.4d.8d.3b — Instrumentation des phases
 de TacticalHourlyCombatOrchestrator.
 
 
-# COMMIT # 
+# COMMIT 27effc6e356cf51c575a2cfa56e4c0382900d545 # 
 
 ### C2.4d.8d.3b — Instrumentation de l'orchestrateur
 
@@ -6022,3 +6022,57 @@ C2.4d.8d.3c — Instrumentation de
 TacticalReactionExecutionState :
 préparation des trajectoires, détection,
 stabilisation et application des mouvements.
+
+# COMMIT # 
+
+### C2.4d.8d.3c — Instrumentation des mouvements mobiles
+
+**Objectif**
+
+Mesurer séparément les différentes opérations du
+moteur de déplacement tactique, sans modifier
+les résultats des mouvements et des combats.
+
+**Fonctionnalités**
+
+- Enregistreur facultatif transmis au moteur de mouvement.
+- Mesure de la préparation des positions et trajectoires.
+- Mesure des détections de contacts mobiles.
+- Cumul des détections lors des passes de stabilisation.
+- Mesure des décisions d'arrêt et des trajectoires tronquées.
+- Mesure de la projection des positions finales.
+- Mesure de l'application physique des déplacements.
+- Mesure de la confirmation et publication des contacts.
+- Comptage des appels pour chaque sous-phase.
+- Mesure des allocations mémoire par sous-phase.
+- Tests d'identité avec et sans instrumentation.
+
+**Architecture**
+
+- TacticalReactionExecutionState :
+  instrumente AdvanceHourWithMobileCombat.
+
+- TacticalHourlyCombatOrchestrator :
+  transmet l'enregistreur facultatif au moteur.
+
+- TacticalPhaseTimingRecorder :
+  cumule les mesures exclusives par catégorie.
+
+**Limites actuelles**
+
+- Mesures détaillées concentrées sur le mode mobile.
+- Modes séquentiel et simultané historique non instrumentés
+  dans cette sous-étape.
+- Aucun export détaillé via le runner pour le moment.
+- Surcoût de l'instrumentation non encore quantifié.
+- Allocations mesurées sur le thread courant.
+- Campagne à grande échelle non encore effectuée.
+
+**Suite**
+
+C2.4d.8d.3d — Raccordement du runner de benchmarks
+aux mesures détaillées.
+
+Permettre les exports JSON et CSV des temps et
+allocations par phase, comparer le même scénario
+avec et sans instrumentation et quantifier son coût.
