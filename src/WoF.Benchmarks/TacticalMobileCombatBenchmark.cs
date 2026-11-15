@@ -12,7 +12,11 @@ namespace WoF.Benchmarks;
 internal static class TacticalMobileCombatBenchmark
 {
     internal sealed record Parameters(
-        string Mode, TacticalMobileBenchmarkOptions Scenario, int Measurements, int Warmup);
+        string Mode,
+        TacticalMobileBenchmarkOptions Scenario,
+        int Measurements,
+        int Warmup,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool Phases = false);
 
     internal readonly record struct Measurement(
         double Milliseconds, long AllocatedBytes, int Gen0, int Gen1, int Gen2);
@@ -31,7 +35,14 @@ internal static class TacticalMobileCombatBenchmark
         long? RoundsExpended, int? Killed, int? Wounded,
         int? ActiveMovementsAfter, BenchmarkMilitaryState? MilitaryStateAfter);
 
-    internal sealed record Sample(int Number, Measurement Measurement, Load Load, Work Work, string? Rejection)
+    internal sealed record Sample(
+        int Number,
+        Measurement Measurement,
+        Load Load,
+        Work Work,
+        string? Rejection,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        IReadOnlyList<TacticalPhaseMeasurement>? Phases = null)
     {
         public bool Valid => Rejection is null;
     }
@@ -40,13 +51,27 @@ internal static class TacticalMobileCombatBenchmark
         int ValidSamples, double? MeanMs, double? MedianMs, double? P95Ms,
         double? MinMs, double? MaxMs, double? MeanAllocatedBytes, long Gen0, long Gen1, long Gen2);
 
+    internal sealed record PhaseStatistics(
+        TacticalBenchmarkPhase Phase,
+        int SampleCount,
+        double MeanMs,
+        double MedianMs,
+        double P95Ms,
+        double MeanAllocatedBytes,
+        double MeanCalls);
+
     internal sealed record RunInfo(
         string Benchmark, DateTimeOffset StartedUtc, Parameters Parameters,
         string DotNet, string OperatingSystem, int LogicalProcessors,
         string BuildConfiguration, string? GitCommit, bool? GitDirty);
 
     internal sealed record Report(
-        RunInfo Info, Statistics Statistics, IReadOnlyList<string> Warnings, IReadOnlyList<Sample> Samples);
+        RunInfo Info,
+        Statistics Statistics,
+        IReadOnlyList<string> Warnings,
+        IReadOnlyList<Sample> Samples,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        IReadOnlyList<PhaseStatistics>? PhaseStatistics = null);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -60,7 +85,7 @@ internal static class TacticalMobileCombatBenchmark
         {
             Console.Error.WriteLine(
                 "Usage: tactical-mobile <detector|full> <companies>=2+ <mobility:0..100> " +
-                "<sparse|dense> <measurements>=1+ <warmup>=0+ <seed:int>");
+                "<sparse|dense> <measurements>=1+ <warmup>=0+ <seed:int> [--phases (full only)]");
             return 2;
         }
 
@@ -72,6 +97,20 @@ internal static class TacticalMobileCombatBenchmark
             $"{parameters!.Mode}: {load.TotalCompanies} companies, mobility requested {parameters.Scenario.MobilityPercent:G}% / actual {load.ActualMobilityPercent:F2}% ({load.MobileCompanies}), {load.ActiveMovements} active orders."));
         Console.WriteLine(FormattableString.Invariant(
             $"Valid samples: {stats.ValidSamples}/{report.Samples.Count}; median: {stats.MedianMs:F3} ms; p95: {stats.P95Ms:F3} ms."));
+
+        if (report.PhaseStatistics is { Count: > 0 } phaseStats)
+        {
+            Console.WriteLine();
+            Console.WriteLine("--- Tactical phases ---");
+
+            foreach (var phase in phaseStats)
+            {
+                Console.WriteLine(
+                    FormattableString.Invariant(
+                        $"{phase.Phase,-30} median={phase.MedianMs,9:F3} ms p95={phase.P95Ms,9:F3} ms alloc={phase.MeanAllocatedBytes,12:F0} B calls={phase.MeanCalls:F2}"));
+            }
+        }
+
         foreach (string warning in report.Warnings)
             Console.WriteLine(warning);
         Console.WriteLine($"JSON: {json}");
@@ -84,7 +123,10 @@ internal static class TacticalMobileCombatBenchmark
     {
         parameters = null;
         var culture = CultureInfo.InvariantCulture;
-        if (args.Length != 7
+        if (args.Length != 7 && args.Length != 8
+            || (args.Length == 8
+                && (args[7] != "--phases"
+                    || args[0] != "full"))
             || args[0] is not ("detector" or "full")
             || !int.TryParse(args[1], NumberStyles.Integer, culture, out int companies) || companies < 2
             || !double.TryParse(args[2], NumberStyles.Float, culture, out double mobility)
@@ -99,7 +141,8 @@ internal static class TacticalMobileCombatBenchmark
 
         var density = args[3] == "sparse"
             ? TacticalMobileBenchmarkDensity.Sparse : TacticalMobileBenchmarkDensity.Dense;
-        parameters = new(args[0], new(companies, mobility, density, seed), count, warmup);
+        parameters = new(args[0], new(companies, mobility, density, seed), count, warmup,
+            Phases: args.Length == 8);
         return true;
     }
 
@@ -131,7 +174,9 @@ internal static class TacticalMobileCombatBenchmark
             warnings.Add("Working tree has local changes; the Git commit alone does not identify the measured sources.");
 
         warnings.AddRange(samples.Select(sample => sample.Rejection).OfType<string>().Distinct());
-        return new Report(info, Summarize(samples), warnings.AsReadOnly(), samples);
+
+        var phaseStatistics = parameters.Phases ? SummarizePhases(samples) : null;
+        return new Report(info, Summarize(samples), warnings.AsReadOnly(), samples, phaseStatistics);
     }
 
     private static IReadOnlyList<Sample> MeasureDetector(Parameters parameters)
@@ -177,12 +222,18 @@ internal static class TacticalMobileCombatBenchmark
     private static IReadOnlyList<Sample> MeasureTicks(Parameters parameters)
     {
         for (int i = 0; i < parameters.Warmup; i++)
-            TacticalMobileBenchmarkScenarioFactory.CreateTick(parameters.Scenario).Engine.Tick();
+        {
+            var recorder = parameters.Phases ? new TacticalPhaseTimingRecorder() : null;
+            TacticalMobileBenchmarkScenarioFactory.CreateTick(parameters.Scenario, recorder).Engine.Tick();
+        }
 
         var samples = new Sample[parameters.Measurements];
+
         for (int i = 0; i < samples.Length; i++)
         {
-            var scenario = TacticalMobileBenchmarkScenarioFactory.CreateTick(parameters.Scenario);
+            var recorder = parameters.Phases ? new TacticalPhaseTimingRecorder() : null;
+            var scenario = TacticalMobileBenchmarkScenarioFactory.CreateTick(parameters.Scenario, recorder);
+
             var load = CaptureLoad(scenario.Battle, scenario.MobileCompanies, scenario.ActiveMovements);
             string? rejection = ValidateLoad(parameters, load, referenceLoad: i == 0 ? null : samples[0].Load);
             if (scenario.Orchestrator.ReactionExecution!.PendingMovements.Any(order =>
@@ -195,6 +246,18 @@ internal static class TacticalMobileCombatBenchmark
 
             long hour = scenario.Engine.Clock.CurrentHour + 1;
             var measurement = Measure(scenario.Engine.Tick);
+
+            // Capture APRES le chronometrage du tick.
+            IReadOnlyList<TacticalPhaseMeasurement>? phases =
+                recorder?.CaptureAndReset();
+
+            if (parameters.Phases
+                && (phases is null || phases.Count == 0))
+            {
+                rejection ??=
+                    "No tactical phase measurements were collected.";
+            }
+
             var combat = scenario.Orchestrator.LastResult;
             var movement = scenario.Orchestrator.LastMovementPhase;
             var mobile = scenario.Orchestrator.LastMobileCombatSummary;
@@ -224,7 +287,13 @@ internal static class TacticalMobileCombatBenchmark
             if (i > 0 && work != samples[0].Work)
                 rejection ??= "Tactical results changed between independently rebuilt samples.";
 
-            samples[i] = new Sample(i + 1, measurement, load, work, rejection);
+            samples[i] = new Sample(
+                i + 1,
+                measurement,
+                load,
+                work,
+                rejection,
+                phases);
         }
 
         return Array.AsReadOnly(samples);
@@ -306,6 +375,52 @@ internal static class TacticalMobileCombatBenchmark
             valid.Sum(sample => (long)sample.Measurement.Gen2));
     }
 
+    internal static IReadOnlyList<PhaseStatistics> SummarizePhases(
+        IReadOnlyList<Sample> samples)
+    {
+        ArgumentNullException.ThrowIfNull(samples);
+
+        var results = samples
+            .Where(sample => sample.Valid)
+            .SelectMany(sample =>
+                sample.Phases
+                ?? Array.Empty<TacticalPhaseMeasurement>())
+            .GroupBy(measurement => measurement.Phase)
+            .OrderBy(group => group.Key)
+            .Select(group =>
+            {
+                var values = group.ToArray();
+
+                var times = values
+                    .Select(value => value.Milliseconds)
+                    .Order()
+                    .ToArray();
+
+                int count = times.Length;
+
+                double median =
+                    (times[(count - 1) / 2]
+                    + times[count / 2]) / 2.0;
+
+                int p95Index =
+                    (int)Math.Ceiling(count * 0.95) - 1;
+
+                return new PhaseStatistics(
+                    Phase: group.Key,
+                    SampleCount: count,
+                    MeanMs: times.Average(),
+                    MedianMs: median,
+                    P95Ms: times[p95Index],
+                    MeanAllocatedBytes: values.Average(
+                        value => (double)value.AllocatedBytes),
+                    MeanCalls: values.Average(
+                        value => (double)value.Calls));
+            })
+            .ToArray();
+
+        return Array.AsReadOnly(results);
+    }
+
     internal static (string Json, string Csv) Export(Report report, string folder)
     {
         Directory.CreateDirectory(folder);
@@ -324,7 +439,43 @@ internal static class TacticalMobileCombatBenchmark
             {
                 report.Info, report.Statistics, report.Warnings, Sample = sample
             }, JsonOptions);
-            var columns = Flatten(row).ToArray();
+            var columns = Flatten(row).ToList();
+            if (report.Info.Parameters.Phases)
+            {
+                var phaseLookup = sample.Phases?
+                    .ToDictionary(measurement => measurement.Phase);
+
+                foreach (var phase in Enum.GetValues<TacticalBenchmarkPhase>())
+                {
+                    string name = $"Sample.Phases.{phase}.";
+
+                    if (phaseLookup is not null
+                        && phaseLookup.TryGetValue(
+                            phase, out var measurement))
+                    {
+                        columns.Add((
+                            name + "Milliseconds",
+                            measurement.Milliseconds.ToString(
+                                "R", CultureInfo.InvariantCulture)));
+
+                        columns.Add((
+                            name + "AllocatedBytes",
+                            measurement.AllocatedBytes.ToString(
+                                CultureInfo.InvariantCulture)));
+
+                        columns.Add((
+                            name + "Calls",
+                            measurement.Calls.ToString(
+                                CultureInfo.InvariantCulture)));
+                    }
+                    else
+                    {
+                        columns.Add((name + "Milliseconds", null));
+                        columns.Add((name + "AllocatedBytes", null));
+                        columns.Add((name + "Calls", null));
+                    }
+                }
+            }
             if (!headerWritten)
             {
                 writer.WriteLine(string.Join(",", columns.Select(column => CsvCell(column.Name))));
@@ -340,6 +491,14 @@ internal static class TacticalMobileCombatBenchmark
             foreach (var property in element.EnumerateObject())
             {
                 string name = prefix + property.Name;
+
+                if (prefix == "Sample."
+                    && property.Name == nameof(Sample.Phases))
+                {
+                    // Les phases ont leurs propres colonnes CSV.
+                    continue;
+                }
+
                 if (property.Name == nameof(Work.MilitaryStateAfter))
                     continue;
                 if (property.Value.ValueKind == JsonValueKind.Object)

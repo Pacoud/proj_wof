@@ -6023,7 +6023,7 @@ TacticalReactionExecutionState :
 préparation des trajectoires, détection,
 stabilisation et application des mouvements.
 
-# COMMIT # 
+# COMMIT 4f4ced20cf43edddfec747b5328eea738e2f9cad # 
 
 ### C2.4d.8d.3c — Instrumentation des mouvements mobiles
 

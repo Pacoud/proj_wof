@@ -158,7 +158,9 @@ internal static class TacticalMobileBenchmarkScenarioFactory
         }
     }
 
-    internal static TacticalMobileTickScenario CreateTick(TacticalMobileBenchmarkOptions options)
+    internal static TacticalMobileTickScenario CreateTick(
+        TacticalMobileBenchmarkOptions options,
+        TacticalPhaseTimingRecorder? recorder = null)
     {
         Validate(options);
         var layout = CreateLayout(options, sharedDenseLane: true);
@@ -206,8 +208,14 @@ internal static class TacticalMobileBenchmarkScenarioFactory
             enableMobileCombat: options.EnableMobileCombat);
 
         var orchestrator = new TacticalHourlyCombatOrchestrator(
-            layout.Battle, layout.Geometry, new TacticalPerceptionState(layout.Battle),
-            signatures, layout.Engine.Diplomacy, settings);
+            layout.Battle,
+            layout.Geometry,
+            new TacticalPerceptionState(layout.Battle),
+            signatures,
+            layout.Engine.Diplomacy,
+            settings,
+            recorder);
+
         layout.Engine.Engagements.AttachTacticalBattle(layout.Battle);
         layout.Engine.Engagements.RegisterTacticalOrchestrator(orchestrator);
 
@@ -227,6 +235,7 @@ internal static class TacticalMobileBenchmarkScenarioFactory
             }
         }
 
+        recorder?.Reset();
         return new TacticalMobileTickScenario(
             options, layout.Engine, layout.Battle, layout.Geometry, orchestrator);
 

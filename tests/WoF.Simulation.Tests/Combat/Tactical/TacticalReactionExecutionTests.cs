@@ -2144,6 +2144,9 @@ public sealed class TacticalReactionExecutionTests
         s.Engine.Tick();
 
         var measurements = recorder.Snapshot();
+        var movement = s.Orchestrator.LastMovementPhase!;
+        int passes = movement.SimultaneousResolution!.ResolutionPasses;
+        Assert.True(passes > 1);
 
         var phases = new[]
         {
@@ -2161,24 +2164,15 @@ public sealed class TacticalReactionExecutionTests
                 measurements,
                 m => m.Phase == phase);
 
-            Assert.True(measurement.Calls >= 1);
+            int expectedCalls = phase is TacticalBenchmarkPhase.MovementContactDetection
+                or TacticalBenchmarkPhase.MovementStabilization
+                ? passes
+                : 1;
+            Assert.Equal(expectedCalls, measurement.Calls);
             Assert.True(double.IsFinite(measurement.Milliseconds));
             Assert.True(measurement.Milliseconds >= 0);
             Assert.True(measurement.AllocatedBytes >= 0);
         }
-
-        // Chaque passage dans la boucle doit avoir
-        // exactement une mesure de detection.
-        var detection = Assert.Single(
-            measurements,
-            m => m.Phase ==
-                TacticalBenchmarkPhase.MovementContactDetection);
-
-        var movement = s.Orchestrator.LastMovementPhase!;
-
-        Assert.Equal(
-            movement.SimultaneousResolution!.ResolutionPasses,
-            detection.Calls);
 
         Assert.Single(movement.ConfirmedMobileContacts!);
     }
@@ -2196,7 +2190,8 @@ public sealed class TacticalReactionExecutionTests
             transitContactDistanceMeters: 200,
             useSimultaneousContacts: true,
             includeEnemyReserve: true,
-            enableMobileCombat: true);
+            enableMobileCombat: true,
+            killedProbability: 1);
 
         var measured = CreateScenario(
             enemyInRear: true,
@@ -2204,6 +2199,7 @@ public sealed class TacticalReactionExecutionTests
             useSimultaneousContacts: true,
             includeEnemyReserve: true,
             enableMobileCombat: true,
+            killedProbability: 1,
             timingRecorder: recorder);
 
         var normalOpponent = DeployOpposingReserve(normal);
@@ -2239,23 +2235,52 @@ public sealed class TacticalReactionExecutionTests
             measured.Orchestrator.LastMovementPhase!
                 .ConfirmedMobileContacts!);
 
-        Assert.Equal(a.ContactTimeFraction, b.ContactTimeFraction);
-        Assert.Equal(a.FirstPosition, b.FirstPosition);
-        Assert.Equal(a.SecondPosition, b.SecondPosition);
+        Assert.Equal(a with { First = measured.Reserve, Second = measuredOpponent }, b);
+        Assert.Same(normal.Reserve, a.First);
+        Assert.Same(normalOpponent, a.Second);
 
-        Assert.Equal(
-            normal.Geometry.GetPosition(normal.Reserve)!.Point,
-            measured.Geometry.GetPosition(measured.Reserve)!.Point);
+        var normalFire = normal.Battle.DirectFire.LastPhase!;
+        var measuredFire = measured.Battle.DirectFire.LastPhase!;
+        Assert.Equal(normalFire.Outcomes.ToArray(), measuredFire.Outcomes.ToArray());
+        Assert.Equal(2, normalFire.Events.Count);
+        Assert.Equal(2, measuredFire.Events.Count);
 
-        Assert.Equal(
-            normal.Reserve.Company.Composition!.Manpower.Current,
-            measured.Reserve.Company.Composition!.Manpower.Current);
+        var normalLosses = normal.Battle.DirectFire.LastCasualtyPhase!;
+        var measuredLosses = measured.Battle.DirectFire.LastCasualtyPhase!;
+        Assert.Equal(2, normalLosses.Companies.Count);
+        Assert.Equal(2, measuredLosses.Companies.Count);
 
-        Assert.Equal(
-            normal.Reserve.Company.Composition!.Ammunition
-                .GetAvailable(AmmunitionType.SmallArms),
-            measured.Reserve.Company.Composition!.Ammunition
-                .GetAvailable(AmmunitionType.SmallArms));
+        foreach (var (expected, actual) in new[]
+        {
+            (normal.Reserve, measured.Reserve),
+            (normalOpponent, measuredOpponent)
+        })
+        {
+            Assert.Equal(normal.Geometry.GetPosition(expected)!.Point,
+                measured.Geometry.GetPosition(actual)!.Point);
+            Assert.Equal(expected.Sector.Id, actual.Sector.Id);
+            Assert.Equal(expected.IsInTransit, actual.IsInTransit);
+
+            var expectedComposition = expected.Company.Composition!;
+            var actualComposition = actual.Company.Composition!;
+            Assert.Equal(expectedComposition.Manpower.Current, actualComposition.Manpower.Current);
+            Assert.Equal(expectedComposition.Ammunition.GetAvailable(AmmunitionType.SmallArms),
+                actualComposition.Ammunition.GetAvailable(AmmunitionType.SmallArms));
+
+            var expectedLoss = Assert.Single(normalLosses.Companies,
+                loss => ReferenceEquals(loss.Target, expected));
+            var actualLoss = Assert.Single(measuredLosses.Companies,
+                loss => ReferenceEquals(loss.Target, actual));
+            Assert.True(expectedLoss.Casualties.Total > 0);
+            Assert.Equal(expectedLoss with { Target = actual }, actualLoss);
+
+            var expectedSalvo = Assert.Single(normalFire.Events,
+                salvo => ReferenceEquals(salvo.Shooter, expected));
+            var actualSalvo = Assert.Single(measuredFire.Events,
+                salvo => ReferenceEquals(salvo.Shooter, actual));
+            Assert.True(expectedSalvo.RoundsExpended > 0);
+            Assert.Equal(expectedSalvo with { Shooter = actual }, actualSalvo);
+        }
 
         Assert.Equal(
             normal.Battle.Cohesion.Get(normal.Reserve),
