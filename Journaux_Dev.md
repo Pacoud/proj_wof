@@ -6141,7 +6141,7 @@ et concentrées.
 Identifier les phases dominantes puis préparer
 les optimisations ciblées de C2.4d.8d.5.
 
-# COMMIT # 
+# COMMIT (Optimize) dfe0c73ca89feaa06a67c6afd953dbb07de69192 # 
 ### Itérations d'optimisations 
 
 ### C2.4d.8d.5a.1 — Evaluation paresseuse de la visibilité
@@ -6521,3 +6521,109 @@ Les résultats proviennent de campagnes de benchmarks distinctes et restent sens
 **Suite prévue**
 
 C2.4d.8d.5b.2 — Réduction des calculs répétés lors de la détection des contacts mobiles, puis validation par benchmarks et tests de non-régression.
+
+# COMMIT (Optimize) #
+
+### OPT-C2.4d.8d.5b.2 — Précalcul cinématique
+
+**Statut : expérimentation fonctionnellement validée,
+non retenue dans l'état actuel.**
+
+**Objectif**
+
+Réduire les calculs répétés de vitesse et les
+accès aux pays dans la détection mobile.
+
+**Résultats**
+
+- 586 tests réussis.
+- Équivalence militaire octet pour octet.
+- Amélioration de 8,4 % de la détection sparse.
+- Régression mesurée de 2,0 % de la détection dense.
+- Augmentation des allocations d'environ 27 ko/tick.
+- Aucun gain global convaincant en forte densité.
+
+**Décision**
+
+Conserver les tests géométriques et revenir
+au détecteur de référence, sous réserve des
+prochaines mesures.
+
+**Suite**
+
+Profiler le coût de ClosestApproach et
+TacticalFirstMobileContactSolver.Find avant
+de concevoir une éventuelle mutualisation
+des calculs cinématiques.
+
+**Iterations optis annexes**
+
+### OPT-C2.4d.8d.5b.4 — Tri direct des contacts
+
+**Statut : expérimental, validation fonctionnelle acquise.**
+
+- 588 tests réussis.
+- Sorties militaires identiques octet pour octet.
+- Réduction de 8,8 % des allocations de
+  MovementContactDetection en dense.
+- Régression CPU constatée sur une campagne dense.
+- Décision de conservation reportée après
+  une comparaison de montée en charge.
+
+### C2.4d.8d.5b.5 — Validation de la scalabilité
+
+**Objectif**
+
+Comparer les performances des tris LINQ et
+Array.Sort sur des batailles de 250, 500 et
+1 000 compagnies.
+
+**Méthode**
+
+- Builds Release indépendants.
+- Campagnes comparatives alternées.
+- Mesures par phase et allocations.
+- Validation des résultats militaires.
+- Aucune modification des règles du moteur.
+
+**Suite**
+
+Décider de la conservation de 5b.4, puis
+identifier les limites de passage à l'échelle
+et les prochaines optimisations structurelles.
+
+### C2.4d.8d.5b.9 — Séparation des segments mobiles
+
+**Statut : expérimentation non retenue.**
+
+**Objectif**
+
+Éviter l'examen des couples de segments
+immobiles pendant la détection mobile.
+
+**Résultats**
+
+- 597 tests réussis.
+- Équivalence militaire confirmée.
+- Réduction de 27 à 31 % des candidats.
+- Nombre de comparaisons exactes inchangé.
+- Aucun gain de latence dense reproductible
+  démontré.
+- Léger surcoût mémoire observé.
+
+**Décision**
+
+Revenir à l'algorithme de 5b.8.
+Conserver les tests de non-régression.
+
+**Enseignement**
+
+Une diminution du nombre de candidats ne
+garantit pas une diminution du temps CPU.
+
+Le passage à l'échelle devra privilégier
+une meilleure organisation des interactions
+militaires plutôt que l'entretien de
+collections supplémentaires.
+
+

@@ -322,9 +322,8 @@ public sealed class TacticalMobileCombatBenchmarkTests
             phase => phase.Phase ==
                 TacticalBenchmarkPhase.MovementContactDetection);
 
-        Assert.Equal(
-            measuredSample.Work.ResolutionPasses,
-            detection.Calls);
+        Assert.Equal(2, measuredSample.Work.ResolutionPasses);
+        Assert.Equal(1, detection.Calls);
 
         var validation = Assert.Single(measuredSample.Phases,
             phase => phase.Phase == TacticalBenchmarkPhase.Validation);

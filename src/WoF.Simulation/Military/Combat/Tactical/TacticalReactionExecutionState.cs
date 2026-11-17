@@ -691,6 +691,35 @@ internal sealed class TacticalReactionExecutionState
                     "Mobile contacts did not stabilize.");
             }
 
+            // A partir de la deuxieme passe,
+            // ne pas relancer le detecteur si toutes
+            // les trajectoires sont immobiles.
+            //
+            // Deux segments immobiles ne peuvent
+            // produire aucun contact mobile.
+            if (passes > 1)
+            {
+                bool hasMovingSegment = false;
+
+                foreach (var timeline in timelines.Values)
+                {
+                    foreach (var segment in timeline)
+                    {
+                        if (!segment.IsMoving)
+                            continue;
+
+                        hasMovingSegment = true;
+                        break;
+                    }
+
+                    if (hasMovingSegment)
+                        break;
+                }
+
+                if (!hasMovingSegment)
+                    break;
+            }
+
             // Mesurer chaque recherche spatiale.
             var detectionMark = timer?.Start();
 
@@ -702,7 +731,8 @@ internal sealed class TacticalReactionExecutionState
                     .ToArray(),
                 hour,
                 _profile.TransitContactDistanceMeters,
-                includeFirstContacts: true);
+                includeFirstContacts: true,
+                includePredictedEncounters: passes == 1);
 
             if (detectionMark is { } detectionStart)
             {

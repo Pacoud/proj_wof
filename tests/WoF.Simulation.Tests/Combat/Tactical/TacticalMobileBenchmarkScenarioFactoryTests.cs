@@ -275,5 +275,429 @@ public sealed class TacticalMobileBenchmarkScenarioFactoryTests
             reversed.FirstContacts);
     }
 
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DetectorUsesVelocityOfEachTimedSegment(
+        bool dense)
+    {
+        var scenario =
+            TacticalMobileBenchmarkScenarioFactory.CreateDetector(
+                new(
+                    TotalCompanies: 26,
+                    MobilityPercent: 100,
+                    Density: Density(dense),
+                    Seed: 19));
+
+        var first = scenario.Battle.Deployments[0];
+
+        var firstCountry =
+            first.Company.ParentBattalion!
+                .ParentDivision!.Country;
+
+        var second = scenario.Battle.Deployments.First(
+            d => !ReferenceEquals(
+                d.Company.ParentBattalion!
+                    .ParentDivision!.Country,
+                firstCountry));
+
+        // Premiere compagnie :
+        // immobile jusqu'a 0.25,
+        // puis mouvement de X=0 vers X=10.
+        //
+        // Deuxieme compagnie :
+        // mouvement inverse entre 0.25 et 0.75.
+        TacticalTimedTrajectorySegment[] trajectories =
+        [
+            new(
+                first,
+                new TacticalPoint(0, 0, 100),
+                new TacticalPoint(0, 0, 100),
+                0,
+                0.25,
+                IsMoving: false),
+
+            new(
+                first,
+                new TacticalPoint(0, 0, 100),
+                new TacticalPoint(10, 0, 100),
+                0.25,
+                0.75,
+                IsMoving: true),
+
+            new(
+                second,
+                new TacticalPoint(10, 0, 100),
+                new TacticalPoint(0, 0, 100),
+                0.25,
+                0.75,
+                IsMoving: true)
+        ];
+
+        var result = TacticalSimultaneousContactDetector.Detect(
+            scenario.Battle,
+            scenario.Diplomacy,
+            trajectories,
+            scenario.Battle.Engagement.StartHour,
+            contactRadiusMeters: 0.5,
+            includeFirstContacts: true);
+
+        var encounter = Assert.Single(result.Encounters);
+
+        // Rapprochement maximal à t = 0.5.
+        Assert.Equal(
+            0.5,
+            encounter.TimeFraction,
+            precision: 10);
+
+        Assert.Equal(
+            new TacticalPoint(5, 0, 100),
+            encounter.EstimatedPosition);
+
+        var contact = Assert.Single(result.FirstContacts);
+
+        // Distance initiale : 10 m.
+        // Vitesse relative : 40 m par heure.
+        // Premier contact à 0.5 m :
+        // 0.25 + (10 - 0.5) / 40 = 0.4875.
+        Assert.Equal(
+            0.4875,
+            contact.TimeFraction,
+            precision: 10);
+
+        Assert.Equal(
+            0.5,
+            contact.FirstPosition.HorizontalDistanceTo(
+                contact.SecondPosition),
+            precision: 8);
+    }
+
+
+
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SimultaneousContactsAreOrderedByCompanyIndices(
+        bool includeFirstContacts)
+    {
+        var scenario =
+            TacticalMobileBenchmarkScenarioFactory.CreateDetector(
+                new(
+                    TotalCompanies: 26,
+                    MobilityPercent: 100,
+                    Density: Density(false),
+                    Seed: 19));
+
+        int countryId = scenario.Battle.Deployments[0]
+            .Company.ParentBattalion!
+            .ParentDivision!.Country!.Id;
+
+        var firstSide = scenario.Battle.Deployments
+            .Where(d => d.Company.ParentBattalion!
+                .ParentDivision!.Country!.Id == countryId)
+            .Take(2)
+            .ToArray();
+
+        var secondSide = scenario.Battle.Deployments
+            .Where(d => d.Company.ParentBattalion!
+                .ParentDivision!.Country!.Id != countryId)
+            .Take(2)
+            .ToArray();
+
+        Assert.Equal(2, firstSide.Length);
+        Assert.Equal(2, secondSide.Length);
+
+        var indices = scenario.Battle.Deployments
+            .Select((company, index) => (company, index))
+            .ToDictionary(
+                x => x.company,
+                x => x.index,
+                (IEqualityComparer<CompanyDeployment>)ReferenceEqualityComparer.Instance);
+
+        (int First, int Second) Key(
+            CompanyDeployment a,
+            CompanyDeployment b)
+        {
+            int x = indices[a];
+            int y = indices[b];
+
+            return (Math.Min(x, y), Math.Max(x, y));
+        }
+
+        // Les quatre compagnies parcourent exactement
+        // la meme trajectoire, au meme moment.
+        // Les quatre rencontres ennemies commencent
+        // donc toutes a t = 0.
+        var start = new TacticalPoint(0, 0, 100);
+        var end = new TacticalPoint(10, 0, 100);
+
+        var trajectories = firstSide
+            .Concat(secondSide)
+            .Reverse()
+            .Select(d => new TacticalTimedTrajectorySegment(
+                d, start, end, 0, 1, IsMoving: true))
+            .ToArray();
+
+        var result = TacticalSimultaneousContactDetector.Detect(
+            scenario.Battle,
+            scenario.Diplomacy,
+            trajectories,
+            scenario.Battle.Engagement.StartHour,
+            contactRadiusMeters: 1,
+            includeFirstContacts: includeFirstContacts);
+
+        var expected = firstSide
+            .SelectMany(a => secondSide.Select(b => Key(a, b)))
+            .OrderBy(pair => pair.First)
+            .ThenBy(pair => pair.Second)
+            .ToArray();
+
+        Assert.Equal(4, result.Encounters.Count);
+
+        Assert.Equal(
+            expected,
+            result.Encounters
+                .Select(e => Key(e.First, e.Second))
+                .ToArray());
+
+        Assert.All(
+            result.Encounters,
+            e => Assert.Equal(0.0, e.TimeFraction));
+
+        if (includeFirstContacts)
+        {
+            Assert.Equal(4, result.FirstContacts.Count);
+
+            Assert.Equal(
+                expected,
+                result.FirstContacts
+                    .Select(e => Key(e.First, e.Second))
+                    .ToArray());
+
+            Assert.All(
+                result.FirstContacts,
+                e => Assert.Equal(0.0, e.TimeFraction));
+        }
+        else
+        {
+            Assert.Empty(result.FirstContacts);
+        }
+    }
+
+
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void DisablingPredictionsPreservesFirstContactsAndChecks(
+        bool dense,
+        bool includeFirstContacts)
+    {
+        var scenario =
+            TacticalMobileBenchmarkScenarioFactory.CreateDetector(
+                new(
+                    TotalCompanies: 52,
+                    MobilityPercent: 100,
+                    Density: Density(dense),
+                    Seed: 12345));
+
+        long hour = scenario.Battle.Engagement.StartHour;
+
+        var full = TacticalSimultaneousContactDetector.Detect(
+            scenario.Battle,
+            scenario.Diplomacy,
+            scenario.Trajectories,
+            hour,
+            scenario.ContactRadiusMeters,
+            includeFirstContacts: includeFirstContacts);
+
+        var withoutPredictions =
+            TacticalSimultaneousContactDetector.Detect(
+                scenario.Battle,
+                scenario.Diplomacy,
+                scenario.Trajectories,
+                hour,
+                scenario.ContactRadiusMeters,
+                includeFirstContacts: includeFirstContacts,
+                includePredictedEncounters: false);
+
+        Assert.Empty(withoutPredictions.Encounters);
+
+        Assert.Equal(
+            full.FirstContacts,
+            withoutPredictions.FirstContacts);
+
+        Assert.Equal(
+            full.Statistics.SegmentCount,
+            withoutPredictions.Statistics.SegmentCount);
+
+        Assert.Equal(
+            full.Statistics.BroadPhaseCandidates,
+            withoutPredictions.Statistics.BroadPhaseCandidates);
+
+        Assert.Equal(
+            full.Statistics.ExactPairChecks,
+            withoutPredictions.Statistics.ExactPairChecks);
+
+        Assert.Equal(
+            0,
+            withoutPredictions.Statistics.Encounters);
+    }
+
+
+
+    [Theory]
+    [InlineData(false, 1372L, 626L, 437, 374)]
+    [InlineData(true, 113406L, 39438L, 27531, 23562)]
+    public void StationarySecondPassSkipsRedundantDetection(
+        bool dense,
+        long expectedCandidates,
+        long expectedExactChecks,
+        int expectedPredictions,
+        int expectedConfirmedContacts)
+    {
+        var scenario =
+            TacticalMobileBenchmarkScenarioFactory.CreateTick(
+                new(
+                    TotalCompanies: 500,
+                    MobilityPercent: 60,
+                    Density: Density(dense),
+                    Seed: 12345));
+
+        scenario.Engine.Tick();
+
+        var resolution = scenario.Orchestrator
+            .LastMovementPhase!
+            .SimultaneousResolution!;
+
+        // La seconde passe est atteinte,
+        // mais la detection inutile est evitee.
+        Assert.Equal(2, resolution.ResolutionPasses);
+
+        // Les candidats correspondent uniquement
+        // a la premiere passe.
+        Assert.Equal(
+            expectedCandidates,
+            resolution.BroadPhaseCandidates);
+
+        Assert.Equal(
+            expectedExactChecks,
+            resolution.ExactPairChecks);
+
+        Assert.Equal(
+            expectedPredictions,
+            resolution.PredictedEncounters.Count);
+
+        Assert.Equal(
+            expectedConfirmedContacts,
+            scenario.Orchestrator
+                .LastMobileCombatSummary!.Value
+                .ConfirmedContacts);
+    }
+
+
+
+    [Fact]
+    public void AllStationarySegmentsProduceNoMobileContacts()
+    {
+        var scenario =
+            TacticalMobileBenchmarkScenarioFactory.CreateDetector(
+                new(
+                    TotalCompanies: 26,
+                    MobilityPercent: 0,
+                    Density: Density(true),
+                    Seed: 19));
+
+        var result = TacticalSimultaneousContactDetector.Detect(
+            scenario.Battle,
+            scenario.Diplomacy,
+            scenario.Trajectories,
+            scenario.Battle.Engagement.StartHour,
+            scenario.ContactRadiusMeters,
+            includeFirstContacts: true);
+
+        Assert.Equal(0L, result.Statistics.ExactPairChecks);
+        Assert.Empty(result.Encounters);
+        Assert.Empty(result.FirstContacts);
+    }
+
+
+
+    [Theory]
+    [InlineData(false, 0.45)]
+    [InlineData(true, 0.0)]
+    public void MobileStationaryContactWorksInBothSweepOrders(
+        bool stationaryFirst,
+        double expectedContactTime)
+    {
+        var scenario =
+            TacticalMobileBenchmarkScenarioFactory.CreateDetector(
+                new(
+                    TotalCompanies: 26,
+                    MobilityPercent: 0,
+                    Density: Density(false),
+                    Seed: 19));
+
+        var first = scenario.Battle.Deployments[0];
+
+        int countryId = first.Company.ParentBattalion!
+            .ParentDivision!.Country!.Id;
+
+        var second = scenario.Battle.Deployments.First(
+            d => d.Company.ParentBattalion!
+                .ParentDivision!.Country!.Id != countryId);
+
+        var stationaryPoint = new TacticalPoint(0, 0, 100);
+
+        var from = stationaryFirst
+            ? new TacticalPoint(0.5, 0, 100)
+            : new TacticalPoint(-10, 0, 100);
+
+        var to = stationaryFirst
+            ? new TacticalPoint(10.5, 0, 100)
+            : new TacticalPoint(10, 0, 100);
+
+        TacticalTimedTrajectorySegment[] segments =
+        [
+            new(
+                first, from, to,
+                0, 1, IsMoving: true),
+
+            new(
+                second,
+                stationaryPoint,
+                stationaryPoint,
+                0, 1, IsMoving: false)
+        ];
+
+        var result = TacticalSimultaneousContactDetector.Detect(
+            scenario.Battle,
+            scenario.Diplomacy,
+            segments,
+            scenario.Battle.Engagement.StartHour,
+            contactRadiusMeters: 1,
+            includeFirstContacts: true);
+
+        Assert.Single(result.Encounters);
+
+        var contact = Assert.Single(result.FirstContacts);
+
+        Assert.Equal(
+            expectedContactTime,
+            contact.TimeFraction,
+            precision: 8);
+
+        Assert.Equal(1L, result.Statistics.ExactPairChecks);
+    }
+
+
+
+
+
+
 }
 

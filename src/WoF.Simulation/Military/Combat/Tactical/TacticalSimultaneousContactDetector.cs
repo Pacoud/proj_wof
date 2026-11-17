@@ -65,7 +65,8 @@ internal static class TacticalSimultaneousContactDetector
         IReadOnlyList<TacticalTimedTrajectorySegment> segments,
         long hour,
         double contactRadiusMeters,
-        bool includeFirstContacts = false)
+        bool includeFirstContacts = false,
+        bool includePredictedEncounters = true)
     {
         ArgumentNullException.ThrowIfNull(battle);
         ArgumentNullException.ThrowIfNull(diplomacy);
@@ -146,9 +147,9 @@ internal static class TacticalSimultaneousContactDetector
 
         var active = new List<Entry>();
 
-        var earliest =
-            new Dictionary<(int First, int Second),
-                TacticalPredictedEncounter>();
+        var earliest = includePredictedEncounters
+            ? new Dictionary<(int First, int Second), TacticalPredictedEncounter>()
+            : null;
 
         var firstContacts = includeFirstContacts && contactRadiusMeters > 0
         ? new Dictionary<(int First, int Second), TacticalFirstMobileContactEvent>()
@@ -261,21 +262,23 @@ internal static class TacticalSimultaneousContactDetector
                 var orderedFirst = battle.Deployments[firstId];
                 var orderedSecond = battle.Deployments[secondId];
 
-                var encounter = new TacticalPredictedEncounter(
-                    hour,
-                    orderedFirst,
-                    orderedSecond,
-                    result.Time,
-                    result.Point,
-                    result.Distance);
-
                 var key = (firstId, secondId);
 
-                if (!earliest.TryGetValue(key, out var existing)
-                    || encounter.TimeFraction
-                        < existing.TimeFraction)
+                if (earliest is not null)
                 {
-                    earliest[key] = encounter;
+                    var encounter = new TacticalPredictedEncounter(
+                        hour,
+                        orderedFirst,
+                        orderedSecond,
+                        result.Time,
+                        result.Point,
+                        result.Distance);
+
+                    if (!earliest.TryGetValue(key, out var existing)
+                        || encounter.TimeFraction < existing.TimeFraction)
+                    {
+                        earliest[key] = encounter;
+                    }
                 }
 
                 if (firstContacts is not null)
@@ -311,12 +314,14 @@ internal static class TacticalSimultaneousContactDetector
             active.Add(current);
         }
 
-        var ordered = earliest
-            .OrderBy(pair => pair.Value.TimeFraction)
-            .ThenBy(pair => pair.Key.First)
-            .ThenBy(pair => pair.Key.Second)
-            .Select(pair => pair.Value)
-            .ToArray();
+        var ordered = earliest is null
+            ? Array.Empty<TacticalPredictedEncounter>()
+            : earliest
+                .OrderBy(pair => pair.Value.TimeFraction)
+                .ThenBy(pair => pair.Key.First)
+                .ThenBy(pair => pair.Key.Second)
+                .Select(pair => pair.Value)
+                .ToArray();
 
         var orderedFirstContacts = firstContacts is null
         ? Array.Empty<TacticalFirstMobileContactEvent>()
