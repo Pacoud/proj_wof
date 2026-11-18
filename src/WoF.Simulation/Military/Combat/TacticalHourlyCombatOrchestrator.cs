@@ -71,6 +71,9 @@ internal sealed class TacticalHourlyCombatOrchestrator
         ReactionExecution?.LastMovementPhase;
 
 
+    internal TacticalCohesionPhaseResult? LastCohesionPhase
+        { get; private set; }
+
 
 
     internal IReadOnlyList<TacticalBattalionAssessment>
@@ -413,6 +416,8 @@ internal sealed class TacticalHourlyCombatOrchestrator
             }
         }
 
+        TacticalCohesionPhaseResult? cohesionPhase = null;
+
         // 9. Cohesion apres pertes et suppression.
         if (_settings.Cohesion is not null)
         {
@@ -425,7 +430,7 @@ internal sealed class TacticalHourlyCombatOrchestrator
 
             var cohesionMark = timer?.Start();
 
-            _battle.Cohesion.ApplyHour(
+            cohesionPhase = _battle.Cohesion.ApplyHour(
                 hour,
                 casualties,
                 suppressionResult,
@@ -519,6 +524,7 @@ internal sealed class TacticalHourlyCombatOrchestrator
             : null;
 
         LastResult = result;
+        LastCohesionPhase = cohesionPhase;
 
         return result;
     }

@@ -6522,7 +6522,7 @@ Les résultats proviennent de campagnes de benchmarks distinctes et restent sens
 
 C2.4d.8d.5b.2 — Réduction des calculs répétés lors de la détection des contacts mobiles, puis validation par benchmarks et tests de non-régression.
 
-# COMMIT (Optimize) #
+# COMMIT (Optimize) e203b76b1e84f8aa751e7fc38d2ae75323a06e10 #
 
 ### OPT-C2.4d.8d.5b.2 — Précalcul cinématique
 

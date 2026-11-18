@@ -547,6 +547,7 @@ public sealed class TacticalHourlyCombatOrchestratorTests
 
         Assert.Equal(2, first.SalvosFired);
         Assert.Equal(60, first.RoundsExpended);
+        Assert.Null(s.Orchestrator.LastCohesionPhase);
 
         // Les deux compagnies ont ete prises sous le feu.
         Assert.True(
@@ -601,12 +602,23 @@ public sealed class TacticalHourlyCombatOrchestratorTests
             s.GermanDivision.GetCurrentResourceTotals()
                 .Personnel.Available);
 
+        var firstPhase = Assert.IsType<TacticalCohesionPhaseResult>(
+            s.Orchestrator.LastCohesionPhase);
+        Assert.Equal(2, firstPhase.Hour);
+        var firstReports = firstPhase.Companies.ToArray();
+
         // Heure 3 : feu continu sur la meme compagnie.
         // La suppression preexistante provoque
         // maintenant une perte de cohesion.
         s.Engine.Tick();
 
         Assert.Equal(3, s.Engine.Clock.CurrentHour);
+
+        var secondPhase = Assert.IsType<TacticalCohesionPhaseResult>(
+            s.Orchestrator.LastCohesionPhase);
+        Assert.Equal(3, secondPhase.Hour);
+        Assert.NotSame(firstPhase, secondPhase);
+        Assert.Equal(firstReports, firstPhase.Companies);
 
         double germanCohesion =
             s.Battle.Cohesion.Get(s.German);
@@ -975,6 +987,141 @@ public sealed class TacticalHourlyCombatOrchestratorTests
 
         Assert.NotEmpty(recorder.Snapshot());
     }
+
+
+    [Fact]
+    public void FailedHourKeepsLastCompletedCohesionPhase()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+        s.Engine.Tick();
+        var previous = Assert.IsType<TacticalCohesionPhaseResult>(
+            s.Orchestrator.LastCohesionPhase);
+
+        // Preparer la suppression de l'heure suivante pour provoquer
+        // un rejet apres le tir et l'application des pertes.
+        long hour = previous.Hour + 1;
+        s.Battle.Suppression.ApplyHour(
+            hour, Array.Empty<TacticalSuppressionThreat>(),
+            new TacticalSuppressionProfile(10, 2, 10, 0.8));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            s.Orchestrator.Run(hour));
+
+        Assert.Equal(hour, s.Battle.DirectFire.LastCasualtyPhase!.Hour);
+        Assert.Equal(previous.Hour, s.Orchestrator.LastResult!.Value.Hour);
+        Assert.Same(previous, s.Orchestrator.LastCohesionPhase);
+    }
+
+    [Fact]
+    public void FirstSalvoPublishesCohesionLossWithoutDoubleCounting()
+    {
+        var s = CreateScenario(
+            killedProbability: 1,
+            enableSuppression: true,
+            enableCohesion: true);
+
+        Assert.Null(s.Orchestrator.LastCohesionPhase);
+
+        int initialManpower =
+            s.German.Company.Composition!.Manpower.Current;
+
+        double initialDivisionOrganization =
+            s.GermanDivision.Organization;
+
+        // Executer la chaine tactique complete.
+        s.Engine.Tick();
+
+        var phase = Assert.IsType<TacticalCohesionPhaseResult>(
+            s.Orchestrator.LastCohesionPhase);
+
+        Assert.Equal(2, phase.Hour);
+
+        // Recuperer les pertes reellement appliquees.
+        var casualty = Assert.Single(
+            s.Battle.DirectFire.LastCasualtyPhase!.Companies,
+            report => ReferenceEquals(
+                report.Target, s.German));
+
+        Assert.True(casualty.Casualties.Total > 0);
+
+        var german = Assert.Single(
+            phase.Companies,
+            report => ReferenceEquals(
+                report.Company, s.German));
+
+        var french = Assert.Single(
+            phase.Companies,
+            report => ReferenceEquals(
+                report.Company, s.French));
+
+        // Formule du profil configure dans CreateScenario :
+        // pourcentage de pertes * 1.5.
+        double expectedLoss = Math.Min(
+            100.0,
+            100.0 * casualty.Casualties.Total
+                / casualty.AvailableBefore * 1.5);
+
+        Assert.Equal(100.0, german.CohesionBefore, 6);
+
+        Assert.Equal(
+            expectedLoss,
+            german.LossFromCasualties,
+            6);
+
+        // Premiere salve : aucune pression preexistante.
+        Assert.Equal(
+            0.0,
+            german.LossFromSustainedFire,
+            6);
+
+        Assert.Equal(0.0, german.Recovered, 6);
+
+        Assert.Equal(
+            100.0 - expectedLoss,
+            german.CohesionAfter,
+            6);
+
+        Assert.Equal(
+            german.CohesionAfter,
+            s.Battle.Cohesion.Get(s.German),
+            6);
+
+        // La compagnie non touchee conserve sa cohesion.
+        Assert.Equal(100.0, french.CohesionAfter, 6);
+        Assert.Equal(0.0, french.LossFromCasualties, 6);
+        Assert.Equal(
+            100.0,
+            s.Battle.Cohesion.Get(s.French),
+            6);
+
+        // Les pertes physiques ne sont appliquees
+        // qu'une seule fois et propagees par aggregation.
+        int expectedManpower =
+            initialManpower - casualty.Casualties.Total;
+
+        Assert.Equal(
+            expectedManpower,
+            s.German.Company.Composition!.Manpower.Current);
+
+        Assert.Equal(
+            expectedManpower,
+            s.German.Company.ParentBattalion!
+                .GetResourceTotals().Personnel.Available);
+
+        Assert.Equal(
+            expectedManpower,
+            s.GermanDivision.GetCurrentResourceTotals()
+                .Personnel.Available);
+
+        // La cohesion tactique ne modifie pas directement
+        // l'organisation operationnelle de la division.
+        Assert.Equal(
+            initialDivisionOrganization,
+            s.GermanDivision.Organization);
+    }
+
 
 
 
