@@ -6673,7 +6673,7 @@ C2.4d.9b — Étudier la continuité de l'état
 de cohésion des compagnies et sa relation
 avec l'organisation opérationnelle.
 
-# COMMIT # 
+# COMMIT a4d52b1ad1c8d434026a61bbbb5e3377d269e1c3 # 
 
 ### C2.4d.9b.1 — Cohésion persistante des compagnies
 
@@ -6709,7 +6709,58 @@ de vérité de sa cohésion.
   reste à tester intégralement.
 - Aucun lien nouveau avec Division.Organization.
 
+**Tests**
+Le nouveau test vérifie avec le vrai `SimulationEngine` que la même `Company` allemande conserve sa cohésion et ses effectifs après la clôture du premier engagement et son redéploiement dans un second engagement d’identifiant différent.
+
+Il vérifie aussi la suppression initiale à zéro dans la nouvelle bataille, les rapports horaires indépendants, le rejet des déploiements étrangers, l’absence de double application des pertes et la conservation de l’ancien rapport. L’heure tactique suivante reprend exactement la cohésion héritée dans `CohesionBefore`.
+
+
+# COMMIT # 
+
+### C2.4d.9b.3b — Récupération de cohésion hors combat
+
+**Objectif**
+
+Permettre aux compagnies de récupérer
+progressivement leur cohésion entre les
+engagements militaires.
+
+**Fonctionnalités**
+
+- Conditions de repos partagées entre les
+  systèmes d'organisation et de cohésion.
+- Récupération horaire configurable.
+- Taux nul par défaut pour compatibilité.
+- Récupération limitée à 100.
+- Exclusion des divisions engagées,
+  en retraite, en transit ou menacées.
+- Exclusion des participants d'une bataille
+  terminée pendant l'heure.
+- Protection contre les doubles applications.
+- Conservation de la cohésion dans Company.
+- Aucun changement de l'organisation divisionnaire.
+
+**Validation**
+
+- Tests de récupération et d'éligibilité.
+- Tests de clôture d'engagement.
+- `CompanyRecoversBetweenDistinctTacticalEngagements` vérifie le gain de 3 points de cohésion après une heure de repos et sa reprise dans `CohesionBefore` au second engagement.
+- Vérification de l'application unique.
+- Comparaison des bilans militaires.
+- Build Release et suite complète de tests.
+
+**Limites**
+
+- Pas encore de récupération en mouvement.
+- Pas d'influence de la logistique.
+- Taux hors combat à équilibrer.
+- Pas de modification des ruptures tactiques.
+
 **Suite**
 
-C2.4d.9b.2 — Persistance à travers la fin
-d'une bataille et l'entrée dans une nouvelle.
+C2.4d.9c — État et capacités des bataillons :
+cohésion agrégée, effectifs disponibles,
+répartition des compagnies et secteurs tenus.
+
+
+

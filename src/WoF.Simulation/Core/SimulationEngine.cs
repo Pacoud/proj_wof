@@ -26,6 +26,11 @@ public sealed class SimulationEngine
 
     public OrganizationRecoverySystem OrganizationRecovery { get; }
 
+    internal CompanyCohesionRecoverySystem CompanyCohesionRecovery
+    {
+        get;
+    }
+
     public DiplomacySystem Diplomacy { get; } = new();
 
     private readonly List<SupplyDepot> _supplyDepots = new();
@@ -128,6 +133,13 @@ public sealed class SimulationEngine
         OrganizationRecovery.ProcessRecovery(
             _divisions
         );
+
+
+        CompanyCohesionRecovery.ProcessRecovery(
+            Clock.CurrentHour,
+            _divisions,
+            Engagements.EndedThisTick);
+
     }
 
     private void StartQueuedMovements()
@@ -394,22 +406,27 @@ public sealed class SimulationEngine
         );
     }
 
+
     public SimulationEngine()
+        : this(0.0)
     {
-        Retreats =
-        new RetreatSystem(
-            Diplomacy
-            );
-        Engagements =
-            new EngagementSystem(
-                Diplomacy
-            );
+    }
+
+    public SimulationEngine(double cohesionRecoveryPerHour)
+    {
+        Retreats = new RetreatSystem(Diplomacy);
+
+        Engagements = new EngagementSystem(Diplomacy);
 
         OrganizationRecovery =
-            new OrganizationRecoverySystem(
-                Diplomacy
-            );
+            new OrganizationRecoverySystem(Diplomacy);
+
+        CompanyCohesionRecovery =
+            new CompanyCohesionRecoverySystem(
+                Diplomacy,
+                cohesionRecoveryPerHour);
     }
+
 
 
     private void ProcessEndedEngagements()

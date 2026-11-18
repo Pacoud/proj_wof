@@ -69,9 +69,10 @@ public sealed class TacticalHourlyCombatOrchestratorTests
         bool enableCohesion = false,
         bool enableBattalionAssessment = false,
         bool enableBattalionReactions = false,
-        TacticalPhaseTimingRecorder? timingRecorder = null)
+        TacticalPhaseTimingRecorder? timingRecorder = null,
+        double cohesionRecoveryPerHour = 0)
     {
-        var engine = new SimulationEngine();
+        var engine = new SimulationEngine(cohesionRecoveryPerHour);
 
         var france = new Country(1, "France");
         var germany = new Country(2, "Germany");
@@ -1015,6 +1016,173 @@ public sealed class TacticalHourlyCombatOrchestratorTests
     }
 
     [Fact]
+    public void CompanyCohesionSurvivesTwoDistinctEngineEngagements()
+    {
+        var s = CreateScenario(enableSuppression: true, enableCohesion: true);
+        var company = s.German.Company;
+        int initialManpower = company.Composition!.Manpower.Current;
+        double divisionOrganization = s.GermanDivision.Organization;
+        var suppressionProfile = new TacticalSuppressionProfile(10, 2, 10, 0.8);
+        var cohesionProfile = new TacticalCohesionProfile(1.5, 40, 0.1, 3, 20, 0.5);
+
+        s.Engine.Tick();
+
+        var firstEngagement = s.Battle.Engagement;
+        var firstPhase = Assert.IsType<TacticalCohesionPhaseResult>(
+            s.Orchestrator.LastCohesionPhase);
+        var firstReports = firstPhase.Companies.ToArray();
+        var firstCompanyReport = Assert.Single(firstPhase.Companies,
+            report => ReferenceEquals(report.Company, s.German));
+        var firstCasualty = Assert.Single(
+            s.Battle.DirectFire.LastCasualtyPhase!.Companies,
+            report => ReferenceEquals(report.Target, s.German));
+        Assert.True(firstCasualty.Casualties.Total > 0);
+        Assert.Equal(initialManpower - firstCasualty.Casualties.Total,
+            company.Composition.Manpower.Current);
+        Assert.True(company.Cohesion < 100);
+        Assert.Equal(company.Cohesion, firstCompanyReport.CohesionAfter);
+        Assert.True(s.Battle.Suppression.GetProjectedPressure(
+            s.German, firstPhase.Hour, suppressionProfile) > 0);
+
+        double inheritedCohesion = company.Cohesion;
+        int inheritedManpower = company.Composition.Manpower.Current;
+        var inheritedResources = s.GermanDivision.GetCurrentResourceTotals();
+
+        // Provoquer la cloture par les regles operationnelles existantes.
+        s.FrenchDivision.LoseOrganization(s.FrenchDivision.Organization);
+        Assert.True(s.FrenchDivision.IsBroken);
+        s.Engine.Tick();
+
+        Assert.False(firstEngagement.IsActive);
+        Assert.Equal(s.Engine.Clock.CurrentHour, firstEngagement.EndHour);
+        Assert.Same(s.GermanDivision.Country, firstEngagement.WinnerCountry);
+        Assert.Same(firstEngagement, Assert.Single(s.Engine.Engagements.EndedThisTick));
+        Assert.Equal(firstEngagement.Id,
+            Assert.Single(s.Engine.Engagements.History.Reports).EngagementId);
+        Assert.Empty(s.Engine.Engagements.ActiveEngagements);
+        Assert.Null(s.GermanDivision.CurrentEngagement);
+        Assert.Equal(inheritedCohesion, company.Cohesion);
+        Assert.Equal(inheritedResources, s.GermanDivision.GetCurrentResourceTotals());
+        Assert.Same(firstPhase, s.Orchestrator.LastCohesionPhase);
+        Assert.Throws<InvalidOperationException>(() =>
+            s.Engine.Engagements.AttachTacticalBattle(s.Battle));
+
+        var province = s.GermanDivision.CurrentProvince!;
+        var reinforcement = MakeDivision(s.FrenchDivision.Country!, province);
+        var newFrenchCompany = reinforcement.Battalions[0].Companies[0];
+        Assert.Equal(100, newFrenchCompany.Cohesion);
+        s.Engine.AddDivision(reinforcement);
+
+        // Le nouveau combat est cree en fin de tick, avant tout tir.
+        s.Engine.Tick();
+
+        var secondEngagement = Assert.Single(s.Engine.Engagements.ActiveEngagements);
+        Assert.NotSame(firstEngagement, secondEngagement);
+        Assert.NotEqual(firstEngagement.Id, secondEngagement.Id);
+        Assert.Same(secondEngagement, s.GermanDivision.CurrentEngagement);
+        Assert.Same(secondEngagement, reinforcement.CurrentEngagement);
+        Assert.DoesNotContain(s.FrenchDivision, secondEngagement.Participants);
+        Assert.Equal(inheritedResources, s.GermanDivision.GetCurrentResourceTotals());
+        Assert.Equal(inheritedCohesion, company.Cohesion);
+        Assert.Same(firstPhase, s.Orchestrator.LastCohesionPhase);
+
+        var field = new TacticalBattlefield();
+        var sector = new BattleSector(1, "Second battle", TerrainType.Plains);
+        field.AddSector(sector);
+        var battle = new TacticalBattle(secondEngagement, field);
+        var french = battle.DeployCompany(
+            newFrenchCompany, sector, CompanyDeploymentRole.FrontLine);
+        var german = battle.DeployCompany(
+            company, sector, CompanyDeploymentRole.FrontLine);
+
+        Assert.NotSame(s.German, german);
+        Assert.Same(company, german.Company);
+        Assert.Same(s.GermanDivision.Battalions[0], company.ParentBattalion);
+        Assert.Equal(inheritedManpower, german.Company.Composition!.Manpower.Current);
+        Assert.Equal(inheritedCohesion, battle.Cohesion.Get(german));
+        Assert.Throws<InvalidOperationException>(() => battle.Cohesion.Get(s.German));
+        Assert.Throws<InvalidOperationException>(() => s.Battle.Cohesion.Get(german));
+        Assert.NotSame(s.Battle.Suppression, battle.Suppression);
+        Assert.Equal(0, battle.Suppression.GetProjectedPressure(
+            german, secondEngagement.StartHour, suppressionProfile));
+        Assert.Null(battle.DirectFire.LastPhase);
+        Assert.Null(battle.DirectFire.LastCasualtyPhase);
+        Assert.Null(battle.DirectFire.LastSuppressionPhase);
+
+        var geometry = new TacticalGeometryMap(battle);
+        geometry.DefineSector(sector, 50, 0, 500);
+        geometry.PlaceCompany(french, new TacticalPoint(0, 0, 100), 90, 20);
+        geometry.PlaceCompany(german, new TacticalPoint(100, 0, 100), 270, 1);
+        battle.PersonnelExposure.Set(french, new TacticalPersonnelExposure(10, 90, 0, 20));
+        battle.PersonnelExposure.Set(german,
+            new TacticalPersonnelExposure(inheritedManpower, 0, 0, 1));
+        var signatures = new TacticalSignatureFrame(battle);
+        signatures.Set(german, new TacticalUnitSignature(
+            TacticalActivity.Stationary, TacticalConcealment.None));
+        var settings = new TacticalHourlyCombatSettings(
+            detection: new TacticalDetectionProfile(500, 0, 360, 1),
+            fire: new TacticalDirectFireProfile(250),
+            hit: new TacticalHitProfile(0.001, 0, 10),
+            defense: new TacticalDefenseProfile(1, 1, 1, 0, 0, 0),
+            effects: new TacticalPersonnelEffectProfile(1, 0),
+            maxWeaponsPerCompany: 10,
+            roundsPerWeapon: 3,
+            baseSeed: 12345,
+            suppression: suppressionProfile,
+            cohesion: cohesionProfile);
+        var orchestrator = new TacticalHourlyCombatOrchestrator(
+            battle, geometry, new TacticalPerceptionState(battle),
+            signatures, s.Engine.Diplomacy, settings);
+        Assert.Null(orchestrator.LastResult);
+        Assert.Null(orchestrator.LastCohesionPhase);
+        s.Engine.Engagements.AttachTacticalBattle(battle);
+        s.Engine.Engagements.RegisterTacticalOrchestrator(orchestrator);
+
+        s.Engine.Tick();
+
+        var secondPhase = Assert.IsType<TacticalCohesionPhaseResult>(
+            orchestrator.LastCohesionPhase);
+        var secondCompanyReport = Assert.Single(secondPhase.Companies,
+            report => ReferenceEquals(report.Company, german));
+        var secondCasualty = Assert.Single(battle.DirectFire.LastCasualtyPhase!.Companies,
+            report => ReferenceEquals(report.Target, german));
+        Assert.Equal(s.Engine.Clock.CurrentHour, secondPhase.Hour);
+        Assert.True(secondPhase.Hour > firstPhase.Hour);
+        Assert.True(secondCasualty.Casualties.Total > 0);
+        Assert.Equal(inheritedCohesion, secondCompanyReport.CohesionBefore);
+        Assert.Equal(secondCompanyReport.CohesionAfter, company.Cohesion);
+        Assert.Equal(0, secondCompanyReport.LossFromSustainedFire);
+        Assert.Equal(inheritedManpower, secondCasualty.AvailableBefore);
+        Assert.Equal(inheritedManpower - secondCasualty.Casualties.Total,
+            company.Composition.Manpower.Current);
+        Assert.Equal(company.Composition.Manpower.Current,
+            company.ParentBattalion!.GetResourceTotals().Personnel.Available);
+        Assert.Equal(company.Composition.Manpower.Current,
+            s.GermanDivision.GetCurrentResourceTotals().Personnel.Available);
+        Assert.Equal(divisionOrganization, s.GermanDivision.Organization);
+        Assert.False(s.GermanDivision.IsBroken);
+        Assert.Equal(1, orchestrator.LastResult!.Value.SalvosFired);
+        Assert.Equal(30, orchestrator.LastResult.Value.RoundsExpended);
+        Assert.Equal(0, Assert.Single(battle.DirectFire.LastSuppressionPhase!.Targets,
+            report => ReferenceEquals(report.Target, german)).PressureBefore);
+
+        double afterCohesion = company.Cohesion;
+        int afterManpower = company.Composition.Manpower.Current;
+        Assert.Throws<InvalidOperationException>(() => orchestrator.Run(secondPhase.Hour));
+        Assert.Throws<InvalidOperationException>(() =>
+            battle.Cohesion.ApplyHour(
+                secondPhase.Hour, battle.DirectFire.LastCasualtyPhase!,
+                battle.DirectFire.LastSuppressionPhase!, suppressionProfile, cohesionProfile));
+        Assert.Equal(afterCohesion, company.Cohesion);
+        Assert.Equal(afterManpower, company.Composition.Manpower.Current);
+        Assert.Same(secondPhase, orchestrator.LastCohesionPhase);
+        Assert.Same(firstPhase, s.Orchestrator.LastCohesionPhase);
+        Assert.Equal(firstReports, firstPhase.Companies);
+        Assert.Equal(inheritedCohesion, firstCompanyReport.CohesionAfter);
+        Assert.Single(s.Engine.Engagements.History.Reports);
+    }
+
+    [Fact]
     public void FirstSalvoPublishesCohesionLossWithoutDoubleCounting()
     {
         var s = CreateScenario(
@@ -1123,6 +1291,263 @@ public sealed class TacticalHourlyCombatOrchestratorTests
     }
 
 
+    [Fact]
+    public void TacticalClosureDoesNotRecoverCohesionTwice()
+    {
+        var s = CreateScenario(
+            registerOrchestrator: false,
+            killedProbability: 1,
+            enableSuppression: true,
+            enableCohesion: true,
+            cohesionRecoveryPerHour: 3);
+
+        // Rendre le territoire sur pour le
+        // survivant, afin que l'exclusion de
+        // l'heure de cloture soit vraiment testee.
+        s.GermanDivision.CurrentProvince!
+            .ChangeController(s.GermanDivision.Country);
+
+        var engagement = s.Battle.Engagement;
+
+        Assert.Equal(1, s.Engine.Clock.CurrentHour);
+
+        // Execution manuelle de la phase tactique
+        // pour l'heure 2, avant le tick operationnel.
+        s.Orchestrator.Run(2);
+
+        var phase = Assert.IsType<TacticalCohesionPhaseResult>(
+            s.Orchestrator.LastCohesionPhase);
+
+        var germanReport = Assert.Single(
+            phase.Companies,
+            r => ReferenceEquals(r.Company, s.German));
+
+        Assert.True(germanReport.LossFromCasualties > 0);
+
+        double afterCombat = germanReport.CohesionAfter;
+
+        Assert.Equal(
+            afterCombat,
+            s.German.Company.Cohesion,
+            6);
+
+        // Provoquer la fin de la bataille
+        // sans ajouter de nouvelles regles
+        // de rupture ou de victoire.
+        s.FrenchDivision.LoseOrganization(
+            s.FrenchDivision.Organization);
+
+        s.Engine.Tick();
+
+        Assert.Equal(2, s.Engine.Clock.CurrentHour);
+        Assert.False(engagement.IsActive);
+
+        Assert.Contains(
+            s.Engine.Engagements.EndedThisTick,
+            e => ReferenceEquals(e, engagement));
+
+        // Le service hors combat ne doit pas
+        // ajouter 3 points a une cohesion deja
+        // traitee pour cette heure.
+        Assert.Equal(
+            afterCombat,
+            s.German.Company.Cohesion,
+            6);
+
+        Assert.Same(
+            phase,
+            s.Orchestrator.LastCohesionPhase);
+    }
+
+
+    [Fact]
+    public void CompanyRecoversBetweenDistinctTacticalEngagements()
+    {
+        const double recoveryPerHour = 3;
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true,
+            cohesionRecoveryPerHour: recoveryPerHour);
+        var company = s.German.Company;
+        int initialManpower = company.Composition!.Manpower.Current;
+        double divisionOrganization = s.GermanDivision.Organization;
+        var suppressionProfile = new TacticalSuppressionProfile(10, 2, 10, 0.8);
+        var cohesionProfile = new TacticalCohesionProfile(1.5, 40, 0.1, 3, 20, 0.5);
+
+        s.Engine.Tick();
+
+        var firstEngagement = s.Battle.Engagement;
+        var firstPhase = Assert.IsType<TacticalCohesionPhaseResult>(
+            s.Orchestrator.LastCohesionPhase);
+        Assert.Equal(2, firstPhase.Hour);
+        var firstReports = firstPhase.Companies.ToArray();
+        var firstCompanyReport = Assert.Single(firstPhase.Companies,
+            report => ReferenceEquals(report.Company, s.German));
+        var firstCasualty = Assert.Single(
+            s.Battle.DirectFire.LastCasualtyPhase!.Companies,
+            report => ReferenceEquals(report.Target, s.German));
+        Assert.True(firstCasualty.Casualties.Total > 0);
+        Assert.Equal(initialManpower - firstCasualty.Casualties.Total,
+            company.Composition.Manpower.Current);
+        Assert.True(company.Cohesion < 100);
+        Assert.Equal(company.Cohesion, firstCompanyReport.CohesionAfter);
+        Assert.True(s.Battle.Suppression.GetProjectedPressure(
+            s.German, firstPhase.Hour, suppressionProfile) > 0);
+
+        double inheritedCohesion = company.Cohesion;
+        int inheritedManpower = company.Composition.Manpower.Current;
+        var inheritedResources = s.GermanDivision.GetCurrentResourceTotals();
+
+        // Provoquer la cloture par les regles operationnelles existantes.
+        s.FrenchDivision.LoseOrganization(s.FrenchDivision.Organization);
+        Assert.True(s.FrenchDivision.IsBroken);
+        s.Engine.Tick();
+
+        long closureHour = s.Engine.Clock.CurrentHour;
+        Assert.Equal(firstPhase.Hour + 1, closureHour);
+        Assert.False(firstEngagement.IsActive);
+        Assert.Equal(closureHour, firstEngagement.EndHour);
+        Assert.Same(s.GermanDivision.Country, firstEngagement.WinnerCountry);
+        Assert.Same(firstEngagement, Assert.Single(s.Engine.Engagements.EndedThisTick));
+        Assert.Equal(firstEngagement.Id,
+            Assert.Single(s.Engine.Engagements.History.Reports).EngagementId);
+        Assert.Empty(s.Engine.Engagements.ActiveEngagements);
+        Assert.Null(s.GermanDivision.CurrentEngagement);
+        Assert.Equal(inheritedCohesion, company.Cohesion);
+        Assert.Equal(inheritedResources, s.GermanDivision.GetCurrentResourceTotals());
+        Assert.Same(firstPhase, s.Orchestrator.LastCohesionPhase);
+        Assert.Throws<InvalidOperationException>(() =>
+            s.Engine.Engagements.AttachTacticalBattle(s.Battle));
+
+        var province = Assert.IsType<Province>(s.GermanDivision.CurrentProvince);
+        Assert.Same(s.GermanDivision.Country, province.Controller);
+
+        double cohesionAtClosure = company.Cohesion;
+        double expectedCohesion = Math.Min(100, cohesionAtClosure + recoveryPerHour);
+        s.Engine.Tick();
+
+        Assert.Equal(closureHour + 1, s.Engine.Clock.CurrentHour);
+        Assert.Empty(s.Engine.Engagements.ActiveEngagements);
+        Assert.Null(s.GermanDivision.CurrentEngagement);
+        Assert.True(company.Cohesion > cohesionAtClosure);
+        Assert.Equal(expectedCohesion, company.Cohesion);
+        Assert.Equal(inheritedResources, s.GermanDivision.GetCurrentResourceTotals());
+        Assert.Equal(inheritedManpower, company.Composition.Manpower.Current);
+
+        var reinforcement = MakeDivision(s.FrenchDivision.Country!, province);
+        var newFrenchCompany = reinforcement.Battalions[0].Companies[0];
+        Assert.Equal(100, newFrenchCompany.Cohesion);
+        s.Engine.AddDivision(reinforcement);
+
+        // Le nouveau combat est cree en fin de tick, avant tout tir.
+        s.Engine.Tick();
+
+        var secondEngagement = Assert.Single(s.Engine.Engagements.ActiveEngagements);
+        Assert.NotSame(firstEngagement, secondEngagement);
+        Assert.NotEqual(firstEngagement.Id, secondEngagement.Id);
+        Assert.Equal(closureHour + 2, secondEngagement.StartHour);
+        Assert.Same(secondEngagement, s.GermanDivision.CurrentEngagement);
+        Assert.Same(secondEngagement, reinforcement.CurrentEngagement);
+        Assert.DoesNotContain(s.FrenchDivision, secondEngagement.Participants);
+        Assert.Equal(inheritedResources, s.GermanDivision.GetCurrentResourceTotals());
+        Assert.Equal(expectedCohesion, company.Cohesion);
+        Assert.Same(firstPhase, s.Orchestrator.LastCohesionPhase);
+
+        var field = new TacticalBattlefield();
+        var sector = new BattleSector(1, "Second battle", TerrainType.Plains);
+        field.AddSector(sector);
+        var battle = new TacticalBattle(secondEngagement, field);
+        var french = battle.DeployCompany(
+            newFrenchCompany, sector, CompanyDeploymentRole.FrontLine);
+        var german = battle.DeployCompany(
+            company, sector, CompanyDeploymentRole.FrontLine);
+
+        Assert.NotSame(s.German, german);
+        Assert.Same(company, german.Company);
+        Assert.Same(s.GermanDivision.Battalions[0], company.ParentBattalion);
+        Assert.Equal(inheritedManpower, german.Company.Composition!.Manpower.Current);
+        Assert.Equal(expectedCohesion, battle.Cohesion.Get(german));
+        Assert.Throws<InvalidOperationException>(() => battle.Cohesion.Get(s.German));
+        Assert.Throws<InvalidOperationException>(() => s.Battle.Cohesion.Get(german));
+        Assert.NotSame(s.Battle.Suppression, battle.Suppression);
+        Assert.Equal(0, battle.Suppression.GetProjectedPressure(
+            german, secondEngagement.StartHour, suppressionProfile));
+        Assert.Null(battle.DirectFire.LastPhase);
+        Assert.Null(battle.DirectFire.LastCasualtyPhase);
+        Assert.Null(battle.DirectFire.LastSuppressionPhase);
+
+        var geometry = new TacticalGeometryMap(battle);
+        geometry.DefineSector(sector, 50, 0, 500);
+        geometry.PlaceCompany(french, new TacticalPoint(0, 0, 100), 90, 20);
+        geometry.PlaceCompany(german, new TacticalPoint(100, 0, 100), 270, 1);
+        battle.PersonnelExposure.Set(french, new TacticalPersonnelExposure(10, 90, 0, 20));
+        battle.PersonnelExposure.Set(german,
+            new TacticalPersonnelExposure(inheritedManpower, 0, 0, 1));
+        var signatures = new TacticalSignatureFrame(battle);
+        signatures.Set(german, new TacticalUnitSignature(
+            TacticalActivity.Stationary, TacticalConcealment.None));
+        var settings = new TacticalHourlyCombatSettings(
+            detection: new TacticalDetectionProfile(500, 0, 360, 1),
+            fire: new TacticalDirectFireProfile(250),
+            hit: new TacticalHitProfile(0.001, 0, 10),
+            defense: new TacticalDefenseProfile(1, 1, 1, 0, 0, 0),
+            effects: new TacticalPersonnelEffectProfile(1, 0),
+            maxWeaponsPerCompany: 10,
+            roundsPerWeapon: 3,
+            baseSeed: 12345,
+            suppression: suppressionProfile,
+            cohesion: cohesionProfile);
+        var orchestrator = new TacticalHourlyCombatOrchestrator(
+            battle, geometry, new TacticalPerceptionState(battle),
+            signatures, s.Engine.Diplomacy, settings);
+        Assert.Null(orchestrator.LastResult);
+        Assert.Null(orchestrator.LastCohesionPhase);
+        s.Engine.Engagements.AttachTacticalBattle(battle);
+        s.Engine.Engagements.RegisterTacticalOrchestrator(orchestrator);
+
+        s.Engine.Tick();
+
+        var secondPhase = Assert.IsType<TacticalCohesionPhaseResult>(
+            orchestrator.LastCohesionPhase);
+        var secondCompanyReport = Assert.Single(secondPhase.Companies,
+            report => ReferenceEquals(report.Company, german));
+        var secondCasualty = Assert.Single(battle.DirectFire.LastCasualtyPhase!.Companies,
+            report => ReferenceEquals(report.Target, german));
+        Assert.Equal(s.Engine.Clock.CurrentHour, secondPhase.Hour);
+        Assert.Equal(secondEngagement.StartHour + 1, secondPhase.Hour);
+        Assert.True(secondCasualty.Casualties.Total > 0);
+        Assert.Equal(expectedCohesion, secondCompanyReport.CohesionBefore);
+        Assert.Equal(secondCompanyReport.CohesionAfter, company.Cohesion);
+        Assert.Equal(0, secondCompanyReport.LossFromSustainedFire);
+        Assert.Equal(inheritedManpower, secondCasualty.AvailableBefore);
+        Assert.Equal(inheritedManpower - secondCasualty.Casualties.Total,
+            company.Composition.Manpower.Current);
+        Assert.Equal(company.Composition.Manpower.Current,
+            company.ParentBattalion!.GetResourceTotals().Personnel.Available);
+        Assert.Equal(company.Composition.Manpower.Current,
+            s.GermanDivision.GetCurrentResourceTotals().Personnel.Available);
+        Assert.Equal(divisionOrganization, s.GermanDivision.Organization);
+        Assert.False(s.GermanDivision.IsBroken);
+        Assert.Equal(1, orchestrator.LastResult!.Value.SalvosFired);
+        Assert.Equal(30, orchestrator.LastResult.Value.RoundsExpended);
+        Assert.Equal(0, Assert.Single(battle.DirectFire.LastSuppressionPhase!.Targets,
+            report => ReferenceEquals(report.Target, german)).PressureBefore);
+
+        double afterCohesion = company.Cohesion;
+        int afterManpower = company.Composition.Manpower.Current;
+        Assert.Throws<InvalidOperationException>(() => orchestrator.Run(secondPhase.Hour));
+        Assert.Throws<InvalidOperationException>(() =>
+            battle.Cohesion.ApplyHour(
+                secondPhase.Hour, battle.DirectFire.LastCasualtyPhase!,
+                battle.DirectFire.LastSuppressionPhase!, suppressionProfile, cohesionProfile));
+        Assert.Equal(afterCohesion, company.Cohesion);
+        Assert.Equal(afterManpower, company.Composition.Manpower.Current);
+        Assert.Same(secondPhase, orchestrator.LastCohesionPhase);
+        Assert.Same(firstPhase, s.Orchestrator.LastCohesionPhase);
+        Assert.Equal(firstReports, firstPhase.Companies);
+        Assert.Equal(inheritedCohesion, firstCompanyReport.CohesionAfter);
+        Assert.Single(s.Engine.Engagements.History.Reports);
+    }
 
 
 }
