@@ -5,6 +5,8 @@ namespace WoF.Simulation.Military.Organization;
 
 public sealed class Company
 {
+    private double _cohesion = 100.0;
+
     public int Id { get; }
 
     public string Name { get; }
@@ -14,6 +16,18 @@ public sealed class Company
     public CompanyComposition? Composition { get; }
 
     public Battalion? ParentBattalion { get; private set; }
+
+    public double Cohesion
+    {
+        get => _cohesion;
+        internal set
+        {
+            if (!double.IsFinite(value) || value < 0.0 || value > 100.0)
+                throw new ArgumentOutOfRangeException(nameof(value));
+
+            _cohesion = value;
+        }
+    }
 
     public Company(
         int id,

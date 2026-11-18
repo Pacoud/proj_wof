@@ -14,15 +14,12 @@ internal sealed record TacticalCohesionPhaseResult(
     IReadOnlyList<TacticalCohesionCompanyReport> Companies);
 
 /// <summary>
-/// Cohesion tactique persistante par compagnie.
-/// Source distincte des effectifs et de la suppression.
+/// Calcule la cohesion horaire et publie les valeurs
+/// dans les compagnies deployees.
 /// </summary>
 internal sealed class TacticalCohesionState
 {
     private readonly TacticalBattle _battle;
-
-    private readonly Dictionary<CompanyDeployment, double>
-        _values = new(ReferenceEqualityComparer.Instance);
 
     private long? _lastAppliedHour;
 
@@ -35,10 +32,7 @@ internal sealed class TacticalCohesionState
     internal double Get(CompanyDeployment company)
     {
         ValidateCompany(company);
-
-        return _values.TryGetValue(company, out double value)
-            ? value
-            : 100.0;
+        return company.Company.Cohesion;
     }
 
     /// <summary>
@@ -166,9 +160,6 @@ internal sealed class TacticalCohesionState
             }
         }
 
-        var next = new Dictionary<CompanyDeployment, double>(
-            ReferenceEqualityComparer.Instance);
-
         var reports = new List<TacticalCohesionCompanyReport>(
             _battle.Deployments.Count);
 
@@ -251,7 +242,11 @@ internal sealed class TacticalCohesionState
                 afterDamage + recovered,
                 0.0, 100.0);
 
-            next.Add(company, after);
+            if (!double.IsFinite(after))
+            {
+                throw new InvalidOperationException(
+                    "Calculated company cohesion is not finite.");
+            }
 
             reports.Add(new TacticalCohesionCompanyReport(
                 company,
@@ -262,18 +257,17 @@ internal sealed class TacticalCohesionState
                 after));
         }
 
-        // Publication seulement apres validation
-        // de tous les rapports et calculs.
-        _values.Clear();
-
-        foreach (var pair in next)
-            _values.Add(pair.Key, pair.Value);
-
-        _lastAppliedHour = hour;
-
-        return new TacticalCohesionPhaseResult(
+        var result = new TacticalCohesionPhaseResult(
             hour,
             Array.AsReadOnly(reports.ToArray()));
+
+        // Publication seulement apres validation
+        // de tous les rapports et calculs.
+        foreach (var report in reports)
+            report.Company.Company.Cohesion = report.CohesionAfter;
+
+        _lastAppliedHour = hour;
+        return result;
     }
 
     private void ValidateCompany(CompanyDeployment company)

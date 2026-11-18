@@ -6627,3 +6627,89 @@ militaires plutôt que l'entretien de
 collections supplémentaires.
 
 
+
+# COMMIT c00c699c228760028f8f6ec7fa6e358cf86d6345 # 
+
+### C2.4d.9a — Publication de la cohésion tactique
+
+**Objectif**
+
+Rendre observable l'évolution horaire de la
+cohésion des compagnies à partir du système
+tactique déjà implémenté.
+
+**Modifications**
+
+- Publication de LastCohesionPhase dans
+  TacticalHourlyCombatOrchestrator.
+- Conservation du rapport retourné par ApplyHour.
+- Consultation de la cohésion avant et après
+  chaque heure de combat.
+- Distinction entre pertes dues aux victimes,
+  au feu soutenu et récupération.
+- Aucun changement des règles militaires.
+
+**Validation prévue**
+
+- Test de bout en bout du tir jusqu'à la cohésion.
+- Vérification des pertes physiques appliquées.
+- Vérification des agrégats de bataillon et division.
+- Vérification de la compagnie non touchée.
+- Vérification du comportement sans profil.
+- Suite complète des tests Release.
+- Contrôle du benchmark tactique.
+
+**Limites**
+
+- La cohésion demeure liée au déploiement tactique.
+- Elle est réinitialisée dans une nouvelle bataille.
+- L'organisation opérationnelle de la division
+  reste indépendante.
+- Aucune nouvelle mécanique de retraite ou de défaite.
+
+**Suite**
+
+C2.4d.9b — Étudier la continuité de l'état
+de cohésion des compagnies et sa relation
+avec l'organisation opérationnelle.
+
+# COMMIT # 
+
+### C2.4d.9b.1 — Cohésion persistante des compagnies
+
+**Objectif**
+
+Faire de la compagnie militaire la source
+de vérité de sa cohésion.
+
+**Fonctionnalités**
+
+- Cohésion initiale à 100.
+- Stockage persistant dans Company.
+- Conservation de l'état entre contextes tactiques.
+- Suppression du stockage redondant par déploiement.
+- Réutilisation des formules existantes.
+- Conservation de LastCohesionPhase.
+- Aucun changement de l'organisation divisionnaire.
+
+**Validation prévue**
+
+- Tests de cohésion et de double application.
+- Vérification de la conservation de l'état.
+- Vérification de l'indépendance des compagnies.
+- Build Release et suite complète de tests.
+- Benchmark de non-régression.
+
+**Limites**
+
+- Persistance en mémoire pendant la simulation ;
+  la sauvegarde sur disque n'est pas traitée.
+- Pas encore de récupération hors combat.
+- Le cycle de deux engagements successifs
+  reste à tester intégralement.
+- Aucun lien nouveau avec Division.Organization.
+
+**Suite**
+
+C2.4d.9b.2 — Persistance à travers la fin
+d'une bataille et l'entrée dans une nouvelle.

@@ -167,6 +167,8 @@ public sealed class TacticalCohesionTests
     {
         var s = CreateScenario();
 
+        Assert.Equal(100, s.First.Company.Cohesion);
+        Assert.Equal(100, s.Second.Company.Cohesion);
         Assert.Equal(100, s.Battle.Cohesion.Get(s.First));
         Assert.Equal(100, s.Battle.Cohesion.Get(s.Second));
     }
@@ -359,15 +361,16 @@ public sealed class TacticalCohesionTests
     {
         var s = CreateScenario();
         var quiet = ApplySuppression(s, 2);
+        var casualties = ApplyPhysicalLosses(s.Second, 2, killed: 4, wounded: 6);
 
         s.Battle.Cohesion.ApplyHour(
-            2, EmptyCasualties(2),
-            quiet, Suppression, Cohesion);
+            2, casualties, quiet, Suppression, Cohesion);
 
         Assert.Throws<InvalidOperationException>(() =>
             s.Battle.Cohesion.ApplyHour(
-                2, EmptyCasualties(2),
-                quiet, Suppression, Cohesion));
+                2, casualties, quiet, Suppression, Cohesion));
+
+        Assert.Equal(85, s.Second.Company.Cohesion);
     }
 
     [Fact]
@@ -382,6 +385,48 @@ public sealed class TacticalCohesionTests
                 quiet, Suppression, Cohesion));
 
         Assert.Equal(100, s.Battle.Cohesion.Get(s.Second));
+    }
+
+    [Fact]
+    public void InvalidCasualtyReportLeavesBothCompaniesUnchanged()
+    {
+        var s = CreateScenario();
+        s.Second.Company.Cohesion = 70;
+        var quiet = ApplySuppression(s, 2);
+        var valid = ApplyPhysicalLosses(s.First, 2, killed: 4, wounded: 6);
+        var invalid = new TacticalCompanyCasualtyApplication(
+            s.Second, new PersonnelCasualtyReport(1, 0, 0),
+            AvailableBefore: 100, AvailableAfter: 99);
+        var phase = new TacticalCasualtyPhaseResult(2, [valid.Companies[0], invalid]);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            s.Battle.Cohesion.ApplyHour(2, phase, quiet, Suppression, Cohesion));
+
+        Assert.Equal(100, s.First.Company.Cohesion);
+        Assert.Equal(70, s.Second.Company.Cohesion);
+
+        s.Battle.Cohesion.ApplyHour(2, valid, quiet, Suppression, Cohesion);
+
+        Assert.Equal(85, s.First.Company.Cohesion);
+        Assert.Equal(73, s.Second.Company.Cohesion);
+    }
+
+    [Theory]
+    [InlineData(-0.01)]
+    [InlineData(100.01)]
+    [InlineData(double.NaN)]
+    [InlineData(double.NegativeInfinity)]
+    [InlineData(double.PositiveInfinity)]
+    public void CompanyRejectsInvalidCohesionWithoutChangingIt(double value)
+    {
+        var s = CreateScenario();
+        s.Second.Company.Cohesion = 0;
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => s.Second.Company.Cohesion = value);
+
+        Assert.Equal(0, s.Second.Company.Cohesion);
+        s.Second.Company.Cohesion = 100;
+        Assert.Equal(100, s.Second.Company.Cohesion);
     }
 
     [Fact]
@@ -413,4 +458,80 @@ public sealed class TacticalCohesionTests
             new TacticalCohesionProfile(
                 1.5, 40, 0.1, 3, 20, 1.5));
     }
+
+
+    [Fact]
+    public void CompanyCohesionSurvivesNewTacticalBattleState()
+    {
+        var s = CreateScenario();
+
+        var casualties = ApplyPhysicalLosses(
+            s.Second,
+            hour: 2,
+            killed: 4,
+            wounded: 6);
+
+        var suppression = ApplySuppression(s, 2);
+
+        s.Battle.Cohesion.ApplyHour(
+            2,
+            casualties,
+            suppression,
+            Suppression,
+            Cohesion);
+
+        // Dix pour cent de pertes :
+        // 100 - 10 * 1.5 = 85.
+        Assert.Equal(
+            85.0,
+            s.Second.Company.Cohesion,
+            6);
+
+        // Construire un nouveau contexte tactique
+        // a partir du meme objet Company.
+        var field = new TacticalBattlefield();
+
+        var sector = new BattleSector(
+            99,
+            "Second battlefield",
+            TerrainType.Plains);
+
+        field.AddSector(sector);
+
+        var nextBattle = new TacticalBattle(
+            s.Battle.Engagement,
+            field);
+
+        var newDeployment = nextBattle.DeployCompany(
+            s.Second.Company,
+            sector,
+            CompanyDeploymentRole.FrontLine);
+
+        // Le nouveau contexte lit la valeur
+        // persistante de la compagnie.
+        Assert.Equal(
+            85.0,
+            nextBattle.Cohesion.Get(newDeployment),
+            6);
+
+        var nextSuppression = nextBattle.Suppression.ApplyHour(
+            3, Array.Empty<TacticalSuppressionThreat>(), Suppression);
+        var nextPhase = nextBattle.Cohesion.ApplyHour(
+            3, EmptyCasualties(3), nextSuppression, Suppression, Cohesion);
+
+        var report = Assert.Single(nextPhase.Companies);
+        Assert.Equal(85, report.CohesionBefore, 6);
+        Assert.Equal(88, report.CohesionAfter, 6);
+
+        // L'ancien deploiement lit aussi la valeur mise a jour.
+        Assert.Equal(88, s.Battle.Cohesion.Get(s.Second), 6);
+
+        // Une compagnie differente n'herite
+        // pas de cette cohesion.
+        Assert.Equal(
+            100.0,
+            s.First.Company.Cohesion,
+            6);
+    }
+
 }
