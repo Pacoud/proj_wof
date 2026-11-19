@@ -6715,7 +6715,7 @@ Le nouveau test vérifie avec le vrai `SimulationEngine` que la même `Company` 
 Il vérifie aussi la suppression initiale à zéro dans la nouvelle bataille, les rapports horaires indépendants, le rejet des déploiements étrangers, l’absence de double application des pertes et la conservation de l’ancien rapport. L’heure tactique suivante reprend exactement la cohésion héritée dans `CohesionBefore`.
 
 
-# COMMIT # 
+# COMMIT dc98901022d5161e5aeff71f4e79d1a982ddcadc # 
 
 ### C2.4d.9b.3b — Récupération de cohésion hors combat
 
@@ -6762,7 +6762,7 @@ C2.4d.9c — État et capacités des bataillons :
 cohésion agrégée, effectifs disponibles,
 répartition des compagnies et secteurs tenus.
 
-# COMMIT # 
+# COMMIT 09d4f0146b41dac686313c9cb2856e0066ada5c4 # 
 
 ### C2.4d.9d — Continuité du front des bataillons
 

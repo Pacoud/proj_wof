@@ -1135,4 +1135,326 @@ public sealed class TacticalBattalionAssessmentTests
 
 
 
+    private static CompanyDeployment EnemyDeployment(Scenario s)
+    {
+        return Assert.Single(
+            s.Battle.Deployments,
+            d => !ReferenceEquals(
+                d.Company.ParentBattalion?.ParentDivision,
+                s.FriendlyDivision));
+    }
+
+    private static TacticalBattalionFrontExposureReport
+        AssessExposure(
+            Scenario s,
+            IReadOnlyList<BattleSector> sectors,
+            bool atWar = true)
+    {
+        var diplomacy = new DiplomacySystem();
+
+        if (atWar)
+        {
+            var enemyCountry = EnemyDeployment(s)
+                .Company.ParentBattalion!
+                .ParentDivision!.Country!;
+
+            diplomacy.DeclareWar(
+                s.FriendlyDivision.Country!,
+                enemyCountry);
+        }
+
+        return new TacticalBattalionFrontExposureSystem(
+            s.Battle).Evaluate(
+                s.Battalion,
+                Profile,
+                sectors,
+                diplomacy);
+    }
+
+    [Fact]
+    public void EnemyFrontLineInSameSectorIsReported()
+    {
+        var s = CreateScenario();
+
+        var result = AssessExposure(
+            s, new[] { s.PrioritySector, s.SecondarySector });
+
+        var report = Assert.Single(
+            result.Sectors,
+            r => ReferenceEquals(
+                r.Friendly.Sector, s.PrioritySector));
+
+        Assert.Equal(1, report.HostileCompaniesInSector);
+        Assert.Equal(100, report.HostilePersonnelInSector);
+        Assert.Equal(
+            TacticalEnemyProximity.SameSector,
+            report.Proximity);
+    }
+
+    [Fact]
+    public void EnemyInsideInteriorGapIsReported()
+    {
+        var s = CreateScenario();
+        var third = new BattleSector(
+            3, "Third", TerrainType.Plains);
+
+        s.Battle.Battlefield.AddSector(third);
+        s.Battle.Battlefield.Connect(
+            s.PrioritySector, s.SecondarySector, 100);
+        s.Battle.Battlefield.Connect(
+            s.SecondarySector, third, 100);
+
+        s.SecondaryFront.ApplyMovementArrival(
+            third, CompanyDeploymentRole.FrontLine);
+
+        EnemyDeployment(s).ApplyMovementArrival(
+            s.SecondarySector,
+            CompanyDeploymentRole.FrontLine);
+
+        var result = AssessExposure(
+            s, new[] {
+                s.PrioritySector, s.SecondarySector, third
+            });
+
+        var gap = Assert.Single(result.Gaps);
+
+        Assert.Equal(
+            TacticalFrontGapKind.Interior,
+            gap.Gap.Kind);
+
+        Assert.Equal(
+            TacticalEnemyProximity.SameSector,
+            gap.Proximity);
+
+        Assert.Equal(1, gap.HostileCompaniesInside);
+        Assert.Equal(100, gap.HostilePersonnelInside);
+    }
+
+    [Fact]
+    public void EnemyAdjacentOutsideResponsibilityIsReported()
+    {
+        var s = CreateScenario();
+
+        var third = new BattleSector(
+            3, "Uncovered", TerrainType.Plains);
+        var fourth = new BattleSector(
+            4, "Enemy", TerrainType.Plains);
+
+        s.Battle.Battlefield.AddSector(third);
+        s.Battle.Battlefield.AddSector(fourth);
+
+        s.Battle.Battlefield.Connect(
+            s.SecondarySector, third, 100);
+        s.Battle.Battlefield.Connect(
+            third, fourth, 100);
+
+        EnemyDeployment(s).ApplyMovementArrival(
+            fourth, CompanyDeploymentRole.FrontLine);
+
+        var result = AssessExposure(
+            s, new[] {
+                s.PrioritySector, s.SecondarySector, third
+            });
+
+        var gap = Assert.Single(result.Gaps);
+
+        Assert.Equal(
+            TacticalEnemyProximity.Adjacent,
+            gap.Proximity);
+
+        Assert.Equal(0, gap.HostileCompaniesInside);
+        Assert.Equal(1, gap.HostileCompaniesAdjacent);
+        Assert.Equal(100, gap.HostilePersonnelAdjacent);
+    }
+
+    [Fact]
+    public void DisconnectedEnemyDoesNotThreatenGapByAdjacency()
+    {
+        var s = CreateScenario();
+
+        var third = new BattleSector(
+            3, "Gap", TerrainType.Plains);
+        var fourth = new BattleSector(
+            4, "Distant", TerrainType.Plains);
+
+        s.Battle.Battlefield.AddSector(third);
+        s.Battle.Battlefield.AddSector(fourth);
+
+        s.Battle.Battlefield.Connect(
+            s.SecondarySector, third, 100);
+
+        EnemyDeployment(s).ApplyMovementArrival(
+            fourth, CompanyDeploymentRole.FrontLine);
+
+        var result = AssessExposure(
+            s, new[] {
+                s.PrioritySector, s.SecondarySector, third
+            });
+
+        Assert.Equal(
+            TacticalEnemyProximity.None,
+            Assert.Single(result.Gaps).Proximity);
+    }
+
+    [Fact]
+    public void EnemyReserveDoesNotOccupyHostileFrontLine()
+    {
+        var s = CreateScenario();
+
+        EnemyDeployment(s).ApplyMovementArrival(
+            s.PrioritySector,
+            CompanyDeploymentRole.Reserve);
+
+        var result = AssessExposure(
+            s, new[] { s.PrioritySector });
+
+        Assert.Equal(
+            TacticalEnemyProximity.None,
+            Assert.Single(result.Sectors).Proximity);
+    }
+
+    [Fact]
+    public void EnemyInTransitDoesNotOccupySector()
+    {
+        var s = CreateScenario();
+        EnemyDeployment(s).SetInTransit(true);
+
+        var result = AssessExposure(
+            s, new[] { s.PrioritySector });
+
+        Assert.Equal(
+            TacticalEnemyProximity.None,
+            Assert.Single(result.Sectors).Proximity);
+    }
+
+    [Fact]
+    public void EnemyWithoutAvailablePersonnelIsIgnored()
+    {
+        var s = CreateScenario();
+        var enemy = EnemyDeployment(s);
+
+        enemy.Company.Composition!.Manpower.ApplyCasualties(
+            new PersonnelCasualtyReport(
+                KilledInAction: 100,
+                WoundedInAction: 0,
+                MissingOrCaptured: 0));
+
+        var result = AssessExposure(
+            s, new[] { s.PrioritySector });
+
+        Assert.Equal(
+            TacticalEnemyProximity.None,
+            Assert.Single(result.Sectors).Proximity);
+    }
+
+    [Fact]
+    public void ForceNotAtWarIsNotCountedAsHostile()
+    {
+        var s = CreateScenario();
+
+        var result = AssessExposure(
+            s,
+            new[] { s.PrioritySector },
+            atWar: false);
+
+        Assert.Equal(
+            TacticalEnemyProximity.None,
+            Assert.Single(result.Sectors).Proximity);
+    }
+
+    [Fact]
+    public void EnemyAdjacentToTwoGapSectorsIsCountedOnce()
+    {
+        var s = CreateScenario();
+
+        var third = new BattleSector(
+            3, "Third", TerrainType.Plains);
+        var fourth = new BattleSector(
+            4, "Fourth", TerrainType.Plains);
+        var outside = new BattleSector(
+            5, "Outside", TerrainType.Plains);
+
+        foreach (var sector in new[] { third, fourth, outside })
+            s.Battle.Battlefield.AddSector(sector);
+
+        var field = s.Battle.Battlefield;
+
+        field.Connect(s.PrioritySector, s.SecondarySector, 100);
+        field.Connect(s.SecondarySector, third, 100);
+        field.Connect(third, fourth, 100);
+        field.Connect(s.SecondarySector, outside, 100);
+        field.Connect(third, outside, 100);
+
+        s.SecondaryFront.ApplyMovementArrival(
+            fourth, CompanyDeploymentRole.FrontLine);
+
+        EnemyDeployment(s).ApplyMovementArrival(
+            outside, CompanyDeploymentRole.FrontLine);
+
+        var result = AssessExposure(
+            s, new[] {
+                s.PrioritySector, s.SecondarySector,
+                third, fourth
+            });
+
+        var gap = Assert.Single(result.Gaps);
+
+        Assert.Equal(2, gap.Gap.Sectors.Count);
+        Assert.Equal(1, gap.HostileCompaniesAdjacent);
+        Assert.Equal(100, gap.HostilePersonnelAdjacent);
+        Assert.Equal(
+            TacticalEnemyProximity.Adjacent,
+            gap.Proximity);
+    }
+
+    [Fact]
+    public void ExposureAnalysisDoesNotMutateMilitaryState()
+    {
+        var s = CreateScenario();
+        var enemy = EnemyDeployment(s);
+
+        var resourcesBefore =
+            s.FriendlyDivision.GetCurrentResourceTotals();
+
+        double cohesionBefore =
+            s.PriorityFront.Company.Cohesion;
+
+        double organizationBefore =
+            s.FriendlyDivision.Organization;
+
+        int enemyPersonnel =
+            enemy.Company.Composition!.Manpower.Current;
+
+        var first = AssessExposure(
+            s, new[] { s.PrioritySector, s.SecondarySector });
+
+        var second = AssessExposure(
+            s, new[] { s.PrioritySector, s.SecondarySector });
+
+        Assert.Equal(
+            first.Sectors.Select(r => r.Proximity),
+            second.Sectors.Select(r => r.Proximity));
+
+        Assert.Equal(
+            resourcesBefore,
+            s.FriendlyDivision.GetCurrentResourceTotals());
+
+        Assert.Equal(
+            cohesionBefore,
+            s.PriorityFront.Company.Cohesion,
+            6);
+
+        Assert.Equal(
+            organizationBefore,
+            s.FriendlyDivision.Organization,
+            6);
+
+        Assert.Equal(
+            enemyPersonnel,
+            enemy.Company.Composition.Manpower.Current);
+    }
+
+
+
+
 }
