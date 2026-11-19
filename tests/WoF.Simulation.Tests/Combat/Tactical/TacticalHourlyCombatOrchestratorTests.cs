@@ -1550,4 +1550,227 @@ public sealed class TacticalHourlyCombatOrchestratorTests
     }
 
 
+
+    private static TacticalBattalionFrontFirePressureReport
+        Assess9fPressure(
+            Scenario s,
+            CompanyDeployment deployment,
+            long? hour = null)
+    {
+        var battalion = deployment.Company.ParentBattalion!;
+
+        var assessment = new TacticalBattalionAssessmentProfile(
+            frontLineWeight: 3,
+            supportWeight: 2,
+            reserveWeight: 1,
+            priorityFrontMultiplier: 2,
+            holdThreshold: 60,
+            riskThreshold: 30);
+
+        var suppression = new TacticalSuppressionProfile(
+            dangerMarginMeters: 10,
+            pressurePerThreateningRound: 2,
+            recoveryPerHour: 10,
+            maxFireReductionFraction: 0.8);
+
+        return new TacticalBattalionFrontFirePressureSystem(
+            s.Battle).Evaluate(
+                battalion,
+                assessment,
+                new[] { deployment.Sector },
+                suppression,
+                hour ?? s.Engine.Clock.CurrentHour);
+    }
+
+    [Fact]
+    public void SectorPressureUsesActualIncomingFire()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+
+        s.Engine.Tick();
+
+        var phase = s.Battle.DirectFire.LastSuppressionPhase!;
+
+        var target = Assert.Single(
+            phase.Targets,
+            r => ReferenceEquals(r.Target, s.German));
+
+        Assert.True(target.ExpectedThreateningRounds > 0);
+
+        var result = Assess9fPressure(s, s.German);
+        var sector = Assert.Single(result.Sectors);
+
+        Assert.Equal(1, sector.CompaniesUnderThreat);
+
+        Assert.Equal(
+            target.ExpectedThreateningRounds,
+            sector.ExpectedThreateningRounds,
+            6);
+
+        Assert.Equal(
+            target.PressureAdded,
+            sector.AppliedSuppressionPoints,
+            6);
+
+        Assert.Equal(
+            target.PressureAfter,
+            sector.MaximumCurrentSuppression,
+            6);
+    }
+
+    [Fact]
+    public void EnemyPresenceWithoutFireDoesNotInventPressure()
+    {
+        var s = CreateScenario(
+            targetHasSignature: false,
+            enableSuppression: true,
+            enableCohesion: true);
+
+        s.Engine.Tick();
+
+        var sector = Assert.Single(
+            Assess9fPressure(s, s.German).Sectors);
+
+        Assert.Equal(0, sector.CompaniesUnderThreat);
+        Assert.Equal(0, sector.ExpectedThreateningRounds);
+        Assert.Equal(0, sector.AppliedSuppressionPoints);
+        Assert.Equal(0, sector.MaximumCurrentSuppression);
+    }
+
+    [Fact]
+    public void UntargetedFriendlyCompanyHasNoIncomingFire()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+
+        s.Engine.Tick();
+
+        // La cible allemande est observable dans ce
+        // scenario, mais la compagnie francaise ne l'est
+        // pas pour les observateurs ennemis.
+        var sector = Assert.Single(
+            Assess9fPressure(s, s.French).Sectors);
+
+        Assert.Equal(0, sector.CompaniesUnderThreat);
+        Assert.Equal(0, sector.ExpectedThreateningRounds);
+        Assert.Equal(0, sector.AppliedSuppressionPoints);
+    }
+
+    [Fact]
+    public void PressureRequiresCompletedFireHour()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+
+        // Le premier combat n'a pas encore eu lieu.
+        Assert.Throws<InvalidOperationException>(() =>
+            Assess9fPressure(s, s.German));
+    }
+
+    [Fact]
+    public void PressureRequiresSuppressionPhase()
+    {
+        var s = CreateScenario(
+            enableSuppression: false,
+            enableCohesion: false);
+
+        s.Engine.Tick();
+
+        Assert.Null(
+            s.Battle.DirectFire.LastSuppressionPhase);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            Assess9fPressure(s, s.German));
+    }
+
+    [Fact]
+    public void PressureRejectsWrongHour()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+
+        s.Engine.Tick();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            Assess9fPressure(
+                s,
+                s.German,
+                hour: s.Engine.Clock.CurrentHour + 1));
+    }
+
+    [Fact]
+    public void PressureRejectsForeignBattalion()
+    {
+        var first = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+
+        var second = CreateScenario();
+
+        first.Engine.Tick();
+
+        var foreignBattalion =
+            second.German.Company.ParentBattalion!;
+
+        var assessment = new TacticalBattalionAssessmentProfile(
+            3, 2, 1, 2, 60, 30);
+
+        var suppression = new TacticalSuppressionProfile(
+            10, 2, 10, 0.8);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            new TacticalBattalionFrontFirePressureSystem(
+                first.Battle).Evaluate(
+                    foreignBattalion,
+                    assessment,
+                    new[] { first.German.Sector },
+                    suppression,
+                    first.Engine.Clock.CurrentHour));
+    }
+
+    [Fact]
+    public void ReadingPressureDoesNotModifyMilitaryState()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+
+        s.Engine.Tick();
+
+        int manpower =
+            s.German.Company.Composition!.Manpower.Current;
+
+        double cohesion = s.German.Company.Cohesion;
+        double organization = s.GermanDivision.Organization;
+
+        var suppressionPhase =
+            s.Battle.DirectFire.LastSuppressionPhase;
+
+        var first = Assess9fPressure(s, s.German);
+        var second = Assess9fPressure(s, s.German);
+
+        Assert.Equal(
+            first.Sectors.ToArray(),
+            second.Sectors.ToArray());
+
+        Assert.Equal(
+            manpower,
+            s.German.Company.Composition.Manpower.Current);
+
+        Assert.Equal(cohesion, s.German.Company.Cohesion, 6);
+        Assert.Equal(organization,
+            s.GermanDivision.Organization, 6);
+
+        Assert.Same(
+            suppressionPhase,
+            s.Battle.DirectFire.LastSuppressionPhase);
+    }
+
+
+
 }

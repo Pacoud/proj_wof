@@ -6812,3 +6812,45 @@ C2.4d.9e — Pression ennemie locale et
 identification des positions exploitables.
 
 
+
+# COMMIT 38ac3a07731aaf7f379d38670ce0bcfb3ea099f6 # 
+
+### C2.4d.9e — Présence ennemie et exposition locale
+
+**Objectif**
+
+Identifier les forces ennemies physiquement
+présentes dans les secteurs d'un bataillon
+et autour des intervalles non couverts.
+
+**Fonctionnalités**
+
+- Réutilisation des rapports de continuité 9d.
+- Distinction des présences ennemies dans
+  le secteur et dans les secteurs adjacents.
+- Comptage des compagnies et effectifs ennemis.
+- Filtrage par les relations diplomatiques.
+- Exclusion des réserves, transits et
+  compagnies sans effectifs de l'occupation
+  ennemie de première ligne.
+- Absence de double comptage des positions
+  adjacentes à plusieurs secteurs.
+- Rapports calculés sans mutation militaire.
+
+**Limites**
+
+- Diagnostic fondé sur la situation réelle,
+  non sur les renseignements du commandant.
+- Aucune mesure de supériorité de feu.
+- Aucune ligne de vue ni distance de tir évaluée.
+- Aucune attaque ou percée déclenchée.
+- Aucun effet sur Division.Organization.
+- Aucun raccordement automatique au tick.
+
+**Suite**
+
+Étudier la pression ennemie réellement
+exercée sur les positions, à partir des
+contacts et du combat existants, puis
+les possibilités physiques d'exploitation
+des intervalles du front.
