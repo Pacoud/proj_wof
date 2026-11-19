@@ -121,6 +121,13 @@ internal sealed class TacticalReactionExecutionState
         private set;
     }
 
+
+    internal TacticalBattle Battle => _battle;
+
+    internal TacticalGeometryMap Geometry => _geometry;
+
+
+
     internal TacticalSpatialIndexStatistics? LastSpatialIndexStatistics { get; private set; }
 
     internal IReadOnlyList<TacticalSectorMovementOrder>
@@ -297,7 +304,7 @@ internal sealed class TacticalReactionExecutionState
             _battle.Battlefield,
             company.Sector,
             target,
-            _ => true);
+            sector => _geometry.GetSectorGeometry(sector) is not null);
  
         // Toute la geometrie doit exister avant
         // d'autoriser le mouvement.

@@ -2282,4 +2282,242 @@ public sealed class TacticalReactionExecutionTests
 
 
 
+    private static TacticalBattalionReinforcementCommandSystem
+        CreateCommander(Scenario s)
+    {
+        return new TacticalBattalionReinforcementCommandSystem(
+            s.Orchestrator);
+    }
+
+    [Fact]
+    public void CommanderApprovesReinforcementAndCompanyArrives()
+    {
+        var s = CreateScenario();
+
+        var request = ReachConfirmedRupture(s);
+
+        Assert.Equal(
+            TacticalBattalionReactionType.Reinforce,
+            request.Type);
+
+        var commander = CreateCommander(s);
+
+        int manpowerBefore =
+            s.Reserve.Company.Composition!.Manpower.Current;
+
+        double cohesionBefore = s.Reserve.Company.Cohesion;
+
+        var decision = commander.TryApprove(request);
+
+        Assert.NotNull(decision);
+        Assert.Equal(
+            TacticalReactionDecision.Approve,
+            decision!.Decision);
+
+        var order = Assert.IsType<TacticalSectorMovementOrder>(
+            decision.Movement);
+
+        Assert.Same(s.Reserve, order.Company);
+        Assert.Same(s.FrontSector, order.Destination);
+
+        // L'ordre est emis a H3.
+        // Aucun deplacement instantane.
+        Assert.Equal(3, s.Engine.Clock.CurrentHour);
+        Assert.True(s.Reserve.IsInTransit);
+        Assert.Same(s.ReserveSector, s.Reserve.Sector);
+
+        s.Engine.Tick(); // H4 : progression.
+
+        Assert.True(s.Movements.IsMoving(s.Reserve));
+
+        s.Engine.Tick(); // H5 : arrivee.
+
+        Assert.False(s.Movements.IsMoving(s.Reserve));
+        Assert.False(s.Reserve.IsInTransit);
+        Assert.Same(s.FrontSector, s.Reserve.Sector);
+
+        Assert.Equal(
+            CompanyDeploymentRole.FrontLine,
+            s.Reserve.Role);
+
+        Assert.Equal(
+            manpowerBefore,
+            s.Reserve.Company.Composition.Manpower.Current);
+
+        // La selection du renfort ne cree pas
+        // de perte ou de degradation artificielle.
+        // Les effets d'un combat ulterieur restent
+        // geres par les mecanismes existants.
+    }
+
+    [Fact]
+    public void DefaultScenarioDoesNotApproveRequestsAutomatically()
+    {
+        var s = CreateScenario();
+
+        var request = ReachConfirmedRupture(s);
+
+        Assert.Equal(
+            TacticalBattalionReactionType.Reinforce,
+            request.Type);
+
+        // Aucun commandant automatique n'a ete invoque.
+        Assert.False(s.Reserve.IsInTransit);
+        Assert.False(s.Movements.IsMoving(s.Reserve));
+        Assert.Same(s.ReserveSector, s.Reserve.Sector);
+    }
+
+    [Fact]
+    public void CommanderCannotApproveUnreachableReserve()
+    {
+        var s = CreateScenario(connectReserve: false);
+
+        var request = ReachConfirmedRupture(s);
+        var commander = CreateCommander(s);
+
+        var result = commander.TryApprove(request);
+
+        Assert.Null(result);
+        Assert.False(s.Reserve.IsInTransit);
+        Assert.False(s.Movements.IsMoving(s.Reserve));
+        Assert.Empty(s.Movements.PendingMovements);
+    }
+
+    [Fact]
+    public void CommanderDoesNotAutomaticallyApproveWithdrawal()
+    {
+        var s = CreateScenario(hasReserve: false);
+
+        var request = ReachConfirmedRupture(s);
+
+        Assert.Equal(
+            TacticalBattalionReactionType.RequestWithdrawal,
+            request.Type);
+
+        var commander = CreateCommander(s);
+
+        Assert.Null(commander.TryApprove(request));
+
+        Assert.False(s.Movements.IsMoving(s.Front));
+        Assert.False(s.Front.IsInTransit);
+        Assert.Same(s.FrontSector, s.Front.Sector);
+    }
+
+    [Fact]
+    public void CommanderCannotApproveSameRequestTwice()
+    {
+        var s = CreateScenario();
+
+        var request = ReachConfirmedRupture(s);
+        var commander = CreateCommander(s);
+
+        Assert.NotNull(commander.TryApprove(request));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            commander.TryApprove(request));
+
+        Assert.Single(s.Movements.PendingMovements);
+    }
+
+    [Fact]
+    public void CommanderUsesOrchestratorMovementService()
+    {
+        var s = CreateScenario();
+        var request = ReachConfirmedRupture(s);
+
+        var commander =
+            new TacticalBattalionReinforcementCommandSystem(
+                s.Orchestrator);
+
+        double cohesionBefore = s.Reserve.Company.Cohesion;
+
+        var decision = commander.TryApprove(request);
+
+        Assert.NotNull(decision);
+        Assert.Same(
+            s.Reserve,
+            decision!.Movement!.Company);
+
+        Assert.True(
+            s.Orchestrator.ReactionExecution!
+                .IsMoving(s.Reserve));
+
+        Assert.Equal(
+            cohesionBefore,
+            s.Reserve.Company.Cohesion,
+            6);
+    }
+
+    [Fact]
+    public void CommanderUsesValidDetourWhenShortcutLacksGeometry()
+    {
+        var s = CreateScenario();
+        var request = ReachConfirmedRupture(s);
+
+        // La liaison directe reserve -> front
+        // mesure 4000 metres et est geometree.
+        // Un raccourci de 200 metres traverse
+        // un secteur sans geometrie.
+        var shortcut = new BattleSector(
+            4, "Incomplete shortcut", TerrainType.Plains);
+
+        s.Battle.Battlefield.AddSector(shortcut);
+
+        s.Battle.Battlefield.Connect(
+            s.ReserveSector, shortcut, 100);
+
+        s.Battle.Battlefield.Connect(
+            shortcut, s.FrontSector, 100);
+
+        var commander =
+            new TacticalBattalionReinforcementCommandSystem(
+                s.Orchestrator);
+
+        var decision = commander.TryApprove(request);
+
+        Assert.NotNull(decision);
+
+        var movement = Assert.IsType<TacticalSectorMovementOrder>(
+            decision!.Movement);
+
+        Assert.Equal(4000, movement.TotalDistanceMeters);
+
+        Assert.Equal(
+            new[] { s.ReserveSector, s.FrontSector },
+            movement.Route);
+
+        Assert.DoesNotContain(shortcut, movement.Route);
+    }
+
+    [Fact]
+    public void CommanderRejectsRouteWithOnlyUnmappedConnection()
+    {
+        var s = CreateScenario(connectReserve: false);
+        var request = ReachConfirmedRupture(s);
+
+        var shortcut = new BattleSector(
+            4, "Unmapped", TerrainType.Plains);
+
+        s.Battle.Battlefield.AddSector(shortcut);
+
+        s.Battle.Battlefield.Connect(
+            s.ReserveSector, shortcut, 100);
+
+        s.Battle.Battlefield.Connect(
+            shortcut, s.FrontSector, 100);
+
+        var commander =
+            new TacticalBattalionReinforcementCommandSystem(
+                s.Orchestrator);
+
+        Assert.Null(commander.TryApprove(request));
+        Assert.False(s.Reserve.IsInTransit);
+        Assert.Empty(s.Movements.PendingMovements);
+    }
+
+
+
+
+
+
 }

@@ -6926,3 +6926,97 @@ comme photographie historique immuable.
 Build et tests validés. Aucun changement
 des mécanismes de tir, pertes ou cohésion
 
+# COMMIT bd9290c547bf835e94e6c0b8a094457e44652363 # 
+
+### C2.4d.9g — Diagnostic de fragilisation du front
+
+**Objectif**
+
+Croiser les evaluations de la capacite
+defensive, de la continuite du front, de
+la presence ennemie et de la pression
+de feu au niveau des secteurs du bataillon.
+
+**Fonctionnalites**
+
+- Reutilisation des diagnostics 9c a 9f.
+- Identification des secteurs affaiblis.
+- Distinction entre presence hostile,
+  tirs menacants et suppression courante.
+- Identification des positions affaiblies
+  qui subissent egalement des tirs.
+- Analyse des positions occupees bordant
+  les intervalles non couverts.
+- Comptage des appuis affaiblis, sous le feu
+  ou soumis a une suppression courante.
+- Preservation de la verification temporelle
+  introduite en 9f.1.
+- Aucun nouvel etat militaire persistant.
+
+**Validation**
+
+- Tests de diagnostic croise.
+- Tests des intervalles et des appuis.
+- Tests de coherence temporelle.
+- Tests de non-mutation des ressources.
+- Build Release et suite complete des tests.
+
+**Limites**
+
+- Diagnostic physique interne uniquement.
+- Pas encore de transmission au commandement.
+- Aucun coefficient artificiel de fragilite.
+- Aucune nouvelle regle de retraite ou de percee.
+- Pas de declenchement de mouvements.
+- Analyses non integrees au tick.
+- Les rapports restent dependants de l'etat
+  militaire courant et des phases disponibles.
+
+**Suite**
+
+Relier les diagnostics aux informations
+effectivement connues du commandement
+et aux mecanismes de reaction existants.
+
+# COMMIT # 
+
+### C2.4d.9h — Commandement initial des renforts
+
+**Objectif**
+
+Permettre a un bataillon de selectionner et
+d'approuver le mouvement d'une compagnie de
+reserve pour renforcer son secteur prioritaire.
+
+**Fonctionnalites**
+
+- Reutilisation des demandes de reaction
+  produites par TacticalBattalionReactionState.
+- Selection de reserves disponibles.
+- Verification des itineraires et geometries.
+- Choix deterministe d'une reserve selon la
+  distance de deplacement.
+- Approbation via TacticalReactionExecutionState.
+- Deplacement physique dans les heures suivantes.
+- Protection contre la double approbation.
+- Aucune consultation des diagnostics omniscients
+  de presence ennemie.
+
+**Limites**
+
+- Approbation encore invoquee explicitement,
+  sans automatisation dans le tick.
+- Seuls les renforts sont pris en charge.
+- Les demandes de retraite restent manuelles.
+- Pas encore de renseignement partage au QG.
+- Pas de changement des regles de combat.
+- Les lectures de 9f/9g doivent preceder les
+  modifications de deploiement de l'heure.
+- Politique de selection des reserves simplifiee.
+
+**Suite**
+
+Integrer progressivement le commandement
+aux heures tactiques en s'appuyant sur
+les informations propres aux formations,
+puis sur un renseignement partage et date.
