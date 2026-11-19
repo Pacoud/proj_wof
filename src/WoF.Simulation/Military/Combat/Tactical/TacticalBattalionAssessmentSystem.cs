@@ -274,4 +274,204 @@ internal sealed class TacticalBattalionAssessmentSystem
 
         return Array.AsReadOnly(results.ToArray());
     }
+
+
+
+    /// <summary>
+    /// Evalue chaque secteur concerne par un bataillon :
+    /// secteurs de deploiement et secteur prioritaire.
+    ///
+    /// Aucun resultat n'est conserve dans Battalion.
+    /// Aucune ressource n'est modifiee.
+    /// </summary>
+    internal IReadOnlyList<TacticalBattalionSectorAssessment>
+        EvaluateSectors(
+            Battalion battalion,
+            TacticalBattalionAssessmentProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(battalion);
+        ArgumentNullException.ThrowIfNull(profile);
+
+        // Reutiliser les validations de couverture
+        // complete deja presentes dans Evaluate().
+        var battalionAssessment = Evaluate(battalion, profile);
+        var deployments =
+            _battle.GetBattalionDeployments(battalion);
+
+        _priorities.TryGetValue(
+            battalion,
+            out BattleSector? priority);
+
+        var relevant = new HashSet<BattleSector>(
+            ReferenceEqualityComparer.Instance);
+
+        foreach (var deployment in deployments)
+            relevant.Add(deployment.Sector);
+
+        if (priority is not null)
+            relevant.Add(priority);
+
+        var reports =
+            new List<TacticalBattalionSectorAssessment>();
+
+        // L'ordre de sortie suit celui du champ tactique.
+        foreach (var sector in _battle.Battlefield.Sectors)
+        {
+            if (!relevant.Contains(sector))
+                continue;
+
+            int assignedFront = 0;
+            int stationaryFront = 0;
+            int authorizedFront = 0;
+            int availableFront = 0;
+            int support = 0;
+            int reserve = 0;
+
+            double readinessNumerator = 0;
+
+            foreach (var deployment in deployments)
+            {
+                if (!ReferenceEquals(
+                    deployment.Sector, sector))
+                {
+                    continue;
+                }
+
+                switch (deployment.Role)
+                {
+                    case CompanyDeploymentRole.Support:
+                        support++;
+                        break;
+
+                    case CompanyDeploymentRole.Reserve:
+                        reserve++;
+                        break;
+
+                    case CompanyDeploymentRole.FrontLine:
+                    {
+                        assignedFront++;
+
+                        // Une compagnie en transit n'occupe
+                        // pas encore physiquement le secteur.
+                        if (deployment.IsInTransit)
+                            break;
+
+                        stationaryFront++;
+
+                        var pool =
+                            deployment.Company.Composition!
+                                .Manpower;
+
+                        authorizedFront = checked(
+                            authorizedFront + pool.Authorized);
+
+                        availableFront = checked(
+                            availableFront + pool.Current);
+
+                        // Meme definition que celle utilisee
+                        // pour la tenue du secteur prioritaire :
+                        // cohesion * proportion disponible,
+                        // ponderee par les effectifs autorises.
+                        readinessNumerator +=
+                            pool.Current
+                            * _battle.Cohesion.Get(deployment);
+
+                        break;
+                    }
+
+                    default:
+                        throw new InvalidOperationException(
+                            "Unknown deployment role.");
+                }
+            }
+
+            double readiness = authorizedFront > 0
+                ? Math.Clamp(
+                    readinessNumerator / authorizedFront,
+                    0.0,
+                    100.0)
+                : 0.0;
+
+            TacticalBattalionSectorStatus status;
+
+            if (ReferenceEquals(sector, priority))
+                        readiness = battalionAssessment.PrioritySectorReadiness!.Value;
+
+            if (stationaryFront == 0)
+            {
+                status = TacticalBattalionSectorStatus.Uncovered;
+            }
+            else if (availableFront == 0)
+            {
+                status = TacticalBattalionSectorStatus.UnableToHold;
+            }
+            else if (readiness >= profile.HoldThreshold)
+            {
+                status = TacticalBattalionSectorStatus.Capable;
+            }
+            else if (readiness >= profile.RiskThreshold)
+            {
+                status = TacticalBattalionSectorStatus.AtRisk;
+            }
+            else
+            {
+                status = TacticalBattalionSectorStatus.UnableToHold;
+            }
+
+
+            reports.Add(
+                new TacticalBattalionSectorAssessment(
+                    Battalion: battalion,
+                    Sector: sector,
+                    IsPrioritySector: ReferenceEquals(
+                        sector, priority),
+                    FrontLineAssignments: assignedFront,
+                    StationaryFrontLineCompanies:
+                        stationaryFront,
+                    AuthorizedFrontLinePersonnel:
+                        authorizedFront,
+                    AvailableFrontLinePersonnel:
+                        availableFront,
+                    SupportAssignments: support,
+                    ReserveAssignments: reserve,
+                    FrontLineReadiness: readiness,
+                    Status: status));
+        }
+
+        return Array.AsReadOnly(reports.ToArray());
+    }
+
+    /// <summary>
+    /// Retourne les rapports sectoriels de tous les
+    /// bataillons representes dans la bataille.
+    /// </summary>
+    internal IReadOnlyList<TacticalBattalionSectorAssessment>
+        EvaluateAllSectors(
+            TacticalBattalionAssessmentProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+
+        var seen = new HashSet<Battalion>(
+            ReferenceEqualityComparer.Instance);
+
+        var reports =
+            new List<TacticalBattalionSectorAssessment>();
+
+        foreach (var deployment in _battle.Deployments)
+        {
+            var battalion =
+                deployment.Company.ParentBattalion
+                ?? throw new InvalidOperationException(
+                    "Deployment has no parent battalion.");
+
+            if (!seen.Add(battalion))
+                continue;
+
+            reports.AddRange(
+                EvaluateSectors(battalion, profile));
+        }
+
+        return Array.AsReadOnly(reports.ToArray());
+    }
+
 }

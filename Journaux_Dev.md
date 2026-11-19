@@ -6762,5 +6762,53 @@ C2.4d.9c — État et capacités des bataillons :
 cohésion agrégée, effectifs disponibles,
 répartition des compagnies et secteurs tenus.
 
+# COMMIT # 
+
+### C2.4d.9d — Continuité du front des bataillons
+
+**Objectif**
+
+Détecter les interruptions dans le dispositif
+de première ligne d'un bataillon à partir des
+secteurs qu'il est chargé de défendre.
+
+**Fonctionnalités**
+
+- Analyse d'un ensemble explicite de secteurs
+  de responsabilité.
+- Utilisation des connexions du champ tactique.
+- Identification des composantes de positions
+  physiquement occupées.
+- Identification des régions non occupées.
+- Distinction entre intervalles intérieurs,
+  extrémités non couvertes et régions sans appui.
+- Exclusion des réserves, soutiens et compagnies
+  en transit du calcul d'occupation physique.
+- Réutilisation des évaluations sectorielles
+  existantes.
+- Rapports en lecture seule, sans nouveau stock
+  militaire ni modification des combats.
+
+**Validation**
+
+- Tests de continuité et de fragmentation.
+- Tests de régions non occupées consécutives.
+- Tests des affectations et des transits.
+- Vérification de la non-mutation.
+- Build Release et suite complète des tests.
+
+**Limites**
+
+- Les classifications sont topologiques.
+- Aucune orientation géométrique du front.
+- Pas encore de pression ennemie sectorisée.
+- Pas de percée militaire automatique.
+- Pas de mouvement ni de renfort déclenché.
+- Pas encore de raccordement automatique au tick.
+
+**Suite**
+
+C2.4d.9e — Pression ennemie locale et
+identification des positions exploitables.
 
 
