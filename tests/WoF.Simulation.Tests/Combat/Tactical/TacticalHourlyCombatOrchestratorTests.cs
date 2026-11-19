@@ -1879,5 +1879,312 @@ public sealed class TacticalHourlyCombatOrchestratorTests
 
 
 
+    private static TacticalBattalionFrontFragilityReport
+        Assess9g(
+            Scenario s,
+            long hour,
+            params BattleSector[] sectors)
+    {
+        var assessment = new TacticalBattalionAssessmentProfile(
+            frontLineWeight: 3,
+            supportWeight: 2,
+            reserveWeight: 1,
+            priorityFrontMultiplier: 2,
+            holdThreshold: 60,
+            riskThreshold: 30);
+
+        var suppression = new TacticalSuppressionProfile(
+            dangerMarginMeters: 10,
+            pressurePerThreateningRound: 2,
+            recoveryPerHour: 10,
+            maxFireReductionFraction: 0.8);
+
+        return new TacticalBattalionFrontFragilitySystem(
+            s.Battle).Evaluate(
+                s.German.Company.ParentBattalion!,
+                assessment,
+                sectors,
+                s.Engine.Diplomacy,
+                suppression,
+                hour);
+    }
+
+    private static TacticalBattalionFrontFragilityReport
+        Assess9g(
+            Scenario s,
+            params BattleSector[] sectors)
+    {
+        return Assess9g(
+            s,
+            s.Engine.Clock.CurrentHour,
+            sectors);
+    }
+
+    [Fact]
+    public void ActualFireIsVisibleInCombinedSectorDiagnosis()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+
+        s.Engine.Tick();
+
+        var result = Assess9g(s, s.German.Sector);
+        var sector = Assert.Single(result.Sectors);
+
+        Assert.True(sector.IsUnderCurrentFire);
+        Assert.True(sector.HasCurrentSuppression);
+
+        Assert.True(
+            sector.Fire.ExpectedThreateningRounds > 0);
+
+        Assert.Equal(
+            TacticalEnemyProximity.SameSector,
+            sector.Hostiles.Proximity);
+
+        Assert.Same(
+            s.German.Sector,
+            sector.Defense.Sector);
+    }
+
+    [Fact]
+    public void EnemyPresenceWithoutFireIsNotInventedSuppression()
+    {
+        var s = CreateScenario(
+            targetHasSignature: false,
+            enableSuppression: true,
+            enableCohesion: true);
+
+        s.Engine.Tick();
+
+        var sector =
+            Assert.Single(Assess9g(s, s.German.Sector).Sectors);
+
+        Assert.Equal(
+            TacticalEnemyProximity.SameSector,
+            sector.Hostiles.Proximity);
+
+        Assert.False(sector.IsUnderCurrentFire);
+        Assert.False(sector.HasCurrentSuppression);
+        Assert.False(sector.IsWeakUnderFire);
+
+        Assert.Equal(
+            0, sector.Fire.ExpectedThreateningRounds);
+    }
+
+    [Fact]
+    public void WeakPositionWithoutFireRemainsDiagnosedAsWeak()
+    {
+        var s = CreateScenario(
+            targetHasSignature: false,
+            enableSuppression: true,
+            enableCohesion: true);
+
+        s.German.Company.Cohesion = 20;
+
+        s.Engine.Tick();
+
+        var sector =
+            Assert.Single(Assess9g(s, s.German.Sector).Sectors);
+
+        Assert.True(sector.IsDefensivelyWeak);
+        Assert.False(sector.IsUnderCurrentFire);
+        Assert.False(sector.IsWeakUnderFire);
+
+        Assert.Equal(
+            TacticalBattalionSectorStatus.UnableToHold,
+            sector.Defense.Status);
+    }
+
+    [Fact]
+    public void IncomingFireAndWeaknessAreReportedTogether()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+
+        s.German.Company.Cohesion = 20;
+
+        s.Engine.Tick();
+
+        var sector =
+            Assert.Single(Assess9g(s, s.German.Sector).Sectors);
+
+        Assert.True(sector.IsDefensivelyWeak);
+        Assert.True(sector.IsUnderCurrentFire);
+        Assert.True(sector.IsWeakUnderFire);
+
+        // Le rapport ne rajoute pas de perte :
+        // il exploite simplement les resultats
+        // deja calcules par l'heure tactique.
+    }
+
+    [Fact]
+    public void GapReportsActualPressureOnOccupiedAnchor()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+
+        var gapSector = new BattleSector(
+            2, "Uncovered", TerrainType.Plains);
+
+        s.Battle.Battlefield.AddSector(gapSector);
+
+        s.Battle.Battlefield.Connect(
+            s.German.Sector,
+            gapSector,
+            100);
+
+        s.Engine.Tick();
+
+        var result = Assess9g(
+            s, s.German.Sector, gapSector);
+
+        var gap = Assert.Single(result.Gaps);
+
+        Assert.Equal(
+            TacticalFrontGapKind.Boundary,
+            gap.Exposure.Gap.Kind);
+
+        Assert.Equal(1, gap.OccupiedAnchorCount);
+        Assert.Equal(1, gap.AnchorsUnderCurrentFire);
+        Assert.Equal(1, gap.AnchorsWithCurrentSuppression);
+
+        // La compagnie francaise est dans le
+        // secteur occupe adjacent a l'intervalle.
+        Assert.Equal(
+            TacticalEnemyProximity.Adjacent,
+            gap.Exposure.Proximity);
+    }
+
+    [Fact]
+    public void EnemyAdjacentToGapDoesNotImplyAnchorUnderFire()
+    {
+        var s = CreateScenario(
+            targetHasSignature: false,
+            enableSuppression: true,
+            enableCohesion: true);
+
+        var gapSector = new BattleSector(
+            2, "Uncovered", TerrainType.Plains);
+
+        s.Battle.Battlefield.AddSector(gapSector);
+        s.Battle.Battlefield.Connect(
+            s.German.Sector,
+            gapSector,
+            100);
+
+        s.Engine.Tick();
+
+        var gap = Assert.Single(
+            Assess9g(s, s.German.Sector, gapSector).Gaps);
+
+        Assert.Equal(
+            TacticalEnemyProximity.Adjacent,
+            gap.Exposure.Proximity);
+
+        Assert.Equal(1, gap.OccupiedAnchorCount);
+        Assert.Equal(0, gap.WeakAnchorCount);
+        Assert.Equal(0, gap.AnchorsUnderCurrentFire);
+        Assert.Equal(0, gap.AnchorsWithCurrentSuppression);
+    }
+
+    [Fact]
+    public void WeakGapAnchorIsDistinguishedFromIncomingFire()
+    {
+        var s = CreateScenario(
+            targetHasSignature: false,
+            enableSuppression: true,
+            enableCohesion: true);
+
+        var gapSector = new BattleSector(
+            2, "Uncovered", TerrainType.Plains);
+
+        s.Battle.Battlefield.AddSector(gapSector);
+        s.Battle.Battlefield.Connect(
+            s.German.Sector,
+            gapSector,
+            100);
+
+        s.German.Company.Cohesion = 20;
+
+        s.Engine.Tick();
+
+        var gap = Assert.Single(
+            Assess9g(s, s.German.Sector, gapSector).Gaps);
+
+        Assert.Equal(1, gap.OccupiedAnchorCount);
+        Assert.Equal(1, gap.WeakAnchorCount);
+        Assert.Equal(0, gap.AnchorsUnderCurrentFire);
+    }
+
+    [Fact]
+    public void FragilityDiagnosisRejectsHistoricalDeploymentChange()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+
+        s.Engine.Tick();
+
+        long hour = s.Engine.Clock.CurrentHour;
+
+        s.German.SetInTransit(true);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            Assess9g(s, hour, s.German.Sector));
+    }
+
+    [Fact]
+    public void FragilityDiagnosisDoesNotMutateMilitaryState()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+
+        s.Engine.Tick();
+
+        var before =
+            s.GermanDivision.GetCurrentResourceTotals();
+
+        double cohesion = s.German.Company.Cohesion;
+        double organization = s.GermanDivision.Organization;
+
+        long revision = s.Battle.DeploymentRevision;
+
+        var suppressionPhase =
+            s.Battle.DirectFire.LastSuppressionPhase;
+
+        var first = Assess9g(s, s.German.Sector);
+        var second = Assess9g(s, s.German.Sector);
+
+        Assert.Equal(
+            first.Sectors.ToArray(),
+            second.Sectors.ToArray());
+
+        Assert.Equal(
+            before,
+            s.GermanDivision.GetCurrentResourceTotals());
+
+        Assert.Equal(
+            cohesion,
+            s.German.Company.Cohesion,
+            6);
+
+        Assert.Equal(
+            organization,
+            s.GermanDivision.Organization,
+            6);
+
+        Assert.Equal(
+            revision,
+            s.Battle.DeploymentRevision);
+
+        Assert.Same(
+            suppressionPhase,
+            s.Battle.DirectFire.LastSuppressionPhase);
+    }
+
 
 }

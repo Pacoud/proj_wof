@@ -6895,3 +6895,34 @@ Etudier l'effet local de cette pression sur
 la capacite a maintenir les secteurs, puis
 la possibilite de mouvements ennemis
 exploitant les intervalles non couverts.
+
+# COMMIT 1b5aee81cca393ab9855459693111a787986109b #
+### COURT CORRECTIF ### 
+### C2.4d.9f.1 — Cohérence temporelle des bilans de feu
+
+**Objectif**
+
+Empêcher qu'un déplacement de compagnie après
+une phase de suppression réattribue les tirs
+historiques à un autre secteur.
+
+**Modifications**
+
+- Suivi de la révision des déploiements tactiques.
+- Notification lors des changements de secteur,
+  de rôle ou d'état de transit.
+- Enregistrement de la révision dans le rapport
+  de suppression au moment de sa publication.
+- Tests de non-régression et validation Release.
+
+**Limite**
+
+Un bilan est invalidé après changement de
+déploiement ; il n'est pas encore conservé
+comme photographie historique immuable.
+
+**Résultat**
+
+Build et tests validés. Aucun changement
+des mécanismes de tir, pertes ou cohésion
+
