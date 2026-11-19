@@ -165,6 +165,7 @@ public sealed class TacticalBattle
                 "Company is already deployed in this battle.");
 
         var deployment = new CompanyDeployment(
+            this,
             company,
             sector,
             role);

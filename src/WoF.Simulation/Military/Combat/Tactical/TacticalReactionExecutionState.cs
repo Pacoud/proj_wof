@@ -343,7 +343,6 @@ internal sealed class TacticalReactionExecutionState
             new ActiveMovement(order, initial.Point));
 
         company.SetInTransit(true);
-        _battle.NotifyDeploymentChanged(company);
         _battle.DefensiveState.Clear(company);
 
         _decided.Add(request);
@@ -1130,7 +1129,6 @@ internal sealed class TacticalReactionExecutionState
 
         _geometry.RelocateCompany(company, step.Destination);
         company.ApplyMovementArrival(step.Destination, company.Role);
-        _battle.NotifyDeploymentChanged(company);
         _battle.DefensiveState.Clear(company);
         spatialIndex?.RefreshPosition(company);
         state.LegIndex++;
@@ -1213,10 +1211,10 @@ internal sealed class TacticalReactionExecutionState
         spatialIndex?.RefreshPosition(company);
 
         company.ApplyMovementArrival(
-            destination, state.Order.ArrivalRole);
+        destination,
+        state.Order.ArrivalRole,
+        isInTransit: false);
 
-        company.SetInTransit(false);
-        _battle.NotifyDeploymentChanged(company);
         _battle.DefensiveState.Clear(company);
         spatialIndex?.RefreshPosition(company);
 
@@ -1242,7 +1240,6 @@ internal sealed class TacticalReactionExecutionState
         spatialIndex?.RefreshPosition(company);
 
         company.SetInTransit(false);
-        _battle.NotifyDeploymentChanged(company);
         _battle.DefensiveState.Clear(company);
         spatialIndex?.RefreshPosition(company);
 

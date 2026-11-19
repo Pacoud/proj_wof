@@ -104,6 +104,7 @@ public sealed class TacticalDeploymentMembershipTests
         // Meme compagnie reelle, mais autre objet
         // de deploiement, jamais inscrit a la bataille.
         return new CompanyDeployment(
+            scenario.Battle,
             scenario.Observer.Company,
             scenario.Sector,
             CompanyDeploymentRole.FrontLine);

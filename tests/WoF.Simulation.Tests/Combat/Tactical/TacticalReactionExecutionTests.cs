@@ -582,8 +582,6 @@ public sealed class TacticalReactionExecutionTests
             s.RearSector,
             CompanyDeploymentRole.FrontLine);
 
-        s.Battle.NotifyDeploymentChanged(s.Enemy);
-
         // Heure 4 : la destination n'est plus sure.
         s.Engine.Tick();
 
@@ -702,7 +700,6 @@ public sealed class TacticalReactionExecutionTests
             // Tester la progression sur un trajet sans contact.
             s.Geometry.RelocateCompany(s.Enemy, s.ReserveSector);
             s.Enemy.ApplyMovementArrival(s.ReserveSector, CompanyDeploymentRole.FrontLine);
-            s.Battle.NotifyDeploymentChanged(s.Enemy);
         }
 
         // Heure 4 : 2000 m jusqu'a Rear
@@ -838,8 +835,6 @@ public sealed class TacticalReactionExecutionTests
             s.ReserveSector,
             CompanyDeploymentRole.FrontLine);
 
-        s.Battle.NotifyDeploymentChanged(s.Enemy);
-
         s.Engine.Tick(); // Le corridor est de nouveau libre.
 
         Assert.False(s.Movements.IsMoving(s.Front));
@@ -934,7 +929,6 @@ public sealed class TacticalReactionExecutionTests
     {
         s.Geometry.RelocateCompany(company, sector);
         company.ApplyMovementArrival(sector, company.Role);
-        s.Battle.NotifyDeploymentChanged(company);
     }
 
     private static void ApproveMovement(
@@ -1480,9 +1474,9 @@ public sealed class TacticalReactionExecutionTests
         var positions = s.Geometry.CompanyPositions.ToArray();
         var orders = s.Movements.PendingMovements.ToArray();
         var previousPhase = s.Movements.LastMovementPhase;
-        long deploymentRevision = s.Battle.DeploymentRevision;
         long geometryRevision = s.Geometry.Revision;
         s.Enemy.SetInTransit(false);
+        long deploymentRevision = s.Battle.DeploymentRevision;
 
         Assert.Throws<InvalidOperationException>(() => s.Movements.AdvanceHour(4));
 
@@ -1530,8 +1524,6 @@ public sealed class TacticalReactionExecutionTests
         s.Enemy.ApplyMovementArrival(
             farRear,
             CompanyDeploymentRole.FrontLine);
-
-        s.Battle.NotifyDeploymentChanged(s.Enemy);
 
         s.Engine.Tick();
 
@@ -1632,8 +1624,6 @@ public sealed class TacticalReactionExecutionTests
         s.Enemy.ApplyMovementArrival(
             s.RearSector,
             CompanyDeploymentRole.FrontLine);
-
-        s.Battle.NotifyDeploymentChanged(s.Enemy);
 
         // Une ancienne photographie de positions
         // ne doit pas etre exploitee silencieusement.

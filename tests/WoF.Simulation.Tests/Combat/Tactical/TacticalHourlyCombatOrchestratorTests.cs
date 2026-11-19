@@ -1772,5 +1772,112 @@ public sealed class TacticalHourlyCombatOrchestratorTests
     }
 
 
+    [Fact]
+    public void FirePressureRejectsSectorChangeAfterPublication()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+
+        s.Engine.Tick();
+
+        var phase = s.Battle.DirectFire.LastSuppressionPhase!;
+
+        Assert.Equal(
+            s.Battle.DeploymentRevision,
+            phase.DeploymentRevision);
+
+        var destination = new BattleSector(
+            99, "New sector", TerrainType.Plains);
+
+        s.Battle.Battlefield.AddSector(destination);
+
+        s.German.ApplyMovementArrival(
+            destination,
+            CompanyDeploymentRole.FrontLine);
+
+        Assert.NotEqual(
+            phase.DeploymentRevision,
+            s.Battle.DeploymentRevision);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            Assess9fPressure(s, s.German, phase.Hour));
+    }
+
+    [Fact]
+    public void FirePressureRejectsTransitChangeAfterPublication()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+
+        s.Engine.Tick();
+
+        var phase = s.Battle.DirectFire.LastSuppressionPhase!;
+
+        s.German.SetInTransit(true);
+
+        Assert.NotEqual(
+            phase.DeploymentRevision,
+            s.Battle.DeploymentRevision);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            Assess9fPressure(s, s.German, phase.Hour));
+    }
+
+    [Fact]
+    public void FirePressureRejectsRoleChangeAfterPublication()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+
+        s.Engine.Tick();
+
+        var phase = s.Battle.DirectFire.LastSuppressionPhase!;
+
+        s.German.ApplyMovementArrival(
+            s.German.Sector,
+            CompanyDeploymentRole.Support);
+
+        Assert.NotEqual(
+            phase.DeploymentRevision,
+            s.Battle.DeploymentRevision);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            Assess9fPressure(s, s.German, phase.Hour));
+    }
+
+    [Fact]
+    public void UnchangedDeploymentKeepsFirePressureReadable()
+    {
+        var s = CreateScenario(
+            enableSuppression: true,
+            enableCohesion: true);
+
+        s.Engine.Tick();
+
+        var revision = s.Battle.DeploymentRevision;
+
+        // Ces appels ne changent aucun etat.
+        s.German.SetInTransit(false);
+
+        s.German.ApplyMovementArrival(
+            s.German.Sector,
+            s.German.Role);
+
+        Assert.Equal(revision, s.Battle.DeploymentRevision);
+
+        var result = Assess9fPressure(s, s.German);
+
+        Assert.Equal(
+            s.Engine.Clock.CurrentHour,
+            result.Hour);
+
+        Assert.Single(result.Sectors);
+    }
+
+
+
 
 }

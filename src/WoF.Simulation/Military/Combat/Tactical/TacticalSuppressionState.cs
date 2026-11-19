@@ -10,7 +10,10 @@ internal readonly record struct TacticalSuppressionTargetReport(
 
 internal sealed record TacticalSuppressionPhaseResult(
     long Hour,
-    IReadOnlyList<TacticalSuppressionTargetReport> Targets);
+    IReadOnlyList<TacticalSuppressionTargetReport> Targets)
+    {
+        internal long DeploymentRevision { get; init; }
+    }
 
 /// <summary>
 /// Suppression persistante par compagnie.
@@ -183,7 +186,10 @@ internal sealed class TacticalSuppressionState
 
         return new TacticalSuppressionPhaseResult(
             hour,
-            Array.AsReadOnly(reports.ToArray()));
+            Array.AsReadOnly(reports.ToArray()))
+            {
+                DeploymentRevision = _battle.DeploymentRevision
+            };
     }
 
     private void ValidateDeployment(

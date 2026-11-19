@@ -55,6 +55,8 @@ internal sealed class TacticalBattalionFrontFirePressureSystem
         var fire = _battle.DirectFire.LastPhase;
         var suppression = _battle.DirectFire.LastSuppressionPhase;
 
+       
+
         if (hour < _battle.Engagement.StartHour
             || fire is null
             || suppression is null
@@ -64,6 +66,15 @@ internal sealed class TacticalBattalionFrontFirePressureSystem
             throw new InvalidOperationException(
                 "No completed fire and suppression phase " +
                 "for the requested hour.");
+        }
+        
+         if (suppression.DeploymentRevision
+            != _battle.DeploymentRevision)
+        {
+            throw new InvalidOperationException(
+                "Cannot attribute historical fire pressure: " +
+                "tactical deployments changed after " +
+                "suppression publication.");
         }
 
         // Les secteurs defendus et leur occupation

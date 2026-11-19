@@ -12,6 +12,9 @@ public enum CompanyDeploymentRole
 
 public sealed class CompanyDeployment
 {
+
+    private readonly TacticalBattle _battle;
+
     public Company Company { get; }
 
     public BattleSector Sector { get; private set; }
@@ -20,32 +23,54 @@ public sealed class CompanyDeployment
 
     public bool IsInTransit {get; private set; }
 
-    internal void SetInTransit(bool value)
-    {
-        IsInTransit = value;
-    }
-
     internal CompanyDeployment(
+        TacticalBattle battle,
         Company company,
         BattleSector sector,
         CompanyDeploymentRole role)
     {
+        _battle = battle
+            ?? throw new ArgumentNullException(nameof(battle));
+
         Company = company;
         Sector = sector;
         Role = role;
     }
 
 
+    internal void SetInTransit(bool value)
+    {
+        if (IsInTransit == value)
+            return;
+
+        IsInTransit = value;
+        _battle.NotifyDeploymentChanged(this);
+    }
+
     internal void ApplyMovementArrival(
-    BattleSector destination,
-    CompanyDeploymentRole role)
+        BattleSector destination,
+        CompanyDeploymentRole role,
+        bool? isInTransit = null)
     {
         ArgumentNullException.ThrowIfNull(destination);
 
         if (!Enum.IsDefined(role))
             throw new ArgumentOutOfRangeException(nameof(role));
 
+        bool nextTransit = isInTransit ?? IsInTransit;
+
+        if (ReferenceEquals(Sector, destination)
+            && Role == role
+            && IsInTransit == nextTransit)
+        {
+            return;
+        }
+
         Sector = destination;
         Role = role;
+        IsInTransit = nextTransit;
+        _battle.NotifyDeploymentChanged(this);
+
     }
+
 }

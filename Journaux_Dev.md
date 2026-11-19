@@ -6854,3 +6854,44 @@ exercée sur les positions, à partir des
 contacts et du combat existants, puis
 les possibilités physiques d'exploitation
 des intervalles du front.
+
+# COMMIT 142432e4d5da88729a827f9952a06822bb2bdc85 # 
+
+### C2.4d.9f — Pression de feu effective par secteur
+
+**Objectif**
+
+Faire remonter vers les secteurs du bataillon
+la pression de feu deja resolue sur les
+compagnies de premiere ligne.
+
+**Fonctionnalites**
+
+- Exploitation des vrais rapports de suppression.
+- Nombre de compagnies recevant des tirs menacants.
+- Somme des projectiles menacants attendus.
+- Somme descriptive de la suppression ajoutee.
+- Suppression courante maximale du secteur.
+- Conservation de la distinction entre tirs
+  recents et pression residuelle.
+- Verification de l'heure du rapport.
+- Aucun nouveau tir ni recalcul des pertes.
+- Aucun etat militaire persistant supplementaire.
+
+**Limites**
+
+- Diagnostic physique interne uniquement.
+- Pas encore de connaissance automatique
+  par le commandement.
+- Pas de score de puissance ennemie.
+- Pas de determination de percee.
+- Pas d'effet sur les mouvements ou les retraites.
+- Rapports bases sur les deploiements courants.
+- Aucun raccordement automatique au tick.
+
+**Suite**
+
+Etudier l'effet local de cette pression sur
+la capacite a maintenir les secteurs, puis
+la possibilite de mouvements ennemis
+exploitant les intervalles non couverts.
