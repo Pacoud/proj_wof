@@ -7313,7 +7313,7 @@ L'audit a révélé trois rapports incohérents acceptés :
   vérifie séparément les deux champs interdits
   dans une piste périmée.
 
-# COMMIT # 
+# COMMIT a9ccc137e6677dd79230832e9e06308f02f99fc0 # 
   
 ### C2.4d.9l — Situation tactique connue du bataillon
 
@@ -7368,5 +7368,153 @@ recus par ses compagnies.
 - Tests de coherence temporelle.
 - Tests de non-mutation.
 - Build Release et suite complete.
+ 
+**Correctifs Post build et tests**
 
-  
+**C2.4d.9l.1 — Correction des scénarios de détection**
+
+**Raisons**
+
+Deux tests attendaient des contacts ennemis localisés
+sans fournir de signature observable à la cible.
+
+Le moteur de détection fonctionnait correctement :
+l'absence de signature empêchait la localisation.
+
+**Objectifs**
+
+- Rendre les scénarios cohérents avec les règles
+  existantes de détection tactique.
+- Vérifier la jointure entre défense et renseignement
+  à partir de véritables observations.
+
+**Modifications**
+
+- Ajout d'une signature Stationary / None à la
+  compagnie ennemie dans les deux scénarios.
+- Aucun changement des mécanismes de perception,
+  de combat ou de commandement.
+
+**Tests corrigés**
+
+- CommandPictureJoinsOwnDefenseWithObservedContacts :
+  vérifie le croisement entre défense et contact localisé.
+- ContactsOutsideResponsibilityArePreserved :
+  vérifie la conservation des contacts signalés
+  hors du périmètre de responsabilité.
+
+# COMMIT # 
+
+### C2.4d.9m — Publication horaire de la situation du commandement
+
+**Objectif**
+
+Publier une photographie unique et datee
+de la situation tactique du QG apres la
+resolution de chaque heure de combat,
+avant l'emission des nouveaux ordres.
+
+**Fonctionnalites**
+
+- Enregistrement facultatif des bataillons
+  et de leurs secteurs de responsabilite.
+- Reutilisation du diagnostic 9l.
+- Capture en fin d'heure, apres les pertes,
+  la cohesion et les reactions.
+- Publication avant l'approbation automatique
+  des renforts.
+- Conservation des valeurs du rapport publie
+  meme apres changement de deploiement.
+- Distinction entre captures reussies
+  et captures indisponibles.
+- Enregistrements identifies par bataillon reel
+  en interne, sans exposer ces references.
+- Aucun nouvel effet physique sur le combat.
+- Aucun calcul supplementaire sans enregistrement.
+
+**Validation prevue**
+
+- Test de publication facultative.
+- Test de correspondance avec 9l.
+- Test de publication avant approbation.
+- Test de conservation des anciens rapports.
+- Test de bataillons avec identifiants locaux egaux.
+- Tests de validation des enregistrements.
+- Test de copie de la configuration.
+- Test de non-regression du combat.
+
+**Limites**
+
+- Seule la derniere phase est conservee
+  par l'orchestrateur.
+- Pas encore d'historique persistant sur disque.
+- Le partage de renseignement reste immediat.
+- Aucun arbitrage entre secteurs.
+- Le commandant automatique n'utilise pas
+  encore le snapshot publie.
+- La capture reste dependante des donnees
+  courantes au moment de la publication.
+- Le cout des captures n'est pas encore mesure.
+- Les identifiants de bataillon ne sont pas
+  globalement uniques.
+- La serialisation JSON reste a fiabiliser.
+
+**Suite**
+
+Utiliser la situation horaire publiee pour
+preparer une politique explicable d'arbitrage
+entre plusieurs secteurs menaces.
+
+
+**Correctifs Post build et tests**
+
+**C2.4d.9m.1 — Robustesse de la publication après pertes**
+
+**Raisons**
+
+L'audit a reproduit une exception inattendue
+pendant la capture du renseignement.
+
+Les pertes et le bilan militaire avaient déjà
+été appliqués en H3, mais l'exception interrompait
+le tick alors que l'horloge restait en H2.
+
+**Objectifs**
+
+- Empêcher qu'un diagnostic facultatif bloque
+  une heure de combat déjà résolue.
+- Préserver les pertes et bilans militaires.
+- Conserver une trace explicite des erreurs.
+- Permettre la poursuite vers l'heure suivante.
+- Isoler les échecs entre plusieurs bataillons.
+
+**Modifications**
+
+- Centralisation de l'appel de capture.
+- Gestion des exceptions ordinaires inattendues
+  dans la publication de chaque bataillon.
+- Conservation du type et du message d'erreur
+  dans TacticalCommandSituationCaptureFailure.
+- Maintien de la publication des autres bataillons.
+- Ajout d'un point d'injection interne pour
+  reproduire les erreurs de capture en test.
+- Aucun changement de la simulation physique.
+
+**Tests ajoutés**
+
+- UnexpectedCommandCaptureFailureDoesNotBlockTick :
+  vérifie les pertes, le bilan et la progression
+  H3-H4 malgré une NotSupportedException.
+- OneUnexpectedFailureDoesNotBlockOtherBattalionPictures :
+  vérifie qu'un échec n'empêche pas les autres
+  bataillons de publier leurs rapports.
+
+**Limites**
+
+- Le correctif ne rend pas le tick transactionnel.
+- Les défaillances fatales restent exclues.
+- Une autre phase du moteur peut encore
+  interrompre un tick après des mutations.
+- La sélection sécurisée du rapport de chaque
+  bataillon reste nécessaire avant 9n.
+

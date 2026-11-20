@@ -1,6 +1,7 @@
 
 using WoF.Simulation.Diplomacy;
 using WoF.Simulation.Military.Composition;
+using WoF.Simulation.Military.Organization;
 
 namespace WoF.Simulation.Military.Combat.Tactical;
 
@@ -103,6 +104,43 @@ internal sealed class TacticalHourlyCombatOrchestrator
 
 
 
+    private sealed record RegisteredCommandFront(
+        TacticalCommandSituationRegistration Registration,
+        Battalion Battalion,
+        IReadOnlyList<BattleSector> Sectors,
+        long MaxAgeHours);
+
+    
+    private Dictionary<
+        TacticalCommandSituationRegistration,
+        TacticalCommandSituationReadResult>
+        _lastPublishedByRegistration =
+            new(ReferenceEqualityComparer.Instance);
+
+
+    private readonly List<RegisteredCommandFront>
+        _registeredCommandFronts = new();
+
+    internal TacticalCommandSituationPhaseResult?
+        LastCommandSituationPhase
+    {
+        get;
+        private set;
+    }
+
+
+    private readonly Func<
+        Battalion,
+        IReadOnlyList<BattleSector>,
+        long,
+        TacticalBattalionCommandSituationSnapshot>?
+            _commandSituationCaptureOverride;
+
+
+
+
+
+
 
     internal TacticalHourlyCombatOrchestrator(
         TacticalBattle battle,
@@ -111,7 +149,13 @@ internal sealed class TacticalHourlyCombatOrchestrator
         TacticalSignatureFrame signatures,
         DiplomacySystem diplomacy,
         TacticalHourlyCombatSettings settings,
-        TacticalPhaseTimingRecorder? timingRecorder = null)
+        TacticalPhaseTimingRecorder? timingRecorder = null,
+        Func<
+            Battalion,
+            IReadOnlyList<BattleSector>,
+            long,
+            TacticalBattalionCommandSituationSnapshot>?
+                commandSituationCaptureOverride = null)
     {
         _battle = battle
             ?? throw new ArgumentNullException(nameof(battle));
@@ -132,6 +176,8 @@ internal sealed class TacticalHourlyCombatOrchestrator
             ?? throw new ArgumentNullException(nameof(settings));
 
         _timingRecorder = timingRecorder;
+
+        _commandSituationCaptureOverride = commandSituationCaptureOverride;
 
         if (!ReferenceEquals(geometry.Battle, battle)
             || !ReferenceEquals(perception.Battle, battle)
@@ -159,6 +205,146 @@ internal sealed class TacticalHourlyCombatOrchestrator
                     this);
         }
     }
+
+
+    private TacticalBattalionCommandSituationSnapshot
+    CaptureRegisteredCommandSituation(
+        RegisteredCommandFront registered)
+    {
+        // Point d'injection interne permettant de
+        // reproduire une erreur de capture en test.
+        if (_commandSituationCaptureOverride is not null)
+        {
+            return _commandSituationCaptureOverride(
+                registered.Battalion,
+                registered.Sectors,
+                registered.MaxAgeHours);
+        }
+
+        // Chemin normal : reutilisation de 9l.
+        return new TacticalBattalionCommandSituationSystem(
+            this).Capture(
+                registered.Battalion,
+                registered.Sectors,
+                registered.MaxAgeHours);
+    }
+
+
+
+    /// <summary>
+    /// Active la publication horaire pour un bataillon
+    /// et son perimetre explicite de responsabilite.
+    ///
+    /// A appeler avant la premiere heure tactique.
+    /// </summary>
+    internal TacticalCommandSituationRegistration RegisterCommandSituation(
+        Battalion battalion,
+        IReadOnlyList<BattleSector> sectors,
+        long maxAgeHours = 2)
+    {
+        ArgumentNullException.ThrowIfNull(battalion);
+        ArgumentNullException.ThrowIfNull(sectors);
+
+        if (_lastCompletedHour is not null)
+        {
+            throw new InvalidOperationException(
+                "Command situation registration must " +
+                "precede the first completed tactical hour.");
+        }
+
+        if (!_battle.Engagement.IsActive)
+        {
+            throw new InvalidOperationException(
+                "Cannot register command situation " +
+                "for an ended battle.");
+        }
+
+        if (_settings.BattalionAssessment is null
+            || _settings.BattalionReactions is null
+            || _settings.Suppression is null
+            || _settings.Cohesion is null)
+        {
+            throw new InvalidOperationException(
+                "Command situation requires assessments, " +
+                "reactions, suppression and cohesion.");
+        }
+
+        if (maxAgeHours < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(maxAgeHours));
+        }
+
+        if (sectors.Count == 0)
+        {
+            throw new ArgumentException(
+                "Responsibility sectors cannot be empty.",
+                nameof(sectors));
+        }
+
+        if (_registeredCommandFronts.Any(r =>
+            ReferenceEquals(r.Battalion, battalion)))
+        {
+            throw new InvalidOperationException(
+                "Battalion is already registered.");
+        }
+
+        var uniqueSectors = new HashSet<BattleSector>(
+            ReferenceEqualityComparer.Instance);
+
+        foreach (var sector in sectors)
+        {
+            if (sector is null
+                || !_battle.Battlefield.ContainsSector(sector)
+                || !uniqueSectors.Add(sector))
+            {
+                throw new ArgumentException(
+                    "Invalid or duplicate responsibility sector.",
+                    nameof(sectors));
+            }
+        }
+
+        var deployments =
+            _battle.GetBattalionDeployments(battalion);
+
+        var representedCompanies = new HashSet<Company>(
+            ReferenceEqualityComparer.Instance);
+
+        if (deployments.Count == 0
+            || deployments.Count != battalion.Companies.Count)
+        {
+            throw new InvalidOperationException(
+                "Battalion must be fully deployed.");
+        }
+
+        foreach (var deployment in deployments)
+        {
+            if (!_battle.ContainsDeployment(deployment)
+                || !ReferenceEquals(
+                    deployment.Company.ParentBattalion,
+                    battalion)
+                || !representedCompanies.Add(deployment.Company))
+            {
+                throw new InvalidOperationException(
+                    "Invalid battalion deployments.");
+            }
+        }
+
+
+        var registration =
+            new TacticalCommandSituationRegistration();
+
+        _registeredCommandFronts.Add(
+            new RegisteredCommandFront(
+                registration,
+                battalion,
+                Array.AsReadOnly(sectors.ToArray()),
+                maxAgeHours));
+
+        return registration;
+
+    }
+
 
     /// <summary>
     /// Controle les conditions connues avant
@@ -550,7 +736,8 @@ internal sealed class TacticalHourlyCombatOrchestrator
 
         LastResult = result;
         LastCohesionPhase = cohesionPhase;
-             
+        PublishCommandSituations(hour);  
+
         if (_automaticReinforcementCommander is not null)
         {
             var decisions = new List<
@@ -880,5 +1067,171 @@ internal sealed class TacticalHourlyCombatOrchestrator
             .Take(2)
             .Count() == 2;
     }
+
+
+
+    private void PublishCommandSituations(long hour)
+    {
+        if (_registeredCommandFronts.Count == 0)
+            return;
+
+        var snapshots =
+            new List<TacticalBattalionCommandSituationSnapshot>();
+
+        var failures =
+            new List<TacticalCommandSituationCaptureFailure>();
+
+        var byRegistration = new Dictionary<
+            TacticalCommandSituationRegistration,
+            TacticalCommandSituationReadResult>(
+                ReferenceEqualityComparer.Instance);
+
+        foreach (var registered in _registeredCommandFronts)
+        {
+            TacticalBattalionCommandSituationSnapshot?
+                snapshot = null;
+
+            TacticalCommandSituationCaptureFailure?
+                failure = null;
+
+            string divisionName =
+                registered.Battalion.ParentDivision?.Name
+                ?? string.Empty;
+
+            try
+            {
+                snapshot = CaptureRegisteredCommandSituation(
+                    registered);
+
+                if (snapshot is null
+                    || snapshot.Hour != hour
+                    || snapshot.BattalionId
+                        != registered.Battalion.Id
+                    || snapshot.BattalionName
+                        != registered.Battalion.Name
+                    || snapshot.FriendlyDivisionName
+                        != divisionName)
+                {
+                    throw new InvalidOperationException(
+                        "Captured situation does not match " +
+                        "its registration or hour.");
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                snapshot = null;
+
+                failure =
+                    new TacticalCommandSituationCaptureFailure(
+                        registered.Battalion.Id,
+                        divisionName,
+                        ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                snapshot = null;
+
+                failure =
+                    new TacticalCommandSituationCaptureFailure(
+                        registered.Battalion.Id,
+                        divisionName,
+                        ex.Message);
+            }
+            catch (Exception ex) when (
+                ex is not OutOfMemoryException
+                && ex is not StackOverflowException
+                && ex is not AccessViolationException)
+            {
+                snapshot = null;
+
+                failure =
+                    new TacticalCommandSituationCaptureFailure(
+                        registered.Battalion.Id,
+                        divisionName,
+                        $"Unexpected {ex.GetType().Name}: " +
+                        ex.Message);
+            }
+
+            if (snapshot is not null)
+                snapshots.Add(snapshot);
+
+            if (failure is not null)
+                failures.Add(failure);
+
+            // L'identite utilisee ici est celle de la
+            // cle opaque, jamais le BattalionId.
+            byRegistration.Add(
+                registered.Registration,
+                new TacticalCommandSituationReadResult(
+                    snapshot,
+                    failure));
+        }
+
+        // La publication n'a lieu qu'apres
+        // le traitement de tous les enregistrements.
+        var phase = new TacticalCommandSituationPhaseResult(
+            hour,
+            Array.AsReadOnly(snapshots.ToArray()),
+            Array.AsReadOnly(failures.ToArray()));
+
+        _lastPublishedByRegistration = byRegistration;
+        LastCommandSituationPhase = phase;
+    }
+
+
+    /// <summary>
+    /// Lit uniquement le resultat associe a la cle
+    /// d'enregistrement fournie.
+    ///
+    /// Retourne null si aucune publication valide
+    /// n'existe pour l'heure demandee.
+    ///
+    /// Une capture echouee est retournee avec
+    /// Snapshot == null et Failure != null.
+    /// </summary>
+    internal TacticalCommandSituationReadResult?
+        ReadCommandSituation(
+            TacticalCommandSituationRegistration registration,
+            long expectedHour)
+    {
+        ArgumentNullException.ThrowIfNull(registration);
+
+        // Une cle d'une autre bataille, ou une cle
+        // jamais enregistree, n'est pas reconnue.
+        bool registeredHere = _registeredCommandFronts.Any(
+            r => ReferenceEquals(
+                r.Registration,
+                registration));
+
+        if (!registeredHere)
+        {
+            throw new InvalidOperationException(
+                "Command registration does not belong " +
+                "to this tactical orchestrator.");
+        }
+
+        // Interdire la lecture d'une publication
+        // appartenant a une bataille terminee.
+        if (!_battle.Engagement.IsActive)
+            return null;
+
+        // Interdire les rapports anciens ou futurs.
+        if (LastCommandSituationPhase?.Hour != expectedHour
+            || LastResult?.Hour != expectedHour)
+        {
+            return null;
+        }
+
+        if (!_lastPublishedByRegistration.TryGetValue(
+            registration, out var result))
+        {
+            throw new InvalidOperationException(
+                "Published command situation is missing " +
+                "a registered battalion.");
+        }
+
+        return result;
+    }
+
 
 }

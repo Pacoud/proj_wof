@@ -87,7 +87,13 @@ public sealed class TacticalReactionExecutionTests
         double killedProbability = 0,
         int extraEnemyCompanies = 0,
         TacticalPhaseTimingRecorder? timingRecorder = null,
-        bool enableAutomaticReinforcements = false)
+        bool enableAutomaticReinforcements = false,
+        Func<
+        Battalion,
+        IReadOnlyList<BattleSector>,
+        long,
+        TacticalBattalionCommandSituationSnapshot>?
+            commandSituationCaptureOverride = null)
     {
         var engine = new SimulationEngine();
 
@@ -255,7 +261,8 @@ public sealed class TacticalReactionExecutionTests
             signatures,
             engine.Diplomacy,
             settings,
-            timingRecorder);
+            timingRecorder,
+            commandSituationCaptureOverride);
 
         engine.Engagements.AttachTacticalBattle(battle);
 
@@ -3002,5 +3009,672 @@ public sealed class TacticalReactionExecutionTests
         Assert.Empty(s.Movements.PendingMovements);
     }
 
+
+    private static void Register9m(
+        Scenario s,
+        params BattleSector[] sectors)
+    {
+        s.Orchestrator.RegisterCommandSituation(
+            s.Battalion,
+            sectors,
+            maxAgeHours: 2);
+    }
+
+    [Fact]
+    public void CommandPublicationIsDisabledWithoutRegistration()
+    {
+        var s = CreateScenario(
+            enableAutomaticReinforcements: true);
+
+        s.Engine.Tick(); // H2
+        s.Engine.Tick(); // H3
+
+        Assert.Null(
+            s.Orchestrator.LastCommandSituationPhase);
+
+        // L'automatisation des renforts existante
+        // continue de fonctionner sans 9m.
+        Assert.True(s.Reserve.IsInTransit);
+    }
+
+    [Fact]
+    public void PublishedSituationMatchesImmediateCommandCapture()
+    {
+        var s = CreateScenario();
+
+        Register9m(s, s.FrontSector, s.ReserveSector);
+
+        s.Signatures.Set(
+            s.Enemy,
+            new TacticalUnitSignature(
+                TacticalActivity.Stationary,
+                TacticalConcealment.None));
+
+        s.Engine.Tick(); // H2
+
+        var phase = Assert.IsType<
+            TacticalCommandSituationPhaseResult>(
+                s.Orchestrator.LastCommandSituationPhase);
+
+        Assert.Equal(2, phase.Hour);
+        Assert.Empty(phase.Failures);
+
+        var published = Assert.Single(phase.Snapshots);
+
+        var direct = Capture9l(
+            s,
+            s.FrontSector,
+            s.ReserveSector);
+
+        Assert.Equal(
+            direct.Sectors.ToArray(),
+            published.Sectors.ToArray());
+
+        Assert.Equal(
+            direct.DeploymentRevision,
+            published.DeploymentRevision);
+
+        Assert.True(
+            published.Sectors[0].CurrentLocalizedReports > 0);
+    }
+
+    [Fact]
+    public void CommandSituationIsPublishedBeforeAutomaticApproval()
+    {
+        var s = CreateScenario(
+            enableAutomaticReinforcements: true);
+
+        Register9m(s, s.FrontSector, s.ReserveSector);
+
+        s.Engine.Tick(); // H2
+        s.Engine.Tick(); // H3 : approbation.
+
+        var phase = Assert.IsType<
+            TacticalCommandSituationPhaseResult>(
+                s.Orchestrator.LastCommandSituationPhase);
+
+        Assert.Equal(3, phase.Hour);
+        Assert.Empty(phase.Failures);
+
+        var published = Assert.Single(phase.Snapshots);
+
+        Assert.Equal(3, published.Hour);
+
+        // La reserve est maintenant en transit.
+        Assert.True(s.Reserve.IsInTransit);
+
+        // Le rapport a ete capture AVANT
+        // le changement de revision.
+        Assert.NotEqual(
+            published.DeploymentRevision,
+            s.Battle.DeploymentRevision);
+
+        // Une nouvelle capture directe de H3
+        // reste interdite par 9f.1.
+        Assert.Throws<InvalidOperationException>(() =>
+            Capture9l(s, s.FrontSector));
+
+        // La photographie publiee, elle,
+        // demeure accessible.
+        Assert.Equal(2, published.Sectors.Count);
+    }
+
+    [Fact]
+    public void PublishedSituationRemainsFrozenAfterNextHour()
+    {
+        var s = CreateScenario();
+
+        Register9m(s, s.FrontSector);
+
+        s.Engine.Tick(); // H2
+
+        var h2 = Assert.IsType<
+            TacticalCommandSituationPhaseResult>(
+                s.Orchestrator.LastCommandSituationPhase);
+
+        var original = Assert.Single(h2.Snapshots);
+
+        int originalPersonnel =
+            original.Sectors[0].AvailableFrontLinePersonnel;
+
+        s.Engine.Tick(); // H3
+
+        var h3 = Assert.IsType<
+            TacticalCommandSituationPhaseResult>(
+                s.Orchestrator.LastCommandSituationPhase);
+
+        Assert.NotSame(h2, h3);
+        Assert.Equal(2, h2.Hour);
+        Assert.Equal(3, h3.Hour);
+
+        Assert.Same(original, h2.Snapshots[0]);
+
+        Assert.Equal(
+            originalPersonnel,
+            original.Sectors[0].AvailableFrontLinePersonnel);
+    }
+
+    [Fact]
+    public void DifferentDivisionsWithSameBattalionIdArePublished()
+    {
+        var s = CreateScenario();
+
+        Register9m(s, s.FrontSector);
+
+        var enemyBattalion =
+            s.Enemy.Company.ParentBattalion!;
+
+        Assert.Equal(s.Battalion.Id, enemyBattalion.Id);
+
+        s.Orchestrator.RegisterCommandSituation(
+            enemyBattalion,
+            new[] { s.FrontSector },
+            maxAgeHours: 2);
+
+        s.Engine.Tick();
+
+        var phase = Assert.IsType<
+            TacticalCommandSituationPhaseResult>(
+                s.Orchestrator.LastCommandSituationPhase);
+
+        Assert.Empty(phase.Failures);
+        Assert.Equal(2, phase.Snapshots.Count);
+
+        Assert.Equal(
+            phase.Snapshots[0].BattalionId,
+            phase.Snapshots[1].BattalionId);
+
+        Assert.NotEqual(
+            phase.Snapshots[0].FriendlyDivisionName,
+            phase.Snapshots[1].FriendlyDivisionName);
+    }
+
+    [Fact]
+    public void CommandRegistrationRejectsInvalidFronts()
+    {
+        var s = CreateScenario();
+
+        Assert.Throws<ArgumentException>(() =>
+            Register9m(
+                s,
+                s.FrontSector,
+                s.FrontSector));
+
+        Assert.Throws<ArgumentException>(() =>
+            Register9m(s));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            s.Orchestrator.RegisterCommandSituation(
+                s.Battalion,
+                new[] { s.FrontSector },
+                maxAgeHours: -1));
+
+        var foreign = CreateScenario();
+
+        Assert.Throws<ArgumentException>(() =>
+            Register9m(s, foreign.FrontSector));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            s.Orchestrator.RegisterCommandSituation(
+                foreign.Battalion,
+                new[] { s.FrontSector }));
+
+        Register9m(s, s.FrontSector);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            Register9m(s, s.ReserveSector));
+    }
+
+    [Fact]
+    public void CommandRegistrationCopiesResponsibilitySectors()
+    {
+        var s = CreateScenario();
+
+        var configured = new[]
+        {
+            s.FrontSector,
+            s.ReserveSector
+        };
+
+        s.Orchestrator.RegisterCommandSituation(
+            s.Battalion,
+            configured);
+
+        // Modifier le tableau d'origine apres
+        // l'enregistrement.
+        configured[0] = s.RearSector;
+
+        s.Engine.Tick();
+
+        var phase = Assert.IsType<
+            TacticalCommandSituationPhaseResult>(
+                s.Orchestrator.LastCommandSituationPhase);
+
+        var picture = Assert.Single(phase.Snapshots);
+
+        Assert.Empty(phase.Failures);
+        Assert.Equal(s.FrontSector.Id,
+            picture.Sectors[0].SectorId);
+
+        Assert.Equal(s.ReserveSector.Id,
+            picture.Sectors[1].SectorId);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            Register9m(s, s.RearSector));
+    }
+
+    [Fact]
+    public void PublishingCommandSituationDoesNotChangeCombat()
+    {
+        var normal = CreateScenario();
+        var published = CreateScenario();
+
+        Register9m(
+            published,
+            published.FrontSector,
+            published.ReserveSector);
+
+        normal.Engine.Tick();
+        published.Engine.Tick();
+
+        Assert.Equal(
+            normal.Orchestrator.LastResult,
+            published.Orchestrator.LastResult);
+
+        Assert.Equal(
+            normal.Battalion.ParentDivision!
+                .GetCurrentResourceTotals(),
+            published.Battalion.ParentDivision!
+                .GetCurrentResourceTotals());
+
+        Assert.Equal(
+            normal.Front.Company.Cohesion,
+            published.Front.Company.Cohesion,
+            6);
+
+        Assert.Equal(
+            normal.Battle.DeploymentRevision,
+            published.Battle.DeploymentRevision);
+
+        Assert.Empty(
+            published.Orchestrator
+                .LastCommandSituationPhase!.Failures);
+    }
+
+
+
+    [Fact]
+    public void UnexpectedCommandCaptureFailureDoesNotBlockTick()
+    {
+        Func<
+            Battalion,
+            IReadOnlyList<BattleSector>,
+            long,
+            TacticalBattalionCommandSituationSnapshot>
+                failingCapture =
+                    (_, _, _) => throw new NotSupportedException(
+                        "Injected command capture failure.");
+
+        var baseline = CreateScenario(
+            killedProbability: 1,
+            enableAutomaticReinforcements: true);
+
+        var failing = CreateScenario(
+            killedProbability: 1,
+            enableAutomaticReinforcements: true,
+            commandSituationCaptureOverride: failingCapture);
+
+        Register9m(
+            failing,
+            failing.FrontSector,
+            failing.ReserveSector);
+
+        // Rendre l'adversaire observable pour
+        // produire de vrais tirs et de vraies pertes.
+        foreach (var s in new[] { baseline, failing })
+        {
+            s.Signatures.Set(
+                s.Enemy,
+                new TacticalUnitSignature(
+                    TacticalActivity.Stationary,
+                    TacticalConcealment.None));
+        }
+
+        // H2 puis H3 pour les deux batailles.
+        for (int i = 0; i < 2; i++)
+        {
+            baseline.Engine.Tick();
+            failing.Engine.Tick();
+        }
+
+        Assert.Equal(3, failing.Engine.Clock.CurrentHour);
+
+        var result = failing.Orchestrator.LastResult!.Value;
+
+        Assert.Equal(3, result.Hour);
+        Assert.True(result.Killed > 0);
+
+        Assert.Equal(
+            baseline.Orchestrator.LastResult,
+            failing.Orchestrator.LastResult);
+
+        Assert.Equal(
+            baseline.Battalion.ParentDivision!
+                .GetCurrentResourceTotals(),
+            failing.Battalion.ParentDivision!
+                .GetCurrentResourceTotals());
+
+        Assert.Equal(
+            baseline.Enemy.Company.Composition!
+                .Manpower.Current,
+            failing.Enemy.Company.Composition!
+                .Manpower.Current);
+
+        Assert.Equal(
+            3,
+            failing.Battle.DirectFire
+                .LastCasualtyPhase!.Hour);
+
+        // H3 doit avoir publie un echec explicite.
+        var phase = Assert.IsType<
+            TacticalCommandSituationPhaseResult>(
+                failing.Orchestrator.LastCommandSituationPhase);
+
+        Assert.Equal(3, phase.Hour);
+        Assert.Empty(phase.Snapshots);
+
+        var failure = Assert.Single(phase.Failures);
+
+        Assert.Contains(
+            "NotSupportedException",
+            failure.Reason);
+
+        // L'erreur facultative ne doit pas bloquer
+        // le commandement automatique existant.
+        Assert.True(failing.Reserve.IsInTransit);
+
+        // La simulation doit pouvoir passer a H4.
+        baseline.Engine.Tick();
+        failing.Engine.Tick();
+
+        Assert.Equal(4, failing.Engine.Clock.CurrentHour);
+
+        Assert.Equal(
+            baseline.Orchestrator.LastResult,
+            failing.Orchestrator.LastResult);
+    }
+
+
+    [Fact]
+    public void OneUnexpectedFailureDoesNotBlockOtherBattalionPictures()
+    {
+        Scenario? scenario = null;
+        int captures = 0;
+
+        Func<
+            Battalion,
+            IReadOnlyList<BattleSector>,
+            long,
+            TacticalBattalionCommandSituationSnapshot>
+                capture = (battalion, sectors, maxAge) =>
+                {
+                    captures++;
+
+                    if (captures == 1)
+                    {
+                        throw new NotSupportedException(
+                            "First battalion capture failed.");
+                    }
+
+                    return new TacticalBattalionCommandSituationSystem(
+                        scenario!.Orchestrator).Capture(
+                            battalion,
+                            sectors,
+                            maxAge);
+                };
+
+        scenario = CreateScenario(
+            commandSituationCaptureOverride: capture);
+
+        var s = scenario;
+
+        Register9m(s, s.FrontSector);
+
+        var enemyBattalion =
+            s.Enemy.Company.ParentBattalion!;
+
+        s.Orchestrator.RegisterCommandSituation(
+            enemyBattalion,
+            new[] { s.FrontSector },
+            maxAgeHours: 2);
+
+        s.Engine.Tick(); // H2
+
+        Assert.Equal(2, s.Engine.Clock.CurrentHour);
+        Assert.Equal(2, captures);
+
+        var phase = Assert.IsType<
+            TacticalCommandSituationPhaseResult>(
+                s.Orchestrator.LastCommandSituationPhase);
+
+        Assert.Equal(2, phase.Hour);
+
+        Assert.Single(phase.Failures);
+        Assert.Single(phase.Snapshots);
+
+        Assert.Contains(
+            "NotSupportedException",
+            phase.Failures[0].Reason);
+
+        Assert.Equal(
+            enemyBattalion.ParentDivision!.Name,
+            phase.Snapshots[0].FriendlyDivisionName);
+    }
+
+
+    [Fact]
+    public void ScopedCommandReadSeparatesEqualLocalBattalionIds()
+    {
+        var s = CreateScenario();
+
+        var friendlyKey =
+            s.Orchestrator.RegisterCommandSituation(
+                s.Battalion,
+                new[] { s.FrontSector });
+
+        var enemyBattalion =
+            s.Enemy.Company.ParentBattalion!;
+
+        var enemyKey =
+            s.Orchestrator.RegisterCommandSituation(
+                enemyBattalion,
+                new[] { s.FrontSector });
+
+        Assert.Equal(s.Battalion.Id, enemyBattalion.Id);
+
+        s.Engine.Tick(); // H2
+
+        var friendly = s.Orchestrator.ReadCommandSituation(
+            friendlyKey, 2);
+
+        var enemy = s.Orchestrator.ReadCommandSituation(
+            enemyKey, 2);
+
+        Assert.NotNull(friendly);
+        Assert.NotNull(enemy);
+
+        Assert.NotNull(friendly!.Snapshot);
+        Assert.NotNull(enemy!.Snapshot);
+
+        Assert.Null(friendly.Failure);
+        Assert.Null(enemy.Failure);
+
+        Assert.Equal(
+            s.Battalion.ParentDivision!.Name,
+            friendly.Snapshot.FriendlyDivisionName);
+
+        Assert.Equal(
+            enemyBattalion.ParentDivision!.Name,
+            enemy.Snapshot.FriendlyDivisionName);
+
+        Assert.NotEqual(
+            friendly.Snapshot.FriendlyDivisionName,
+            enemy.Snapshot.FriendlyDivisionName);
+    }
+
+    [Fact]
+    public void ScopedCommandReadRejectsForeignRegistration()
+    {
+        var first = CreateScenario();
+        var second = CreateScenario();
+
+        var foreignKey =
+            second.Orchestrator.RegisterCommandSituation(
+                second.Battalion,
+                new[] { second.FrontSector });
+
+        Assert.Throws<InvalidOperationException>(() =>
+            first.Orchestrator.ReadCommandSituation(
+                foreignKey, 2));
+
+        var unknownKey =
+            new TacticalCommandSituationRegistration();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            second.Orchestrator.ReadCommandSituation(
+                unknownKey, 2));
+    }
+
+    [Fact]
+    public void ScopedCommandReadRequiresCurrentHourAndActiveBattle()
+    {
+        var s = CreateScenario();
+
+        var key = s.Orchestrator.RegisterCommandSituation(
+            s.Battalion,
+            new[] { s.FrontSector });
+
+        // Aucune publication avant H2.
+        Assert.Null(
+            s.Orchestrator.ReadCommandSituation(key, 2));
+
+        s.Engine.Tick(); // H2
+
+        Assert.NotNull(
+            s.Orchestrator.ReadCommandSituation(key, 2));
+
+        Assert.Null(
+            s.Orchestrator.ReadCommandSituation(key, 1));
+
+        Assert.Null(
+            s.Orchestrator.ReadCommandSituation(key, 3));
+
+        s.Engine.Tick(); // H3
+
+        // La publication H2 n'est plus la derniere.
+        Assert.Null(
+            s.Orchestrator.ReadCommandSituation(key, 2));
+
+        Assert.NotNull(
+            s.Orchestrator.ReadCommandSituation(key, 3));
+
+        // L'opposition cesse d'etre capable de combattre.
+        var enemyDivision =
+            s.Enemy.Company.ParentBattalion!
+                .ParentDivision!;
+
+        enemyDivision.LoseOrganization(
+            enemyDivision.Organization);
+
+        s.Engine.Tick(); // Cloture.
+
+        Assert.False(s.Battle.Engagement.IsActive);
+
+        // Meme si la derniere phase demeure en memoire,
+        // elle n'est plus livree au commandement.
+        Assert.Null(
+            s.Orchestrator.ReadCommandSituation(key, 3));
+    }
+
+    [Fact]
+    public void ScopedCommandReadDefersOnCaptureFailure()
+    {
+        var s = CreateScenario(
+            commandSituationCaptureOverride:
+                (_, _, _) => throw new NotSupportedException(
+                    "Injected capture failure."));
+
+        var key = s.Orchestrator.RegisterCommandSituation(
+            s.Battalion,
+            new[] { s.FrontSector });
+
+        s.Engine.Tick(); // H2
+
+        Assert.Equal(2, s.Engine.Clock.CurrentHour);
+
+        var result =
+            s.Orchestrator.ReadCommandSituation(key, 2);
+
+        Assert.NotNull(result);
+        Assert.Null(result!.Snapshot);
+        Assert.NotNull(result.Failure);
+
+        Assert.Contains(
+            "NotSupportedException",
+            result.Failure!.Reason);
+
+        // L'echec appartient a ce bataillon.
+        Assert.Equal(
+            s.Battalion.Id,
+            result.Failure.BattalionId);
+
+        // Aucun rapport alternatif ne doit etre
+        // reconstitue automatiquement pour decider.
+    }
+
+    [Fact]
+    public void ScopedCommandReadSurvivesAutomaticApproval()
+    {
+        var s = CreateScenario(
+            enableAutomaticReinforcements: true);
+
+        var key = s.Orchestrator.RegisterCommandSituation(
+            s.Battalion,
+            new[]
+            {
+                s.FrontSector,
+                s.ReserveSector
+            });
+
+        s.Engine.Tick(); // H2
+        s.Engine.Tick(); // H3 : approbation.
+
+        Assert.True(s.Reserve.IsInTransit);
+
+        var result =
+            s.Orchestrator.ReadCommandSituation(key, 3);
+
+        Assert.NotNull(result);
+        Assert.Null(result!.Failure);
+
+        var snapshot = Assert.IsType<
+            TacticalBattalionCommandSituationSnapshot>(
+                result.Snapshot);
+
+        Assert.Equal(3, snapshot.Hour);
+        Assert.Equal(2, snapshot.Sectors.Count);
+
+        // L'ordre a modifie le deploiement APRES
+        // la photographie de commandement.
+        Assert.NotEqual(
+            snapshot.DeploymentRevision,
+            s.Battle.DeploymentRevision);
+
+        // Le lecteur cloisonne conserve le rapport H3.
+        var again =
+            s.Orchestrator.ReadCommandSituation(key, 3);
+
+        Assert.Same(snapshot, again!.Snapshot);
+    }
 
 }
