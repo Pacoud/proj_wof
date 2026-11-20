@@ -7218,7 +7218,7 @@ renseignement transmis au QG.
   détecte les références interdites dans les DTO de renseignement.
 
 
-# COMMIT # 
+# COMMIT 2c4afdcaf3964bb5a176eb565ed815cf26c0f328 # 
 
 ### C2.4d.9k — Renseignement ennemi par secteur
 
@@ -7312,3 +7312,61 @@ L'audit a révélé trois rapports incohérents acceptés :
 - SectorKnowledgeRejectsStaleContactWithCurrentFields :
   vérifie séparément les deux champs interdits
   dans une piste périmée.
+
+# COMMIT # 
+  
+### C2.4d.9l — Situation tactique connue du bataillon
+
+**Objectif**
+
+Produire une photographie de la situation
+tactique d'un bataillon en combinant les
+capacites defensives de ses propres secteurs
+avec les renseignements ennemis effectivement
+recus par ses compagnies.
+
+**Fonctionnalites**
+
+- Reutilisation des evaluations 9c/9d.
+- Integration du renseignement sectoriel 9j/9k.
+- Association par identifiant de secteur.
+- Restitution des effectifs de premiere ligne.
+- Conservation de la capacite defensive
+  et du statut de tenue des secteurs.
+- Distinction des localisations, suspicions
+  et renseignements perimes.
+- Conservation du nombre de rapports
+  provenant de secteurs hors responsabilite.
+- Photographie de fin d'heure en lecture seule.
+- Verification de la coherence des phases.
+- Protection contre une lecture apres
+  modification des deploiements.
+- Aucun objet militaire vivant dans le rapport.
+
+**Limites**
+
+- Les observations ne representent pas
+  necessairement des ennemis distincts.
+- Aucun score de menace supplementaire.
+- Aucun arbitrage automatique entre secteurs.
+- Aucun changement de politique des renforts.
+- Le snapshot n'est pas encore capture
+  automatiquement avant les approbations.
+- La revision des deploiements ne surveille
+  pas directement les mutations de cohesion
+  ou d'effectifs.
+- Les identifiants restent locaux a la bataille.
+- Les validations supplementaires des snapshots
+  externes et leur serialisation restent a traiter.
+
+**Validation prevue**
+
+- Tests de combinaison des deux sources.
+- Tests des secteurs decouverts.
+- Tests des renseignements hors perimetre.
+- Tests d'isolation des donnees militaires.
+- Tests de coherence temporelle.
+- Tests de non-mutation.
+- Build Release et suite complete.
+
+  

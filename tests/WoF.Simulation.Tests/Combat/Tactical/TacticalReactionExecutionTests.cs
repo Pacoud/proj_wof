@@ -292,6 +292,18 @@ public sealed class TacticalReactionExecutionTests
             r => ReferenceEquals(r.Battalion, s.Battalion));
     }
 
+
+    private static TacticalBattalionCommandSituationSnapshot
+        Capture9l(Scenario s, params BattleSector[] sectors)
+    {
+        return new TacticalBattalionCommandSituationSystem(
+            s.Orchestrator).Capture(
+                s.Battalion,
+                sectors,
+                maxAgeHours: 2);
+    }
+
+
     [Fact]
     public void ReinforcementTakesTimeAndUpdatesDeployment()
     {
@@ -2720,5 +2732,275 @@ public sealed class TacticalReactionExecutionTests
         Assert.False(s.Battle.Engagement.IsActive);
         Assert.Empty(s.Movements.PendingMovements);
     }
+
+
+
+    [Fact]
+    public void CommandPictureJoinsOwnDefenseWithObservedContacts()
+    {
+        var s = CreateScenario();
+
+        s.Signatures.Set(
+            s.Enemy,
+            new TacticalUnitSignature(
+                TacticalActivity.Stationary,
+                TacticalConcealment.None));
+
+
+        s.Engine.Tick(); // H2
+
+        var picture = Capture9l(
+            s,
+            s.FrontSector,
+            s.ReserveSector);
+
+        Assert.Equal(2, picture.Hour);
+        Assert.Equal(2, picture.Sectors.Count);
+
+        var front = picture.Sectors[0];
+        var reserve = picture.Sectors[1];
+
+        Assert.Equal(s.FrontSector.Id, front.SectorId);
+        Assert.True(front.IsPrioritySector);
+
+        Assert.Equal(
+            TacticalBattalionSectorStatus.UnableToHold,
+            front.DefenseStatus);
+
+        Assert.Equal(20, front.AvailableFrontLinePersonnel);
+
+        Assert.True(front.CurrentLocalizedReports > 0);
+
+        Assert.Equal(s.ReserveSector.Id, reserve.SectorId);
+
+        Assert.Equal(
+            TacticalBattalionSectorStatus.Uncovered,
+            reserve.DefenseStatus);
+
+        Assert.Equal(0, reserve.AvailableFrontLinePersonnel);
+    }
+
+    [Fact]
+    public void SectorWithoutKnownEnemyIsNotMarkedSafe()
+    {
+        var s = CreateScenario(enemyInRear: true);
+
+        s.Engine.Tick();
+
+        var picture = Capture9l(
+            s,
+            s.FrontSector,
+            s.ReserveSector);
+
+        var reserve = picture.Sectors[1];
+
+        Assert.Equal(
+            TacticalBattalionSectorStatus.Uncovered,
+            reserve.DefenseStatus);
+
+        Assert.Equal(0, reserve.CurrentLocalizedReports);
+        Assert.Equal(0, reserve.CurrentSuspectedReports);
+
+        // Aucune propriete IsSafe : zero rapport
+        // signifie absence de connaissance, pas
+        // absence physique d'ennemis.
+    }
+
+    [Fact]
+    public void ContactsOutsideResponsibilityArePreserved()
+    {
+        var s = CreateScenario();
+
+        s.Signatures.Set(
+            s.Enemy,
+            new TacticalUnitSignature(
+                TacticalActivity.Stationary,
+                TacticalConcealment.None));
+
+        s.Engine.Tick();
+
+        // Le front n'est pas dans la selection.
+        var picture = Capture9l(s, s.ReserveSector);
+
+        Assert.Single(picture.Sectors);
+
+        Assert.True(picture.OutsideLocalizedReports > 0);
+
+        Assert.Equal(
+            0,
+            picture.Sectors[0].CurrentLocalizedReports);
+    }
+
+    [Fact]
+    public void CommandPictureContainsNoLiveMilitaryReferences()
+    {
+        var s = CreateScenario();
+
+        s.Engine.Tick();
+
+        var picture = Capture9l(s, s.FrontSector);
+
+        Assert.Single(picture.Sectors);
+
+        var safeSnapshotTypes = new[]
+        {
+            typeof(int),
+            typeof(long),
+            typeof(string),
+            typeof(IReadOnlyList<
+                TacticalBattalionCommandSectorReport>)
+        };
+
+        foreach (var property in
+            typeof(TacticalBattalionCommandSituationSnapshot)
+                .GetProperties())
+        {
+            Assert.Contains(
+                property.PropertyType,
+                safeSnapshotTypes);
+        }
+
+        var safeSectorTypes = new[]
+        {
+            typeof(int),
+            typeof(string),
+            typeof(bool),
+            typeof(double),
+            typeof(TacticalBattalionSectorStatus)
+        };
+
+        foreach (var property in
+            typeof(TacticalBattalionCommandSectorReport)
+                .GetProperties())
+        {
+            Assert.Contains(
+                property.PropertyType,
+                safeSectorTypes);
+        }
+    }
+
+    [Fact]
+    public void CommandPictureRemainsFrozenAfterNextHour()
+    {
+        var s = CreateScenario();
+
+        s.Engine.Tick(); // H2
+
+        var h2 = Capture9l(s, s.FrontSector);
+
+        int originalPersonnel =
+            h2.Sectors[0].AvailableFrontLinePersonnel;
+
+        s.Engine.Tick(); // H3
+
+        Assert.Equal(2, h2.Hour);
+
+        Assert.Equal(
+            originalPersonnel,
+            h2.Sectors[0].AvailableFrontLinePersonnel);
+
+        var h3 = Capture9l(s, s.FrontSector);
+
+        Assert.Equal(3, h3.Hour);
+
+        Assert.NotSame(h2, h3);
+    }
+
+    [Fact]
+    public void CommandPictureRejectsAfterAutomaticApproval()
+    {
+        var s = CreateScenario(
+            enableAutomaticReinforcements: true);
+
+        s.Engine.Tick(); // H2
+        s.Engine.Tick(); // H3
+
+        Assert.True(s.Reserve.IsInTransit);
+
+        Assert.NotEqual(
+            s.Battle.DirectFire.LastSuppressionPhase!
+                .DeploymentRevision,
+            s.Battle.DeploymentRevision);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            Capture9l(s, s.FrontSector));
+    }
+
+    [Fact]
+    public void CommandPictureRejectsInvalidPhaseOrResponsibility()
+    {
+        var s = CreateScenario();
+
+        // Pas encore d'heure tactique terminee.
+        Assert.Throws<InvalidOperationException>(() =>
+            Capture9l(s, s.FrontSector));
+
+        s.Engine.Tick();
+
+        Assert.Throws<ArgumentException>(() =>
+            Capture9l(
+                s,
+                s.FrontSector,
+                s.FrontSector));
+
+        var foreign = CreateScenario();
+
+        Assert.Throws<ArgumentException>(() =>
+            Capture9l(s, foreign.FrontSector));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            new TacticalBattalionCommandSituationSystem(
+                s.Orchestrator).Capture(
+                    foreign.Battalion,
+                    new[] { s.FrontSector },
+                    maxAgeHours: 2));
+    }
+
+    [Fact]
+    public void CommandPictureDoesNotModifyMilitaryState()
+    {
+        var s = CreateScenario();
+
+        s.Engine.Tick();
+
+        var resources =
+            s.Battalion.ParentDivision!
+                .GetCurrentResourceTotals();
+
+        double cohesion = s.Front.Company.Cohesion;
+        long revision = s.Battle.DeploymentRevision;
+
+        var suppression =
+            s.Battle.DirectFire.LastSuppressionPhase;
+
+        var first = Capture9l(
+            s,
+            s.FrontSector,
+            s.ReserveSector);
+
+        var second = Capture9l(
+            s,
+            s.FrontSector,
+            s.ReserveSector);
+
+        Assert.Equal(
+            first.Sectors.ToArray(),
+            second.Sectors.ToArray());
+
+        Assert.Equal(
+            resources,
+            s.Battalion.ParentDivision!
+                .GetCurrentResourceTotals());
+
+        Assert.Equal(cohesion, s.Front.Company.Cohesion, 6);
+        Assert.Equal(revision, s.Battle.DeploymentRevision);
+
+        Assert.Same(
+            suppression,
+            s.Battle.DirectFire.LastSuppressionPhase);
+
+        Assert.Empty(s.Movements.PendingMovements);
+    }
+
 
 }

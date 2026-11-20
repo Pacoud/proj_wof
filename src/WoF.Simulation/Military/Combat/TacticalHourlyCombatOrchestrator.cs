@@ -46,6 +46,14 @@ internal sealed class TacticalHourlyCombatOrchestrator
 
     internal TacticalBattle Battle => _battle;
 
+
+    internal TacticalPerceptionState Perception => _perception;
+
+    internal TacticalBattalionAssessmentProfile?
+        BattalionAssessmentProfile =>
+            _settings.BattalionAssessment;
+
+
     internal TacticalHourlyCombatResult? LastResult
     {
         get;
