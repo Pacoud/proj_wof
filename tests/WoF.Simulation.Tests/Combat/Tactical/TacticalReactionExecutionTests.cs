@@ -28,6 +28,85 @@ public sealed class TacticalReactionExecutionTests
         TacticalPerceptionState Perception,
         TacticalSignatureFrame Signatures);
 
+
+    private static TacticalBattalionCommandSectorReport Sector9n(
+        int id,
+        TacticalBattalionSectorStatus status,
+        bool priority = false,
+        int localized = 0,
+        int suspected = 0,
+        int stale = 0)
+    {
+        int available = status switch
+        {
+            TacticalBattalionSectorStatus.Uncovered => 0,
+            TacticalBattalionSectorStatus.UnableToHold => 20,
+            TacticalBattalionSectorStatus.AtRisk => 40,
+            TacticalBattalionSectorStatus.Capable => 80,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(status))
+        };
+
+        return new TacticalBattalionCommandSectorReport(
+            SectorId: id,
+            SectorName: $"Sector {id}",
+            IsPrioritySector: priority,
+            DefenseStatus: status,
+            StationaryFrontLineCompanies:
+                status == TacticalBattalionSectorStatus.Uncovered
+                    ? 0 : 1,
+            AuthorizedFrontLinePersonnel:
+                status == TacticalBattalionSectorStatus.Uncovered
+                    ? 0 : 100,
+            AvailableFrontLinePersonnel: available,
+            FrontLineReadiness: available,
+            CurrentLocalizedReports: localized,
+            CurrentSuspectedReports: suspected,
+            StaleReports: stale);
+    }
+
+    private static (
+        Scenario Scenario,
+        TacticalCommandSituationReader Reader)
+        Create9nScenario(
+            params TacticalBattalionCommandSectorReport[] sectors)
+    {
+        Scenario? linked = null;
+
+        var s = CreateScenario(
+            commandSituationCaptureOverride:
+                (battalion, _, _) =>
+                    new TacticalBattalionCommandSituationSnapshot(
+                        BattalionId: battalion.Id,
+                        BattalionName: battalion.Name,
+                        FriendlyDivisionName:
+                            battalion.ParentDivision!.Name,
+                        Hour:
+                            linked!.Orchestrator.LastResult!.Value.Hour,
+                        DeploymentRevision:
+                            linked.Battle.DeploymentRevision,
+                        Sectors:
+                            Array.AsReadOnly(sectors.ToArray()),
+                        OutsideLocalizedReports: 0,
+                        OutsideSuspectedReports: 0,
+                        OutsideStaleReports: 0));
+
+        linked = s;
+
+        var key = s.Orchestrator.RegisterCommandSituation(
+            s.Battalion,
+            new[]
+            {
+                s.FrontSector,
+                s.ReserveSector
+            });
+
+        return (
+            s,
+            s.Orchestrator.BindCommandSituationReader(key));
+    }
+
+
     private static Division MakeDivision(
         Country country,
         Province province,
@@ -93,7 +172,8 @@ public sealed class TacticalReactionExecutionTests
         IReadOnlyList<BattleSector>,
         long,
         TacticalBattalionCommandSituationSnapshot>?
-            commandSituationCaptureOverride = null)
+            commandSituationCaptureOverride = null,
+        double riskThreshold = 30)
     {
         var engine = new SimulationEngine();
 
@@ -239,7 +319,7 @@ public sealed class TacticalReactionExecutionTests
                 1.5, 40, 0.1, 3, 20, 0.5),
             battalionAssessment:
                 new TacticalBattalionAssessmentProfile(
-                    3, 2, 1, 2, 60, 30),
+                    3, 2, 1, 2, 60, riskThreshold),
             battalionReactions:
                 new TacticalBattalionReactionProfile(
                     2, 2, 10),
@@ -3677,4 +3757,617 @@ public sealed class TacticalReactionExecutionTests
         Assert.Same(snapshot, again!.Snapshot);
     }
 
+
+
+    [Fact]
+    public void ArbitrationRecommendsClearlyDominantSector()
+    {
+        var (s, reader) = Create9nScenario(
+            Sector9n(
+                1,
+                TacticalBattalionSectorStatus.UnableToHold,
+                localized: 1),
+            Sector9n(
+                2,
+                TacticalBattalionSectorStatus.AtRisk,
+                suspected: 1));
+
+        s.Engine.Tick();
+
+        var result =
+            new TacticalBattalionSectorArbitrationPolicy(reader)
+                .Evaluate(2);
+
+        Assert.Equal(
+            TacticalSectorArbitrationStatus.Recommended,
+            result.Status);
+
+        Assert.Equal(1, result.SectorId);
+        Assert.Equal(
+            TacticalSectorEvidence.CurrentLocalized,
+            result.Evidence);
+    }
+
+    [Fact]
+    public void ArbitrationUsesMissionPriorityAsTieBreaker()
+    {
+        var (s, reader) = Create9nScenario(
+            Sector9n(
+                1,
+                TacticalBattalionSectorStatus.AtRisk,
+                suspected: 1),
+            Sector9n(
+                2,
+                TacticalBattalionSectorStatus.AtRisk,
+                priority: true,
+                suspected: 1));
+
+        s.Engine.Tick();
+
+        var result =
+            new TacticalBattalionSectorArbitrationPolicy(reader)
+                .Evaluate(2);
+
+        Assert.Equal(
+            TacticalSectorArbitrationStatus.Recommended,
+            result.Status);
+
+        Assert.Equal(2, result.SectorId);
+    }
+
+    [Fact]
+    public void ArbitrationDoesNotTreatReportCountAsEnemyStrength()
+    {
+        var (s, reader) = Create9nScenario(
+            Sector9n(
+                1,
+                TacticalBattalionSectorStatus.AtRisk,
+                localized: 1),
+            Sector9n(
+                2,
+                TacticalBattalionSectorStatus.AtRisk,
+                localized: 7));
+
+        s.Engine.Tick();
+
+        var result =
+            new TacticalBattalionSectorArbitrationPolicy(reader)
+                .Evaluate(2);
+
+        // Sept rapports ne prouvent pas la presence
+        // de sept compagnies ennemies distinctes.
+        Assert.Equal(
+            TacticalSectorArbitrationStatus.DeferredAmbiguous,
+            result.Status);
+
+        Assert.Null(result.SectorId);
+        Assert.Equal(
+            new[] { 1, 2 },
+            result.CandidateSectorIds);
+    }
+
+    [Fact]
+    public void ArbitrationDefersConflictingEvidenceAndWeakness()
+    {
+        var (s, reader) = Create9nScenario(
+            Sector9n(
+                1,
+                TacticalBattalionSectorStatus.UnableToHold,
+                stale: 1),
+            Sector9n(
+                2,
+                TacticalBattalionSectorStatus.AtRisk,
+                localized: 1));
+
+        s.Engine.Tick();
+
+        var result =
+            new TacticalBattalionSectorArbitrationPolicy(reader)
+                .Evaluate(2);
+
+        // A est plus faible, mais B dispose
+        // du renseignement le plus actuel.
+        Assert.Equal(
+            TacticalSectorArbitrationStatus.DeferredAmbiguous,
+            result.Status);
+
+        Assert.Null(result.SectorId);
+    }
+
+    [Fact]
+    public void ArbitrationDefersWhenOnlyHistoricalContactExists()
+    {
+        var (s, reader) = Create9nScenario(
+            Sector9n(
+                1,
+                TacticalBattalionSectorStatus.UnableToHold,
+                stale: 2),
+            Sector9n(
+                2,
+                TacticalBattalionSectorStatus.Capable));
+
+        s.Engine.Tick();
+
+        var result =
+            new TacticalBattalionSectorArbitrationPolicy(reader)
+                .Evaluate(2);
+
+        Assert.Equal(
+            TacticalSectorArbitrationStatus
+                .DeferredNoCurrentContact,
+            result.Status);
+
+        Assert.Null(result.SectorId);
+    }
+
+    [Fact]
+    public void ArbitrationDoesNotReinforceCapableSectors()
+    {
+        var (s, reader) = Create9nScenario(
+            Sector9n(
+                1,
+                TacticalBattalionSectorStatus.Capable,
+                localized: 2),
+            Sector9n(
+                2,
+                TacticalBattalionSectorStatus.Capable,
+                suspected: 1));
+
+        s.Engine.Tick();
+
+        var result =
+            new TacticalBattalionSectorArbitrationPolicy(reader)
+                .Evaluate(2);
+
+        Assert.Equal(
+            TacticalSectorArbitrationStatus.NoWeakSector,
+            result.Status);
+
+        Assert.Null(result.SectorId);
+    }
+
+    [Fact]
+    public void ArbitrationDefersMissingOrFailedPublication()
+    {
+        var (s, reader) = Create9nScenario(
+            Sector9n(
+                1,
+                TacticalBattalionSectorStatus.UnableToHold,
+                localized: 1));
+
+        var policy =
+            new TacticalBattalionSectorArbitrationPolicy(reader);
+
+        Assert.Equal(
+            TacticalSectorArbitrationStatus
+                .DeferredNoPublication,
+            policy.Evaluate(2).Status);
+
+        var failing = CreateScenario(
+            commandSituationCaptureOverride:
+                (_, _, _) => throw new NotSupportedException(
+                    "Injected 9n failure."));
+
+        var key = failing.Orchestrator.RegisterCommandSituation(
+            failing.Battalion,
+            new[] { failing.FrontSector });
+
+        var failedReader =
+            failing.Orchestrator.BindCommandSituationReader(key);
+
+        failing.Engine.Tick();
+
+        var failedResult =
+            new TacticalBattalionSectorArbitrationPolicy(
+                failedReader).Evaluate(2);
+
+        Assert.Equal(
+            TacticalSectorArbitrationStatus
+                .DeferredCaptureFailure,
+            failedResult.Status);
+
+        Assert.Null(failedResult.SectorId);
+    }
+
+    [Fact]
+    public void ArbitrationRejectsMalformedPublishedSectorData()
+    {
+        var (s, reader) = Create9nScenario(
+            Sector9n(
+                1,
+                TacticalBattalionSectorStatus.UnableToHold,
+                localized: -1),
+            Sector9n(
+                2,
+                TacticalBattalionSectorStatus.AtRisk,
+                suspected: 1));
+
+        s.Engine.Tick();
+
+        var result =
+            new TacticalBattalionSectorArbitrationPolicy(reader)
+                .Evaluate(2);
+
+        Assert.Equal(
+            TacticalSectorArbitrationStatus.DeferredCaptureFailure,
+            result.Status);
+
+        Assert.Null(result.SectorId);
+    }
+
+    [Fact]
+    public void ArbitrationDoesNotModifyCombatOrIssueOrders()
+    {
+        var (s, reader) = Create9nScenario(
+            Sector9n(
+                1,
+                TacticalBattalionSectorStatus.UnableToHold,
+                localized: 1),
+            Sector9n(
+                2,
+                TacticalBattalionSectorStatus.AtRisk,
+                suspected: 1));
+
+        s.Engine.Tick();
+
+        var resourcesBefore =
+            s.Battalion.ParentDivision!
+                .GetCurrentResourceTotals();
+
+        var combatBefore = s.Orchestrator.LastResult;
+        long revisionBefore = s.Battle.DeploymentRevision;
+        double cohesionBefore = s.Front.Company.Cohesion;
+
+        var publishedBefore = reader.Read(2)!.Snapshot;
+
+        var policy =
+            new TacticalBattalionSectorArbitrationPolicy(reader);
+
+        var first = policy.Evaluate(2);
+        var second = policy.Evaluate(2);
+
+        Assert.Equal(first.Status, second.Status);
+        Assert.Equal(first.SectorId, second.SectorId);
+
+        Assert.Same(
+            publishedBefore,
+            reader.Read(2)!.Snapshot);
+
+        Assert.Equal(
+            resourcesBefore,
+            s.Battalion.ParentDivision!
+                .GetCurrentResourceTotals());
+
+        Assert.Equal(
+            combatBefore,
+            s.Orchestrator.LastResult);
+
+        Assert.Equal(
+            revisionBefore,
+            s.Battle.DeploymentRevision);
+
+        Assert.Equal(
+            cohesionBefore,
+            s.Front.Company.Cohesion);
+
+        Assert.Empty(s.Movements.PendingMovements);
+    }
+
+
+    [Fact]
+    public void PublicationRejectsSectorOutsideRegisteredFront()
+    {
+        var (s, reader) = Create9nScenario(
+            Sector9n(
+                1,
+                TacticalBattalionSectorStatus.UnableToHold,
+                localized: 1),
+            Sector9n(
+                3,
+                TacticalBattalionSectorStatus.AtRisk,
+                suspected: 1));
+
+        // Le perimetre enregistre contient 1 et 2,
+        // mais la capture injectee contient 1 et 3.
+        s.Engine.Tick();
+
+        var phase = Assert.IsType<
+            TacticalCommandSituationPhaseResult>(
+                s.Orchestrator.LastCommandSituationPhase);
+
+        Assert.Empty(phase.Snapshots);
+        Assert.Single(phase.Failures);
+
+        var decision =
+            new TacticalBattalionSectorArbitrationPolicy(
+                reader).Evaluate(2);
+
+        Assert.Equal(
+            TacticalSectorArbitrationStatus.DeferredCaptureFailure,
+            decision.Status);
+
+        Assert.Null(decision.SectorId);
+    }
+
+    [Fact]
+    public void PublicationRejectsAtRiskWithoutFrontLine()
+    {
+        var impossible = Sector9n(
+            1,
+            TacticalBattalionSectorStatus.AtRisk,
+            localized: 1) with
+        {
+            StationaryFrontLineCompanies = 0,
+            AuthorizedFrontLinePersonnel = 0,
+            AvailableFrontLinePersonnel = 0,
+            FrontLineReadiness = 0
+        };
+
+        var (s, reader) = Create9nScenario(
+            impossible,
+            Sector9n(
+                2,
+                TacticalBattalionSectorStatus.Capable));
+
+        s.Engine.Tick();
+
+        var phase = Assert.IsType<
+            TacticalCommandSituationPhaseResult>(
+                s.Orchestrator.LastCommandSituationPhase);
+
+        Assert.Empty(phase.Snapshots);
+        Assert.Single(phase.Failures);
+
+        Assert.Equal(
+            TacticalSectorArbitrationStatus.DeferredCaptureFailure,
+            new TacticalBattalionSectorArbitrationPolicy(
+                reader).Evaluate(2).Status);
+    }
+
+    [Fact]
+    public void PublicationRejectsMissingAndDuplicatedSectors()
+    {
+        var missing = Create9nScenario(
+            Sector9n(
+                1,
+                TacticalBattalionSectorStatus.UnableToHold,
+                localized: 1));
+
+        var duplicated = Create9nScenario(
+            Sector9n(
+                1,
+                TacticalBattalionSectorStatus.UnableToHold,
+                localized: 1),
+            Sector9n(
+                1,
+                TacticalBattalionSectorStatus.AtRisk,
+                suspected: 1));
+
+        foreach (var (s, reader) in new[]
+        {
+            missing,
+            duplicated
+        })
+        {
+            s.Engine.Tick();
+
+            var phase = Assert.IsType<
+                TacticalCommandSituationPhaseResult>(
+                    s.Orchestrator.LastCommandSituationPhase);
+
+            Assert.Empty(phase.Snapshots);
+            Assert.Single(phase.Failures);
+
+            Assert.Equal(
+                TacticalSectorArbitrationStatus
+                    .DeferredCaptureFailure,
+                new TacticalBattalionSectorArbitrationPolicy(
+                    reader).Evaluate(2).Status);
+        }
+    }
+
+    [Fact]
+    public void PublishedSituationIsIndependentOfInjectedMutableArray()
+    {
+        var mutableSectors = new[]
+        {
+            Sector9n(
+                1,
+                TacticalBattalionSectorStatus.UnableToHold,
+                localized: 1),
+            Sector9n(
+                2,
+                TacticalBattalionSectorStatus.Capable)
+        };
+
+        Scenario? linked = null;
+
+        var s = CreateScenario(
+            commandSituationCaptureOverride:
+                (battalion, _, _) =>
+                    new TacticalBattalionCommandSituationSnapshot(
+                        BattalionId: battalion.Id,
+                        BattalionName: battalion.Name,
+                        FriendlyDivisionName:
+                            battalion.ParentDivision!.Name,
+                        Hour:
+                            linked!.Orchestrator.LastResult!.Value.Hour,
+                        DeploymentRevision:
+                            linked.Battle.DeploymentRevision,
+                        Sectors: mutableSectors,
+                        OutsideLocalizedReports: 0,
+                        OutsideSuspectedReports: 0,
+                        OutsideStaleReports: 0));
+
+        linked = s;
+
+        var key = s.Orchestrator.RegisterCommandSituation(
+            s.Battalion,
+            new[]
+            {
+                s.FrontSector,
+                s.ReserveSector
+            });
+
+        var reader =
+            s.Orchestrator.BindCommandSituationReader(key);
+
+        s.Engine.Tick();
+
+        var policy =
+            new TacticalBattalionSectorArbitrationPolicy(
+                reader);
+
+        var first = policy.Evaluate(2);
+
+        Assert.Equal(
+            TacticalSectorArbitrationStatus.Recommended,
+            first.Status);
+
+        Assert.Equal(1, first.SectorId);
+
+        var published = reader.Read(2)!.Snapshot!;
+
+        // Modifier le tableau d'origine APRES
+        // sa publication : inverser la situation.
+        mutableSectors[0] = Sector9n(
+            1,
+            TacticalBattalionSectorStatus.Capable);
+
+        mutableSectors[1] = Sector9n(
+            2,
+            TacticalBattalionSectorStatus.UnableToHold,
+            localized: 1);
+
+        var second = policy.Evaluate(2);
+
+        // Sans copie, la recommandation pourrait
+        // changer pour la meme heure tactique.
+        Assert.Equal(first.Status, second.Status);
+        Assert.Equal(first.SectorId, second.SectorId);
+
+        Assert.Equal(
+            TacticalBattalionSectorStatus.UnableToHold,
+            published.Sectors[0].DefenseStatus);
+
+        Assert.Equal(
+            TacticalBattalionSectorStatus.Capable,
+            published.Sectors[1].DefenseStatus);
+
+        Assert.NotSame(
+            mutableSectors,
+            published.Sectors);
+
+        Assert.Same(
+            published,
+            reader.Read(2)!.Snapshot);
+    }
+
+
+
+
+    [Fact]
+    public void PublicationRejectsPositiveReadinessWithNoPersonnel()
+    {
+        var invalid = Sector9n(
+            1,
+            TacticalBattalionSectorStatus.UnableToHold,
+            localized: 1) with
+        {
+            AvailableFrontLinePersonnel = 0,
+            FrontLineReadiness = 15
+        };
+
+        var (s, reader) = Create9nScenario(
+            invalid,
+            Sector9n(
+                2,
+                TacticalBattalionSectorStatus.Capable));
+
+        s.Engine.Tick();
+
+        var phase = Assert.IsType<
+            TacticalCommandSituationPhaseResult>(
+                s.Orchestrator.LastCommandSituationPhase);
+
+        Assert.Empty(phase.Snapshots);
+        Assert.Single(phase.Failures);
+
+        var decision =
+            new TacticalBattalionSectorArbitrationPolicy(
+                reader).Evaluate(2);
+
+        Assert.Equal(
+            TacticalSectorArbitrationStatus.DeferredCaptureFailure,
+            decision.Status);
+    }
+
+
+
+    [Fact]
+    public void PublicationAcceptsAtRiskWithZeroReadinessAtZeroThreshold()
+    {
+        Scenario? linked = null;
+
+        var s = CreateScenario(
+            riskThreshold: 0,
+            commandSituationCaptureOverride:
+                (battalion, _, _) =>
+                    new TacticalBattalionCommandSituationSnapshot(
+                        BattalionId: battalion.Id,
+                        BattalionName: battalion.Name,
+                        FriendlyDivisionName:
+                            battalion.ParentDivision!.Name,
+                        Hour:
+                            linked!.Orchestrator.LastResult!.Value.Hour,
+                        DeploymentRevision:
+                            linked.Battle.DeploymentRevision,
+                        Sectors: Array.AsReadOnly(new[]
+                        {
+                            Sector9n(
+                                1,
+                                TacticalBattalionSectorStatus.AtRisk,
+                                localized: 1) with
+                            {
+                                FrontLineReadiness = 0
+                            },
+                            Sector9n(
+                                2,
+                                TacticalBattalionSectorStatus.Capable)
+                        }),
+                        OutsideLocalizedReports: 0,
+                        OutsideSuspectedReports: 0,
+                        OutsideStaleReports: 0));
+
+        linked = s;
+
+        s.Orchestrator.RegisterCommandSituation(
+            s.Battalion,
+            new[]
+            {
+                s.FrontSector,
+                s.ReserveSector
+            });
+
+        s.Engine.Tick();
+
+        var phase = Assert.IsType<
+            TacticalCommandSituationPhaseResult>(
+                s.Orchestrator.LastCommandSituationPhase);
+
+        Assert.Empty(phase.Failures);
+
+        var snapshot = Assert.Single(phase.Snapshots);
+
+        Assert.Equal(
+            TacticalBattalionSectorStatus.AtRisk,
+            snapshot.Sectors[0].DefenseStatus);
+
+        Assert.Equal(
+            0,
+            snapshot.Sectors[0].FrontLineReadiness);
+    }
+
+
 }
+

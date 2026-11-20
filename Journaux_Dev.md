@@ -7518,3 +7518,223 @@ le tick alors que l'horloge restait en H2.
 - La sélection sécurisée du rapport de chaque
   bataillon reste nécessaire avant 9n.
 
+**C2.4d.9m.2 — Accès cloisonné aux situations du commandement**
+
+**Raisons**
+
+La publication horaire regroupe potentiellement
+des renseignements de bataillons appartenant
+à plusieurs camps.
+
+BattalionId et FriendlyDivisionName ne suffisent
+pas à garantir l'identité d'un bataillon.
+
+Une future politique de commandement ne doit
+pas recevoir directement tous les snapshots
+de la bataille.
+
+**Objectifs**
+
+- Identifier chaque enregistrement par une
+  clé unique propre à son orchestrateur.
+- Restreindre la lecture au bataillon concerné.
+- Refuser les publications anciennes.
+- Interdire l'utilisation de rapports après
+  la clôture de l'engagement.
+- Différer les décisions si la capture a échoué.
+
+**Modifications**
+
+- Introduction d'une clé opaque d'enregistrement.
+- Association privée des snapshots et des échecs
+  à leurs clés respectives.
+- Ajout de ReadCommandSituation().
+- Vérification de l'appartenance de la clé,
+  de l'heure et de l'activité de la bataille.
+- Maintien de LastCommandSituationPhase pour
+  le diagnostic interne.
+- Conservation du comportement de 9m.1
+  face aux exceptions de capture.
+- Aucun changement du combat ou des mouvements.
+
+**Tests ajoutés**
+
+- ScopedCommandReadSeparatesEqualLocalBattalionIds :
+  distingue deux bataillons aux identifiants égaux.
+- ScopedCommandReadRejectsForeignRegistration :
+  refuse une clé étrangère ou inconnue.
+- ScopedCommandReadRequiresCurrentHourAndActiveBattle :
+  refuse les heures périmées et batailles terminées.
+- ScopedCommandReadDefersOnCaptureFailure :
+  distingue un échec de capture d'un rapport valide.
+- ScopedCommandReadSurvivesAutomaticApproval :
+  conserve l'accès au rapport après mise en transit.
+
+**Limites**
+
+- Les clés sont valables seulement en mémoire.
+- La phase globale reste accessible au code
+  interne privilégié du moteur.
+- Le commandement automatique n'utilise pas
+  encore les rapports.
+- Les autres risques de transaction du tick
+  restent à traiter séparément.
+
+# COMMIT # 
+
+### C2.4d.9n — Premier arbitrage tactique entre secteurs
+
+**Objectif**
+
+Introduire une première politique de commandement
+capable de recommander un secteur à renforcer à
+partir d'une situation tactique publiée et connue
+du bataillon, sans produire d'ordre militaire.
+
+**Fonctionnalités**
+
+- Lecteur de renseignement lié à une clé
+  d'enregistrement propre au bataillon.
+- Lecture de la situation à une heure précise.
+- Comparaison des secteurs affaiblis.
+- Prise en compte de la gravité défensive,
+  du niveau de renseignement et de la mission.
+- Sélection fondée sur une domination partielle,
+  sans score arbitraire.
+- Recommandation uniquement si un secteur se
+  distingue et possède un contact actuel.
+- Décision différée si les informations sont
+  absentes, insuffisantes ou contradictoires.
+- Conservation des compteurs comme nombres de
+  rapports, sans estimation des effectifs ennemis.
+- Résultats explicables et déterministes.
+- Aucun ordre de mouvement ou de renforcement.
+
+**Validation prévue**
+
+- Test d'un secteur clairement dominant.
+- Test de priorité de mission.
+- Test de non-assimilation des rapports aux ennemis.
+- Test d'informations contradictoires.
+- Test de renseignement uniquement historique.
+- Test de secteurs défensivement capables.
+- Test de publication absente ou échouée.
+- Test de données sectorielles malformées.
+- Test de non-mutation du combat.
+
+**Limites**
+
+- Doctrine d'arbitrage expérimentale.
+- Aucun calcul de puissance ennemie réelle.
+- Aucun coût ou délai de déplacement évalué.
+- Aucun partage retardé des renseignements.
+- Le commandement peut différer fréquemment.
+- Aucune comparaison des itinéraires de renfort.
+- Aucun ordre n'est encore exécuté.
+- La clé reste un mécanisme interne en mémoire.
+- L'origine des snapshots injectés n'est pas
+  prouvée par les seules métadonnées.
+- La sérialisation JSON n'est pas encore fiabilisée.
+
+**Suite**
+
+Comparer les recommandations à des situations
+tactiques réelles, puis préparer leur traduction
+en demandes de renforcement sans modifier
+immédiatement les mouvements existants.
+
+
+**Correctifs Post build et tests**
+
+**C2.4d.9n.1 — Validation et figement des situations publiées**
+
+**Raisons**
+
+L'audit a montré qu'une capture injectée pouvait
+produire une recommandation avec un secteur hors
+responsabilité ou un état défensif incohérent.
+
+Une collection mutable permettait également de
+modifier la décision après publication, pour
+une même heure tactique.
+
+**Objectifs**
+
+- Garantir la cohérence structurelle des rapports.
+- Interdire les secteurs hors responsabilité.
+- Vérifier la compatibilité entre statut défensif
+  et présence réelle des forces amies déclarées.
+- Figer les données avant leur transmission au QG.
+- Différer les décisions fondées sur un rapport invalide.
+
+**Modifications**
+
+- Validation des secteurs à la publication.
+- Contrôle du périmètre et de son ordre.
+- Contrôle des effectifs, statuts et compteurs.
+- Vérification de l'heure et de la révision.
+- Copie des lignes sectorielles et de la collection.
+- Transformation des captures invalides en échecs
+  explicites, sans produire de recommandation.
+- Conservation de la politique consultative 9n.
+
+**Tests ajoutés**
+
+- PublicationRejectsSectorOutsideRegisteredFront :
+  refuse un secteur étranger au périmètre.
+- PublicationRejectsAtRiskWithoutFrontLine :
+  refuse un statut défensif incohérent.
+- PublicationRejectsMissingAndDuplicatedSectors :
+  contrôle l'exhaustivité et l'unicité des secteurs.
+- PublishedSituationIsIndependentOfInjectedMutableArray :
+  garantit la stabilité d'une publication.
+
+**Limites**
+
+- Les métadonnées ne prouvent pas l'origine
+  d'une capture artificiellement injectée.
+- Le chemin normal de perception reste la
+  source attendue pour les futures décisions réelles.
+- Aucun ordre n'est encore généré.
+- La faisabilité d'un renfort n'est pas vérifiée
+  par la politique consultative.
+
+
+**Complément après première validation**
+
+**Raisons**
+
+Le premier build de 9n.1 réussissait, mais les quatre
+tests de validation échouaient : le validateur était
+défini sans être appelé par le chemin de publication.
+
+L'audit a également relevé deux incompatibilités
+avec le calcul des statuts défensifs de 9c.
+
+**Objectifs**
+
+- Rendre la validation effective avant publication.
+- Publier uniquement le snapshot figé.
+- Respecter les seuils du profil défensif.
+- Éviter les rejets de situations militaires valides.
+
+**Modifications**
+
+- Raccordement de ValidateAndFreezeCommandSituation()
+  dans PublishCommandSituations().
+- Publication de la copie retournée par le validateur.
+- Alignement des statuts sur RiskThreshold et
+  HoldThreshold.
+- Acceptation de AtRisk avec readiness nulle
+  lorsque RiskThreshold vaut zéro.
+- Rejet d'une readiness positive sans personnel
+  disponible.
+- Actualisation du test 9n des comptes négatifs
+  vers DeferredCaptureFailure.
+
+**Tests ajoutés**
+
+- PublicationRejectsPositiveReadinessWithNoPersonnel :
+  rejette une capacité positive sans effectif disponible.
+- PublicationAcceptsAtRiskWithZeroReadinessAtZeroThreshold :
+  conserve un cas limite autorisé par le profil défensif.

@@ -1070,6 +1070,176 @@ internal sealed class TacticalHourlyCombatOrchestrator
 
 
 
+    private TacticalBattalionCommandSituationSnapshot
+        ValidateAndFreezeCommandSituation(
+            TacticalBattalionCommandSituationSnapshot? snapshot,
+            RegisteredCommandFront registered,
+            long hour)
+    {
+        if (snapshot is null)
+        {
+            throw new InvalidOperationException(
+                "Command situation capture returned null.");
+        }
+
+        var battalion = registered.Battalion;
+
+        var division = battalion.ParentDivision
+            ?? throw new InvalidOperationException(
+            "Registered battalion has no division.");
+
+    // Identite descriptive et coherence temporelle.
+    if (snapshot.Hour != hour
+        || snapshot.BattalionId != battalion.Id
+        || snapshot.BattalionName != battalion.Name
+        || snapshot.FriendlyDivisionName != division.Name
+        || snapshot.DeploymentRevision
+            != _battle.DeploymentRevision)
+    {
+        throw new InvalidOperationException(
+            "Command situation metadata mismatch.");
+    }
+
+    if (snapshot.Sectors is null
+        || snapshot.Sectors.Count != registered.Sectors.Count
+        || snapshot.OutsideLocalizedReports < 0
+        || snapshot.OutsideSuspectedReports < 0
+        || snapshot.OutsideStaleReports < 0)
+    {
+        throw new InvalidOperationException(
+            "Invalid command situation coverage or counters.");
+    }
+
+    var frozen = new List<
+        TacticalBattalionCommandSectorReport>(
+            snapshot.Sectors.Count);
+
+    int priorityCount = 0;
+
+
+    var profile = _settings.BattalionAssessment
+        ?? throw new InvalidOperationException(
+            "Battalion assessment profile is unavailable.");
+
+    for (int i = 0; i < registered.Sectors.Count; i++)
+    {
+        var expected = registered.Sectors[i];
+        var sector = snapshot.Sectors[i];
+
+        // 9l produit exactement les secteurs
+        // enregistres, dans le meme ordre.
+        //
+        // Ce controle rejette les secteurs
+        // etrangers, manquants et dupliques.
+        if (sector is null
+            || sector.SectorId != expected.Id
+            || string.IsNullOrWhiteSpace(sector.SectorName)
+            || !Enum.IsDefined(sector.DefenseStatus))
+        {
+            throw new InvalidOperationException(
+                "Command situation sector does not " +
+                "match registered responsibility.");
+        }
+
+        if (sector.IsPrioritySector)
+            priorityCount++;
+
+        if (sector.StationaryFrontLineCompanies < 0
+            || sector.AuthorizedFrontLinePersonnel < 0
+            || sector.AvailableFrontLinePersonnel < 0
+            || sector.AvailableFrontLinePersonnel
+                > sector.AuthorizedFrontLinePersonnel
+            || !double.IsFinite(sector.FrontLineReadiness)
+            || sector.FrontLineReadiness < 0
+            || sector.FrontLineReadiness > 100
+            || sector.CurrentLocalizedReports < 0
+            || sector.CurrentSuspectedReports < 0
+            || sector.StaleReports < 0)
+        {
+            throw new InvalidOperationException(
+                "Invalid defensive or intelligence values.");
+        }
+
+    bool validDefense = sector.DefenseStatus switch
+    {
+        TacticalBattalionSectorStatus.Uncovered =>
+            sector.StationaryFrontLineCompanies == 0
+            && sector.AuthorizedFrontLinePersonnel == 0
+            && sector.AvailableFrontLinePersonnel == 0
+            && sector.FrontLineReadiness == 0,
+
+        TacticalBattalionSectorStatus.UnableToHold =>
+            sector.StationaryFrontLineCompanies > 0
+            && (
+                // Aucune personne disponible :
+                // le secteur ne peut pas avoir
+                // de readiness positive.
+                (sector.AvailableFrontLinePersonnel == 0
+                    && sector.FrontLineReadiness == 0)
+
+                // Des soldats sont encore disponibles,
+                // mais leur capacite est sous le seuil.
+                || (sector.AvailableFrontLinePersonnel > 0
+                    && sector.FrontLineReadiness
+                        < profile.RiskThreshold)
+            ),
+
+        TacticalBattalionSectorStatus.AtRisk =>
+            sector.StationaryFrontLineCompanies > 0
+            && sector.AuthorizedFrontLinePersonnel > 0
+            && sector.AvailableFrontLinePersonnel > 0
+            && sector.FrontLineReadiness
+                >= profile.RiskThreshold
+            && sector.FrontLineReadiness
+                < profile.HoldThreshold,
+
+        TacticalBattalionSectorStatus.Capable =>
+            sector.StationaryFrontLineCompanies > 0
+            && sector.AuthorizedFrontLinePersonnel > 0
+            && sector.AvailableFrontLinePersonnel > 0
+            && sector.FrontLineReadiness
+                >= profile.HoldThreshold,
+
+        _ => false
+    };
+
+    if (!validDefense)
+    {
+        throw new InvalidOperationException(
+            "Defensive status conflicts with " +
+            "front-line personnel or assessment thresholds.");
+    }
+
+
+        // Copier aussi chaque ligne, sans
+        // reutiliser le tableau injecte.
+        //
+        // Le nom du secteur provient du perimetre
+        // enregistre plutot que d'une etiquette
+        // potentiellement incorrecte.
+        frozen.Add(sector with
+        {
+            SectorName = expected.Name
+        });
+    }
+
+    if (priorityCount > 1)
+    {
+        throw new InvalidOperationException(
+            "Multiple priority sectors in one battalion picture.");
+    }
+
+    // Nouvelle photographie independante de la
+    // collection fournie par Capture().
+    return snapshot with
+    {
+        Sectors = Array.AsReadOnly(frozen.ToArray())
+    };
+    }
+
+
+
+
     private void PublishCommandSituations(long hour)
     {
         if (_registeredCommandFronts.Count == 0)
@@ -1100,22 +1270,13 @@ internal sealed class TacticalHourlyCombatOrchestrator
 
             try
             {
-                snapshot = CaptureRegisteredCommandSituation(
-                    registered);
+            var captured =
+                CaptureRegisteredCommandSituation(registered);
 
-                if (snapshot is null
-                    || snapshot.Hour != hour
-                    || snapshot.BattalionId
-                        != registered.Battalion.Id
-                    || snapshot.BattalionName
-                        != registered.Battalion.Name
-                    || snapshot.FriendlyDivisionName
-                        != divisionName)
-                {
-                    throw new InvalidOperationException(
-                        "Captured situation does not match " +
-                        "its registration or hour.");
-                }
+            snapshot = ValidateAndFreezeCommandSituation(
+                captured,
+                registered,
+                hour);
             }
             catch (InvalidOperationException ex)
             {
@@ -1232,6 +1393,35 @@ internal sealed class TacticalHourlyCombatOrchestrator
 
         return result;
     }
+
+
+    /// <summary>
+    /// Cree un lecteur lie a une seule cle valide
+    /// de cet orchestrateur.
+    ///
+    /// Aucun acces global n'est donne au lecteur.
+    /// </summary>
+    internal TacticalCommandSituationReader
+        BindCommandSituationReader(
+            TacticalCommandSituationRegistration registration)
+    {
+        ArgumentNullException.ThrowIfNull(registration);
+
+        if (!_registeredCommandFronts.Any(r =>
+            ReferenceEquals(r.Registration, registration)))
+        {
+            throw new InvalidOperationException(
+                "Registration does not belong " +
+                "to this orchestrator.");
+        }
+
+        return new TacticalCommandSituationReader(
+            expectedHour =>
+                ReadCommandSituation(
+                    registration,
+                    expectedHour));
+    }
+
 
 
 }
