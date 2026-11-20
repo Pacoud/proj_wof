@@ -7143,7 +7143,7 @@ ordres en cours et fin d'engagement, puis
 développer un renseignement de bataillon
 réellement accessible au commandement.
 
-# COMMIT # 
+# COMMIT f058403e47d8ad60f8872e419d24bf51bcb51475 # 
 
 ### C2.4d.9j — Renseignement partagé au bataillon
 
@@ -7208,3 +7208,107 @@ renseignement transmis au QG.
 - Prévention de la navigation indirecte vers
   Engagement.Participants.
 - Ajout de tests vérifiant le contrat des DTO.
+
+
+**Tests ajoutés**
+
+- BattalionIntelligenceExposesOnlyFriendlyMetadata :
+  vérifie que le snapshot expose uniquement les métadonnées amies.
+- IntelligenceDtoGraphContainsOnlyValueTypes :
+  détecte les références interdites dans les DTO de renseignement.
+
+
+# COMMIT # 
+
+### C2.4d.9k — Renseignement ennemi par secteur
+
+**Objectif**
+
+Organiser les observations partagees au
+niveau du bataillon afin de comparer les
+renseignements connus dans plusieurs secteurs.
+
+**Fonctionnalites**
+
+- Repartition des contacts connus par secteur.
+- Distinction entre localisations actuelles,
+  suspicions actuelles et contacts perimes.
+- Conservation des identifiants des observateurs
+  et des pistes individuelles.
+- Prise en compte du secteur de l'observation
+  actuelle plutot que d'une ancienne localisation.
+- Conservation des observations situees hors
+  du perimetre selectionne.
+- Production d'un bilan sectoriel fige.
+- Aucune fusion des pistes par identite
+  ennemie reelle.
+- Aucun calcul de puissance ennemie invente.
+
+**Validation prevue**
+
+- Tests de repartition entre secteurs.
+- Tests de fraicheur et d'anciennes localisations.
+- Tests des pistes provenant de plusieurs observateurs.
+- Tests des contacts hors perimetre.
+- Tests de non-mutation du moteur.
+- Build Release et suite complete.
+
+**Limites**
+
+- Les compteurs representent des rapports,
+  pas des formations ennemies distinctes.
+- Absence de contact ne signifie pas
+  absence d'ennemi.
+- Aucune correlation entre pistes.
+- Aucun calcul de menace militaire ponderee.
+- Pas encore d'arbitrage automatique des reserves.
+- Les secteurs sont fournis par l'appelant.
+- Les observations perimees utilisent leur
+  dernier secteur memorise.
+- Le probleme de deserialisation JSON de
+  TacticalPoint reste a traiter.
+- Diagnostic toujours hors du tick.
+
+**Suite**
+
+Croiser la connaissance ennemie par secteur
+avec la capacite defensive propre du bataillon,
+sans utiliser la presence ennemie omnisciente,
+pour preparer l'arbitrage entre secteurs.
+
+
+**Correctifs Post build et tests**
+
+**C2.4d.9k.1 — Cohérence des renseignements sectoriels**
+
+**Raisons**
+
+L'audit a révélé trois rapports incohérents acceptés :
+- Localisation actuelle sans niveau d'observation.
+- Date de localisation postérieure à l'observation.
+- Contact périmé conservant des champs d'observation actuelle.
+
+**Objectifs**
+
+- Empêcher l'utilisation de renseignements malformés.
+- Garantir la cohérence temporelle des pistes.
+- Préserver la distinction entre observations actuelles
+  et renseignements historiques.
+
+**Modifications**
+
+- Validation explicite des niveaux Located et Identified.
+- Vérification chronologique de LastLocatedHour.
+- Interdiction des champs d'observation actuelle
+  dans les contacts Stale.
+- Conservation des règles existantes de regroupement.
+
+**Tests ajoutés**
+
+- SectorKnowledgeRejectsLocalizedContactWithNullLevel :
+  rejette une localisation sans niveau valide.
+- SectorKnowledgeRejectsFutureLocalizationDate :
+  rejette une localisation chronologiquement impossible.
+- SectorKnowledgeRejectsStaleContactWithCurrentFields :
+  vérifie séparément les deux champs interdits
+  dans une piste périmée.

@@ -967,4 +967,443 @@ public sealed class TacticalPerceptionTests
         }
     }
 
+
+
+    [Fact]
+    public void CurrentReportsAreGroupedByObservedSector()
+    {
+        var (s, a, b, enemy) = CreateIntelligenceScenario();
+
+        var sectorB = new BattleSector(
+            2, "Sector B", TerrainType.Plains);
+
+        s.Battle.Battlefield.AddSector(sectorB);
+
+        s.Perception.Apply(1, new[]
+        {
+            Located(a, enemy, s.Sector),
+            Suspected(b, enemy, sectorB)
+        });
+
+        var result = TacticalBattalionSectorKnowledgeSystem
+            .Evaluate(
+                IntelligenceSnapshot(s, 1),
+                new[] { s.Sector.Id, sectorB.Id });
+
+        Assert.Equal(2, result.Sectors.Count);
+
+        var first = result.Sectors[0];
+        var second = result.Sectors[1];
+
+        Assert.Equal(s.Sector.Id, first.SectorId);
+        Assert.Equal(1, first.CurrentLocalizedReports);
+        Assert.Equal(0, first.CurrentSuspectedReports);
+
+        Assert.Equal(sectorB.Id, second.SectorId);
+        Assert.Equal(0, second.CurrentLocalizedReports);
+        Assert.Equal(1, second.CurrentSuspectedReports);
+
+        Assert.Empty(result.OutsideSelectedSectors);
+    }
+
+    [Fact]
+    public void NewSuspicionUsesCurrentSectorNotOldLocalization()
+    {
+        var (s, a, _, enemy) = CreateIntelligenceScenario();
+
+        var sectorB = new BattleSector(
+            2, "Sector B", TerrainType.Plains);
+
+        s.Battle.Battlefield.AddSector(sectorB);
+
+        s.Perception.Apply(
+            1,
+            new[] { Located(a, enemy, s.Sector) });
+
+        // Nouvelle suspicion en B :
+        // l'ancienne localisation A reste memorisee.
+        s.Perception.Apply(
+            2,
+            new[] { Suspected(a, enemy, sectorB) });
+
+        var result = TacticalBattalionSectorKnowledgeSystem
+            .Evaluate(
+                IntelligenceSnapshot(s, 2),
+                new[] { s.Sector.Id, sectorB.Id });
+
+        Assert.Empty(result.Sectors[0].Contacts);
+
+        var sector = result.Sectors[1];
+
+        Assert.Equal(1, sector.CurrentSuspectedReports);
+        Assert.Equal(0, sector.CurrentLocalizedReports);
+
+        var entry = Assert.Single(sector.Contacts);
+
+        Assert.Equal(
+            s.Sector.Id,
+            entry.Source.Contact.LastKnownSectorId);
+
+        Assert.Equal(
+            1L,
+            entry.Source.Contact.LastLocatedHour);
+
+        Assert.Equal(
+            sectorB.Id,
+            entry.ReportedSectorId);
+    }
+
+    [Fact]
+    public void LostContactRemainsStaleAndIsNotCurrentEnemy()
+    {
+        var (s, a, _, enemy) = CreateIntelligenceScenario();
+
+        s.Perception.Apply(
+            1,
+            new[] { Located(a, enemy, s.Sector) });
+
+        s.Perception.Apply(
+            2,
+            Array.Empty<TacticalObservationEvent>());
+
+        var result = TacticalBattalionSectorKnowledgeSystem
+            .Evaluate(
+                IntelligenceSnapshot(
+                    s, 2, maxAgeHours: 1),
+                new[] { s.Sector.Id });
+
+        var sector = Assert.Single(result.Sectors);
+
+        Assert.Equal(0, sector.CurrentLocalizedReports);
+        Assert.Equal(0, sector.CurrentSuspectedReports);
+        Assert.Equal(1, sector.StaleReports);
+
+        var entry = Assert.Single(sector.Contacts);
+
+        Assert.Equal(
+            TacticalBattalionContactStatus.Stale,
+            entry.Source.Status);
+
+        Assert.Equal(1, entry.Source.AgeHours);
+    }
+
+    [Fact]
+    public void TwoObserversDoNotBecomeTwoConfirmedEnemyUnits()
+    {
+        var (s, a, b, enemy) = CreateIntelligenceScenario();
+
+        s.Perception.Apply(1, new[]
+        {
+            Located(a, enemy, s.Sector, 100),
+            Located(b, enemy, s.Sector, 110)
+        });
+
+        var result = TacticalBattalionSectorKnowledgeSystem
+            .Evaluate(
+                IntelligenceSnapshot(s, 1),
+                new[] { s.Sector.Id });
+
+        var sector = Assert.Single(result.Sectors);
+
+        Assert.Equal(2, sector.CurrentLocalizedReports);
+        Assert.Equal(2, sector.Contacts.Count);
+
+        Assert.NotEqual(
+            sector.Contacts[0].Source.ObserverCompanyId,
+            sector.Contacts[1].Source.ObserverCompanyId);
+
+        // Deux rapports sont presents. Le resultat
+        // ne contient aucun compte d'unites ennemies
+        // distinctes ou d'effectifs ennemis.
+    }
+
+    [Fact]
+    public void ReportsOutsideSelectedSectorsArePreserved()
+    {
+        var (s, a, _, enemy) = CreateIntelligenceScenario();
+
+        var sectorB = new BattleSector(
+            2, "Outside sector", TerrainType.Plains);
+
+        s.Battle.Battlefield.AddSector(sectorB);
+
+        s.Perception.Apply(
+            1,
+            new[] { Located(a, enemy, sectorB) });
+
+        var result = TacticalBattalionSectorKnowledgeSystem
+            .Evaluate(
+                IntelligenceSnapshot(s, 1),
+                new[] { s.Sector.Id });
+
+        Assert.Empty(Assert.Single(result.Sectors).Contacts);
+
+        var outside = Assert.Single(
+            result.OutsideSelectedSectors);
+
+        Assert.Equal(sectorB.Id, outside.ReportedSectorId);
+
+        Assert.Equal(
+            TacticalBattalionContactStatus.CurrentLocalized,
+            outside.Source.Status);
+    }
+
+    [Fact]
+    public void NoReportsStillProducesRequestedSectorRows()
+    {
+        var (s, _, _, _) = CreateIntelligenceScenario();
+
+        s.Perception.Apply(
+            1,
+            Array.Empty<TacticalObservationEvent>());
+
+        var result = TacticalBattalionSectorKnowledgeSystem
+            .Evaluate(
+                IntelligenceSnapshot(s, 1),
+                new[] { s.Sector.Id });
+
+        var sector = Assert.Single(result.Sectors);
+
+        Assert.Equal(0, sector.CurrentLocalizedReports);
+        Assert.Equal(0, sector.CurrentSuspectedReports);
+        Assert.Equal(0, sector.StaleReports);
+        Assert.Empty(sector.Contacts);
+        Assert.Empty(result.OutsideSelectedSectors);
+    }
+
+    [Fact]
+    public void SectorKnowledgeRejectsInvalidInputs()
+    {
+        var (s, a, _, enemy) = CreateIntelligenceScenario();
+
+        s.Perception.Apply(
+            1,
+            new[] { Located(a, enemy, s.Sector) });
+
+        var snapshot = IntelligenceSnapshot(s, 1);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            TacticalBattalionSectorKnowledgeSystem.Evaluate(
+                snapshot,
+                new[] { s.Sector.Id, s.Sector.Id }));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            TacticalBattalionSectorKnowledgeSystem.Evaluate(
+                snapshot,
+                new[] { 0 }));
+
+        var original = Assert.Single(snapshot.Contacts);
+
+        // Un meme observateur ne peut pas fournir
+        // deux entrees identiques de la meme piste
+        // dans un snapshot coherent.
+        var duplicated = snapshot with
+        {
+            Contacts = new[] { original, original }
+        };
+
+        Assert.Throws<InvalidOperationException>(() =>
+            TacticalBattalionSectorKnowledgeSystem.Evaluate(
+                duplicated,
+                new[] { s.Sector.Id }));
+
+        // Un rapport localise ne peut pas etre
+        // transforme artificiellement en suspicion
+        // sans changer les observations sous-jacentes.
+        var inconsistent = snapshot with
+        {
+            Contacts = new[]
+            {
+                original with
+                {
+                    Status =
+                        TacticalBattalionContactStatus
+                            .CurrentSuspected
+                }
+            }
+        };
+
+        Assert.Throws<InvalidOperationException>(() =>
+            TacticalBattalionSectorKnowledgeSystem.Evaluate(
+                inconsistent,
+                new[] { s.Sector.Id }));
+    }
+
+    [Fact]
+    public void SectorKnowledgeDoesNotMutateSourceOrMilitaryState()
+    {
+        var (s, a, _, enemy) = CreateIntelligenceScenario();
+
+        s.Perception.Apply(
+            1,
+            new[] { Located(a, enemy, s.Sector) });
+
+        var source = IntelligenceSnapshot(s, 1);
+
+        var resourcesBefore =
+            s.French.GetCurrentResourceTotals();
+
+        long revisionBefore =
+            s.Battle.DeploymentRevision;
+
+        var first = TacticalBattalionSectorKnowledgeSystem
+            .Evaluate(source, new[] { s.Sector.Id });
+
+        var second = TacticalBattalionSectorKnowledgeSystem
+            .Evaluate(source, new[] { s.Sector.Id });
+
+        Assert.Equal(first.Hour, second.Hour);
+
+        Assert.Equal(
+            first.Sectors[0].CurrentLocalizedReports,
+            second.Sectors[0].CurrentLocalizedReports);
+
+        Assert.Equal(
+            first.Sectors[0].Contacts[0].Source.Contact,
+            second.Sectors[0].Contacts[0].Source.Contact);
+
+        Assert.Equal(
+            resourcesBefore,
+            s.French.GetCurrentResourceTotals());
+
+        Assert.Equal(
+            revisionBefore,
+            s.Battle.DeploymentRevision);
+
+        Assert.Single(source.Contacts);
+        Assert.Equal(1L, s.Perception.LastUpdateHour);
+    }
+
+
+    [Fact]
+    public void SectorKnowledgeRejectsLocalizedContactWithNullLevel()
+    {
+        var (s, a, _, enemy) = CreateIntelligenceScenario();
+
+        s.Perception.Apply(
+            1,
+            new[] { Located(a, enemy, s.Sector) });
+
+        var snapshot = IntelligenceSnapshot(s, 1);
+        var original = Assert.Single(snapshot.Contacts);
+
+        var malformed = snapshot with
+        {
+            Contacts = new[]
+            {
+                original with
+                {
+                    Contact = original.Contact with
+                    {
+                        CurrentObservationLevel = null
+                    }
+                }
+            }
+        };
+
+        Assert.Throws<InvalidOperationException>(() =>
+            TacticalBattalionSectorKnowledgeSystem.Evaluate(
+                malformed,
+                new[] { s.Sector.Id }));
+    }
+
+    [Fact]
+    public void SectorKnowledgeRejectsFutureLocalizationDate()
+    {
+        var (s, a, _, enemy) = CreateIntelligenceScenario();
+
+        s.Perception.Apply(
+            1,
+            new[] { Suspected(a, enemy, s.Sector) });
+
+        var snapshot = IntelligenceSnapshot(s, 1);
+        var original = Assert.Single(snapshot.Contacts);
+
+        Assert.Equal(
+            TacticalBattalionContactStatus.CurrentSuspected,
+            original.Status);
+
+        var malformed = snapshot with
+        {
+            Contacts = new[]
+            {
+                original with
+                {
+                    Contact = original.Contact with
+                    {
+                        // Localisation en H2 alors que
+                        // l'observation date de H1.
+                        LastLocatedHour = 2
+                    }
+                }
+            }
+        };
+
+        Assert.Throws<InvalidOperationException>(() =>
+            TacticalBattalionSectorKnowledgeSystem.Evaluate(
+                malformed,
+                new[] { s.Sector.Id }));
+    }
+
+    [Fact]
+    public void SectorKnowledgeRejectsStaleContactWithCurrentFields()
+    {
+        var (s, a, _, enemy) = CreateIntelligenceScenario();
+
+        s.Perception.Apply(
+            1,
+            new[] { Located(a, enemy, s.Sector) });
+
+        // Perte de contact a H2.
+        s.Perception.Apply(
+            2,
+            Array.Empty<TacticalObservationEvent>());
+
+        var snapshot = IntelligenceSnapshot(
+            s, 2, maxAgeHours: 1);
+
+        var original = Assert.Single(snapshot.Contacts);
+
+        Assert.Equal(
+            TacticalBattalionContactStatus.Stale,
+            original.Status);
+
+        // Cas A : niveau d'observation actuelle conserve.
+        var invalidLevel = original with
+        {
+            Contact = original.Contact with
+            {
+                CurrentObservationLevel =
+                    TacticalKnowledgeLevel.Located
+            }
+        };
+
+        // Cas B : secteur d'observation actuelle conserve.
+        var invalidSector = original with
+        {
+            Contact = original.Contact with
+            {
+                CurrentObservedSectorId = s.Sector.Id
+            }
+        };
+
+        foreach (var invalid in new[]
+        {
+            invalidLevel,
+            invalidSector
+        })
+        {
+            var malformed = snapshot with
+            {
+                Contacts = new[] { invalid }
+            };
+
+            Assert.Throws<InvalidOperationException>(() =>
+                TacticalBattalionSectorKnowledgeSystem.Evaluate(
+                    malformed,
+                    new[] { s.Sector.Id }));
+        }
+    }
+
+
 }
