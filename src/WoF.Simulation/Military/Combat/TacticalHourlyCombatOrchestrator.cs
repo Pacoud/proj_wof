@@ -40,6 +40,7 @@ internal sealed class TacticalHourlyCombatOrchestrator
     private readonly DiplomacySystem _diplomacy;
     private readonly TacticalHourlyCombatSettings _settings;
     private readonly TacticalPhaseTimingRecorder? _timingRecorder;
+    private readonly TacticalBattalionReinforcementCommandSystem? _automaticReinforcementCommander;
 
     private long? _lastCompletedHour;
 
@@ -50,6 +51,14 @@ internal sealed class TacticalHourlyCombatOrchestrator
         get;
         private set;
     }
+
+
+    internal TacticalAutomaticReinforcementPhaseResult? LastAutomaticReinforcementPhase
+    {
+        get;
+        private set;
+    }
+
 
     internal TacticalMobileCombatSummary? LastMobileCombatSummary { get; private set; }
 
@@ -66,6 +75,8 @@ internal sealed class TacticalHourlyCombatOrchestrator
     {
         get;
     }
+
+
 
     internal TacticalMovementPhaseResult? LastMovementPhase =>
         ReactionExecution?.LastMovementPhase;
@@ -132,7 +143,13 @@ internal sealed class TacticalHourlyCombatOrchestrator
                 _settings.EnableMobileCombat,
                 _timingRecorder);
         }
-
+        
+        if (_settings.EnableAutomaticReinforcements)
+        {
+            _automaticReinforcementCommander =
+                new TacticalBattalionReinforcementCommandSystem(
+                    this);
+        }
     }
 
     /// <summary>
@@ -525,6 +542,68 @@ internal sealed class TacticalHourlyCombatOrchestrator
 
         LastResult = result;
         LastCohesionPhase = cohesionPhase;
+             
+        if (_automaticReinforcementCommander is not null)
+        {
+            var decisions = new List<
+                TacticalAutomaticReinforcementDecision>();
+
+            if (reactionPhase is not null)
+            {
+                foreach (var request in reactionPhase.Requests)
+                {
+                    // 9i ne traite que les renforts.
+                    if (request.Type !=
+                        TacticalBattalionReactionType.Reinforce)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        var approved =
+                            _automaticReinforcementCommander
+                                .TryApprove(request);
+
+                        decisions.Add(
+                            new TacticalAutomaticReinforcementDecision(
+                                Request: request,
+                                Status: approved is null
+                                    ? TacticalAutomaticReinforcementStatus
+                                        .NoEligibleReserve
+                                    : TacticalAutomaticReinforcementStatus
+                                        .Approved,
+                                Movement: approved?.Movement,
+                                FailureReason: null));
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        decisions.Add(
+                            new TacticalAutomaticReinforcementDecision(
+                                request,
+                                TacticalAutomaticReinforcementStatus
+                                    .ApprovalFailed,
+                                null,
+                                ex.Message));
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        decisions.Add(
+                            new TacticalAutomaticReinforcementDecision(
+                                request,
+                                TacticalAutomaticReinforcementStatus
+                                    .ApprovalFailed,
+                                null,
+                                ex.Message));
+                    }
+                }
+            }
+
+            LastAutomaticReinforcementPhase =
+                new TacticalAutomaticReinforcementPhaseResult(
+                    hour,
+                    Array.AsReadOnly(decisions.ToArray()));
+        }
 
         return result;
     }

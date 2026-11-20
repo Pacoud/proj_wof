@@ -33,7 +33,8 @@ internal sealed class TacticalHourlyCombatSettings
     internal int MaxWeaponsPerCompany { get; }
     internal int RoundsPerWeapon { get; }
     internal ulong BaseSeed { get; }
-    internal bool EnableMobileCombat { get; }
+    internal bool EnableMobileCombat { get; }   
+    internal bool EnableAutomaticReinforcements { get; }
 
     internal TacticalHourlyCombatSettings(
         TacticalDetectionProfile detection,
@@ -49,7 +50,8 @@ internal sealed class TacticalHourlyCombatSettings
         TacticalBattalionAssessmentProfile? battalionAssessment = null,
         TacticalBattalionReactionProfile? battalionReactions = null,
         TacticalReactionMovementProfile? reactionMovement = null,
-        bool enableMobileCombat = false )
+        bool enableMobileCombat = false,
+        bool enableAutomaticReinforcements = false )
     {
         Detection = detection
             ?? throw new ArgumentNullException(nameof(detection));
@@ -125,6 +127,19 @@ internal sealed class TacticalHourlyCombatSettings
 
         ReactionMovement = reactionMovement;
 
+
+        if (enableAutomaticReinforcements
+            && (battalionReactions is null
+                || reactionMovement is null))
+        {
+            throw new ArgumentException(
+                "Automatic reinforcements require battalion " +
+                "reactions and tactical movement.",
+                nameof(enableAutomaticReinforcements));
+        }
+
+        EnableAutomaticReinforcements =
+            enableAutomaticReinforcements;
 
         if (enableMobileCombat
         && (reactionMovement is null

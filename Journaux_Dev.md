@@ -6978,7 +6978,7 @@ Relier les diagnostics aux informations
 effectivement connues du commandement
 et aux mecanismes de reaction existants.
 
-# COMMIT # 
+# COMMIT 0f8381998334fdfdd35cc2ee4a2088fae9bbae21 # 
 
 ### C2.4d.9h — Commandement initial des renforts
 
@@ -7020,3 +7020,87 @@ Integrer progressivement le commandement
 aux heures tactiques en s'appuyant sur
 les informations propres aux formations,
 puis sur un renseignement partage et date.
+
+### CORRECTIFS ET OPTIMISATIONS ###
+
+### C2.4d.9h.1 — Fiabilisation du commandement des renforts
+
+**Objectif**
+
+Corriger deux limites identifiees dans
+l'approbation des renforts avant
+l'automatisation du commandement.
+
+**Modifications**
+
+- Liaison du commandant a l'orchestrateur
+  et a son service de mouvement effectif.
+- Suppression de l'injection de services
+  de mouvement et de geometrie independants.
+- Recherche du plus court itineraire dont
+  les secteurs possedent une geometrie.
+- Recherche de detours utilisables lorsqu'un
+  raccourci comporte un secteur non geometre.
+- Conservation du deplacement physique existant.
+
+**Validation**
+
+- Tests d'identite des services.
+- Tests de detour geometriquement valide.
+- Tests de route inutilisable.
+- Non-regression des mouvements et combats.
+- Build Release et suite complete.
+
+**Limites**
+
+- Approbation encore explicite.
+- Pas encore d'integration au tick.
+- Pas de connaissance ennemie partagee au QG.
+- Pas d'automatisation des retraites.
+
+**Suite**
+
+C2.4d.9i — Raccordement controle du commandement
+aux phases tactiques et definition du moment
+de decision.
+
+# COMMIT # 
+### C2.4d.9i — Automatisation optionnelle des renforts
+
+**Objectif**
+
+Permettre aux bataillons de faire approuver
+automatiquement leurs demandes de renfort,
+apres resolution complete d'une heure tactique.
+
+**Fonctionnalites**
+
+- Option d'automatisation desactivee par defaut.
+- Utilisation du commandant introduit en 9h.
+- Exploitation des demandes Reinforce existantes.
+- Selection et approbation de reserves disponibles.
+- Publication d'un rapport des decisions.
+- Utilisation du service de mouvement de
+  l'orchestrateur effectivement execute.
+- Execution du mouvement a partir des heures
+  suivantes, sans teleportation ni nouveau
+  systeme physique.
+
+**Limites**
+
+- Seuls les renforts sont automatises.
+- Les retraites restent manuelles.
+- La politique de selection est simplifiee.
+- Les diagnostics omniscients 9e/9g ne
+  sont pas transmis au commandement.
+- Pas encore de renseignement consolide au QG.
+- Les diagnostics historiques doivent etre
+  captures avant toute nouvelle approbation.
+
+**Validation**
+
+- Tests du cycle de renforcement H3-H5.
+- Tests d'activation et de desactivation.
+- Tests de demandes non prises en charge.
+- Tests d'absence de regressions militaires.
+- Build Release et suite complete.

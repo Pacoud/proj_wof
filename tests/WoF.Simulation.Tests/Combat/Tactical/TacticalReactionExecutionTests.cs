@@ -86,7 +86,8 @@ public sealed class TacticalReactionExecutionTests
         double movementSpeed = 3000,
         double killedProbability = 0,
         int extraEnemyCompanies = 0,
-        TacticalPhaseTimingRecorder? timingRecorder = null)
+        TacticalPhaseTimingRecorder? timingRecorder = null,
+        bool enableAutomaticReinforcements = false)
     {
         var engine = new SimulationEngine();
 
@@ -241,7 +242,9 @@ public sealed class TacticalReactionExecutionTests
                 frontLineExposureFraction: 0.25,
                 transitContactDistanceMeters: transitContactDistanceMeters,
                 useSimultaneousContacts: useSimultaneousContacts),
-            enableMobileCombat: enableMobileCombat);
+            enableMobileCombat: enableMobileCombat,
+            enableAutomaticReinforcements:
+                enableAutomaticReinforcements);
 
         var perception = new TacticalPerceptionState(battle);
         var signatures = new TacticalSignatureFrame(battle);
@@ -2517,6 +2520,175 @@ public sealed class TacticalReactionExecutionTests
 
 
 
+
+    [Fact]
+    public void AutomaticReinforcementStartsAfterH3AndArrivesAtH5()
+    {
+        var s = CreateScenario(
+            enableAutomaticReinforcements: true);
+
+        // H2 : secteur menace, pas de renfort encore.
+        s.Engine.Tick();
+
+        Assert.Equal(2, s.Engine.Clock.CurrentHour);
+
+        var h2 = Assert.IsType<
+            TacticalAutomaticReinforcementPhaseResult>(
+                s.Orchestrator.LastAutomaticReinforcementPhase);
+
+        Assert.Empty(h2.Decisions);
+        Assert.False(s.Reserve.IsInTransit);
+
+        // H3 : rupture confirmee.
+        s.Engine.Tick();
+
+        Assert.Equal(3, s.Engine.Clock.CurrentHour);
+
+        var h3 = Assert.IsType<
+            TacticalAutomaticReinforcementPhaseResult>(
+                s.Orchestrator.LastAutomaticReinforcementPhase);
+
+        var decision = Assert.Single(h3.Decisions);
+
+        Assert.Equal(
+            TacticalAutomaticReinforcementStatus.Approved,
+            decision.Status);
+
+        Assert.Same(s.Reserve, decision.Movement!.Company);
+
+        // L'ordre est approuve, mais la compagnie
+        // n'a pas encore quitte son secteur de depart.
+        Assert.True(s.Reserve.IsInTransit);
+        Assert.Same(s.ReserveSector, s.Reserve.Sector);
+
+        Assert.Equal(
+            3, s.Orchestrator.LastResult!.Value.Hour);
+
+        // H4 : progression.
+        s.Engine.Tick();
+
+        Assert.True(s.Movements.IsMoving(s.Reserve));
+        Assert.Same(s.ReserveSector, s.Reserve.Sector);
+
+        // H5 : arrivee.
+        s.Engine.Tick();
+
+        Assert.False(s.Movements.IsMoving(s.Reserve));
+        Assert.False(s.Reserve.IsInTransit);
+        Assert.Same(s.FrontSector, s.Reserve.Sector);
+
+        Assert.Equal(
+            CompanyDeploymentRole.FrontLine,
+            s.Reserve.Role);
+    }
+
+    [Fact]
+    public void DisabledAutomaticCommandKeepsRequestsManual()
+    {
+        var s = CreateScenario();
+
+        var request = ReachConfirmedRupture(s);
+
+        Assert.Equal(
+            TacticalBattalionReactionType.Reinforce,
+            request.Type);
+
+        Assert.Null(
+            s.Orchestrator.LastAutomaticReinforcementPhase);
+
+        Assert.False(s.Reserve.IsInTransit);
+        Assert.False(s.Movements.IsMoving(s.Reserve));
+
+        Assert.Empty(s.Movements.PendingMovements);
+    }
+
+    [Fact]
+    public void AutomaticCommandDoesNotApproveWithdrawal()
+    {
+        var s = CreateScenario(
+            hasReserve: false,
+            enableAutomaticReinforcements: true);
+
+        var request = ReachConfirmedRupture(s);
+
+        Assert.Equal(
+            TacticalBattalionReactionType.RequestWithdrawal,
+            request.Type);
+
+        var phase = Assert.IsType<
+            TacticalAutomaticReinforcementPhaseResult>(
+                s.Orchestrator.LastAutomaticReinforcementPhase);
+
+        Assert.Empty(phase.Decisions);
+
+        Assert.False(s.Movements.IsMoving(s.Front));
+        Assert.False(s.Front.IsInTransit);
+    }
+
+    [Fact]
+    public void UnreachableReserveDoesNotInterruptCompletedHour()
+    {
+        var s = CreateScenario(
+            connectReserve: false,
+            enableAutomaticReinforcements: true);
+
+        ReachConfirmedRupture(s);
+
+        var phase = Assert.IsType<
+            TacticalAutomaticReinforcementPhaseResult>(
+                s.Orchestrator.LastAutomaticReinforcementPhase);
+
+        var decision = Assert.Single(phase.Decisions);
+
+        Assert.Equal(
+            TacticalAutomaticReinforcementStatus.NoEligibleReserve,
+            decision.Status);
+
+        Assert.Null(decision.Movement);
+
+        Assert.Equal(
+            3, s.Orchestrator.LastResult!.Value.Hour);
+
+        Assert.False(s.Reserve.IsInTransit);
+        Assert.Empty(s.Movements.PendingMovements);
+
+        // L'heure suivante reste executable.
+        s.Engine.Tick();
+
+        Assert.Equal(4, s.Engine.Clock.CurrentHour);
+    }
+
+    [Fact]
+    public void AutomaticApprovalDoesNotChangeResolvedCombatResults()
+    {
+        var manual = CreateScenario();
+
+        var automatic = CreateScenario(
+            enableAutomaticReinforcements: true);
+
+        ReachConfirmedRupture(manual);
+        ReachConfirmedRupture(automatic);
+
+        // Les deux batailles ont execute les memes
+        // combats. Seule l'approbation change.
+        Assert.Equal(
+            manual.Orchestrator.LastResult,
+            automatic.Orchestrator.LastResult);
+
+        Assert.Equal(
+            manual.Battalion.ParentDivision!
+                .GetCurrentResourceTotals(),
+            automatic.Battalion.ParentDivision!
+                .GetCurrentResourceTotals());
+
+        Assert.Equal(
+            manual.Reserve.Company.Cohesion,
+            automatic.Reserve.Company.Cohesion,
+            6);
+
+        Assert.False(manual.Reserve.IsInTransit);
+        Assert.True(automatic.Reserve.IsInTransit);
+    }
 
 
 
