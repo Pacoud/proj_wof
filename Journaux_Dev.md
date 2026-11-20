@@ -7064,7 +7064,7 @@ C2.4d.9i — Raccordement controle du commandement
 aux phases tactiques et definition du moment
 de decision.
 
-# COMMIT # 
+# COMMIT 2e9a2cb92bd00331184189d3632a951f9c423c5f # 
 ### C2.4d.9i — Automatisation optionnelle des renforts
 
 **Objectif**
@@ -7104,3 +7104,41 @@ apres resolution complete d'une heure tactique.
 - Tests de demandes non prises en charge.
 - Tests d'absence de regressions militaires.
 - Build Release et suite complete.
+# COMMIT -correctif- #
+
+### C2.4d.9i.1 — Sécurisation du commandement en fin de bataille
+
+**Objectif**
+
+Éviter l'approbation automatique de renforts
+lorsqu'un engagement n'a plus d'opposition
+capable de combattre, et sécuriser les
+échecs de décision après résolution des pertes.
+
+**Modifications**
+
+- Vérification de l'opposition encore capable.
+- Réutilisation des critères de fin de bataille.
+- Nouveau statut SkippedBattleEnding.
+- Aucun ordre émis lorsque la bataille
+  ne nécessite plus de renforcement.
+- Conservation des bilans militaires publiés.
+- Maintien des mouvements et réactions existants.
+
+**Limites**
+
+- La clôture de l'engagement intervient encore
+  dans le traitement opérationnel du tick.
+- Les cas de rupture provoquée pendant l'heure
+  et d'échec réel après pertes nécessitent
+  une validation spécifique.
+- Les diagnostics 9f/9g doivent toujours être
+  lus avant toute approbation modifiant
+  les déploiements.
+
+**Suite**
+
+Consolider la transition entre bataille active,
+ordres en cours et fin d'engagement, puis
+développer un renseignement de bataillon
+réellement accessible au commandement.

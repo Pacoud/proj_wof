@@ -5,7 +5,8 @@ internal enum TacticalAutomaticReinforcementStatus
 {
     Approved,
     NoEligibleReserve,
-    ApprovalFailed
+    ApprovalFailed,
+    SkippedBattleEnding
 }
 
 internal sealed record TacticalAutomaticReinforcementDecision(

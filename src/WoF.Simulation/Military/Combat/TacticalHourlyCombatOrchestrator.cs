@@ -550,12 +550,27 @@ internal sealed class TacticalHourlyCombatOrchestrator
 
             if (reactionPhase is not null)
             {
+                bool battleCanContinue = HasCombatCapableOpposition();
                 foreach (var request in reactionPhase.Requests)
                 {
                     // 9i ne traite que les renforts.
                     if (request.Type !=
                         TacticalBattalionReactionType.Reinforce)
                     {
+                        continue;
+                    }
+
+                    if (!battleCanContinue)
+                    {
+                        decisions.Add(
+                            new TacticalAutomaticReinforcementDecision(
+                                Request: request,
+                                Status:
+                                    TacticalAutomaticReinforcementStatus
+                                        .SkippedBattleEnding,
+                                Movement: null,
+                                FailureReason: null));
+
                         continue;
                     }
 
@@ -837,4 +852,25 @@ internal sealed class TacticalHourlyCombatOrchestrator
 
         return orders;
     }
+
+
+
+    internal bool HasCombatCapableOpposition()
+    {
+        var engagement = _battle.Engagement;
+
+        if (!engagement.IsActive)
+            return false;
+
+        return engagement.Participants
+            .Where(d =>
+                ReferenceEquals(d.CurrentEngagement, engagement)
+                && !d.IsBroken
+                && d.Country is not null)
+            .Select(d => d.Country!.Id)
+            .Distinct()
+            .Take(2)
+            .Count() == 2;
+    }
+
 }

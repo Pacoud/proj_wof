@@ -2692,4 +2692,33 @@ public sealed class TacticalReactionExecutionTests
 
 
 
+    [Fact]
+    public void BrokenOppositionIsNotConsideredCombatCapable()
+    {
+        var s = CreateScenario(
+            enableAutomaticReinforcements: true);
+
+        Assert.True(
+            s.Orchestrator.HasCombatCapableOpposition());
+
+        var enemyDivision =
+            s.Enemy.Company.ParentBattalion!
+                .ParentDivision!;
+
+        enemyDivision.LoseOrganization(
+            enemyDivision.Organization);
+
+        Assert.True(enemyDivision.IsBroken);
+
+        Assert.False(
+            s.Orchestrator.HasCombatCapableOpposition());
+
+        // Le moteur doit cloturer l'engagement sans
+        // generer de nouvel ordre de renforcement.
+        s.Engine.Tick();
+
+        Assert.False(s.Battle.Engagement.IsActive);
+        Assert.Empty(s.Movements.PendingMovements);
+    }
+
 }
