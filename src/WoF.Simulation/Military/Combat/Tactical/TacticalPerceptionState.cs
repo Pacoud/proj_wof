@@ -59,6 +59,8 @@ internal sealed record TacticalObservationEvent(
 
 public sealed class TacticalPerceptionState
 {
+    internal long? LastUpdateHour => _lastUpdateHour;
+    
     private sealed class Track
     {
         public int Id { get; }

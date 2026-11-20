@@ -7104,7 +7104,7 @@ apres resolution complete d'une heure tactique.
 - Tests de demandes non prises en charge.
 - Tests d'absence de regressions militaires.
 - Build Release et suite complete.
-# COMMIT -correctif- #
+# COMMIT ea5fb2c85d685aa45348227d98c7aa7f3310aebb -correctif- #
 
 ### C2.4d.9i.1 — Sécurisation du commandement en fin de bataille
 
@@ -7142,3 +7142,69 @@ Consolider la transition entre bataille active,
 ordres en cours et fin d'engagement, puis
 développer un renseignement de bataillon
 réellement accessible au commandement.
+
+# COMMIT # 
+
+### C2.4d.9j — Renseignement partagé au bataillon
+
+**Objectif**
+
+Permettre au QG d'un bataillon de consulter
+les observations ennemies enregistrées par
+ses propres compagnies.
+
+**Fonctionnalités**
+
+- Agrégation des rapports de perception existants.
+- Conservation de l'identité de l'observateur ami.
+- Distinction entre localisation actuelle,
+  suspicion actuelle et contact périmé.
+- Conservation de l'ancienneté des pistes.
+- Durée de rétention configurable.
+- Photographies immuables par heure.
+- Absence de fusion omnisciente des pistes.
+- Aucun nouvel effet sur les combats ou mouvements.
+
+**Limites**
+
+- Partage des observations supposé immédiat.
+- Aucun délai ni perte de communication.
+- Les pistes d'observateurs différents ne sont
+  pas encore corrélées.
+- Absence de contact ne signifie pas absence
+  d'ennemi.
+- Le renseignement reste descriptif.
+- Aucune décision automatique ne l'utilise encore.
+- Aucun raccordement au tick.
+
+**Suite**
+
+Exploiter les renseignements effectivement
+disponibles au QG pour comparer plusieurs
+secteurs et préparer des décisions tactiques
+informées, sans révéler les positions réelles
+des forces ennemies.
+
+**Correctifs Post build et tests**
+
+**Raisons**
+
+- Le snapshot exposait une référence vivante à Battalion.
+- Cette référence permettait de remonter indirectement
+  aux participants réels de l'engagement.
+
+**Objectif**
+
+Supprimer les références vers les objets
+militaires vivants dans les snapshots de
+renseignement transmis au QG.
+
+**Modifications**
+
+- Remplacement de la référence Battalion par
+  des métadonnées figées.
+- Conservation des identifiants et noms amis.
+- Maintien des rapports de contacts existants.
+- Prévention de la navigation indirecte vers
+  Engagement.Participants.
+- Ajout de tests vérifiant le contrat des DTO.

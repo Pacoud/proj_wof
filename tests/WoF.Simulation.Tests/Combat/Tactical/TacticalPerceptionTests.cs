@@ -82,6 +82,66 @@ public sealed class TacticalPerceptionTests
         return division;
     }
 
+    
+    private static (
+        Scenario S,
+        CompanyDeployment A,
+        CompanyDeployment B,
+        CompanyDeployment Enemy)
+        CreateIntelligenceScenario()
+    {
+        var s = CreateScenario();
+
+        var a = s.DeployFrench(0);
+        var b = s.DeployFrench(1);
+        var enemy = s.DeployGerman();
+
+        return (s, a, b, enemy);
+    }
+
+    private static TacticalObservationEvent Located(
+        CompanyDeployment observer,
+        CompanyDeployment target,
+        BattleSector sector,
+        double x = 100)
+    {
+        return new TacticalObservationEvent(
+            observer,
+            target,
+            new TacticalPoint(x, 0, 100),
+            sector.Id,
+            TacticalKnowledgeLevel.Located,
+            PositionUncertaintyMeters: 10);
+    }
+
+    private static TacticalObservationEvent Suspected(
+        CompanyDeployment observer,
+        CompanyDeployment target,
+        BattleSector sector)
+    {
+        return new TacticalObservationEvent(
+            observer,
+            target,
+            ObservedPosition: null,
+            ObservedSectorId: sector.Id,
+            KnowledgeLevel: TacticalKnowledgeLevel.Suspected,
+            PositionUncertaintyMeters: null);
+    }
+
+    private static TacticalBattalionIntelligenceSnapshot
+        IntelligenceSnapshot(
+            Scenario s,
+            long hour,
+            long maxAgeHours = 0)
+    {
+        return new TacticalBattalionIntelligenceSystem(
+            s.Battle,
+            s.Perception).Capture(
+                s.French.Battalions[0],
+                hour,
+                maxAgeHours);
+    }
+
     private static Scenario CreateScenario()
     {
         var france = new Country(1, "France");
@@ -574,5 +634,337 @@ public sealed class TacticalPerceptionTests
     }
 
 
+
+
+    [Fact]
+    public void BattalionReceivesCurrentCompanyObservation()
+    {
+        var (s, a, _, enemy) = CreateIntelligenceScenario();
+
+        s.Perception.Apply(
+            1,
+            new[] { Located(a, enemy, s.Sector) });
+
+        var snapshot = IntelligenceSnapshot(s, 1);
+        var contact = Assert.Single(snapshot.Contacts);
+
+        Assert.Equal(a.Company.Id, contact.ObserverCompanyId);
+        Assert.Equal(0, contact.AgeHours);
+
+        Assert.Equal(
+            TacticalBattalionContactStatus.CurrentLocalized,
+            contact.Status);
+
+        Assert.Equal(s.Sector.Id,
+            contact.Contact.LastKnownSectorId);
+
+        Assert.Equal(
+            new TacticalPoint(100, 0, 100),
+            contact.Contact.LastKnownPosition);
+    }
+
+    [Fact]
+    public void TwoObserversKeepIndependentTracks()
+    {
+        var (s, a, b, enemy) = CreateIntelligenceScenario();
+
+        s.Perception.Apply(
+            1,
+            new[]
+            {
+                Located(a, enemy, s.Sector, 100),
+                Located(b, enemy, s.Sector, 110)
+            });
+
+        var snapshot = IntelligenceSnapshot(s, 1);
+
+        Assert.Equal(2, snapshot.Contacts.Count);
+
+        Assert.NotEqual(
+            snapshot.Contacts[0].ObserverCompanyId,
+            snapshot.Contacts[1].ObserverCompanyId);
+
+        Assert.NotEqual(
+            snapshot.Contacts[0].Contact.TrackId,
+            snapshot.Contacts[1].Contact.TrackId);
+
+        // Deux pistes ne prouvent pas la presence
+        // de deux compagnies ennemies distinctes.
+    }
+
+    [Fact]
+    public void CurrentSuspicionDoesNotRefreshOldLocalization()
+    {
+        var (s, a, _, enemy) = CreateIntelligenceScenario();
+
+        s.Perception.Apply(
+            1,
+            new[] { Located(a, enemy, s.Sector) });
+
+        s.Perception.Apply(
+            2,
+            new[] { Suspected(a, enemy, s.Sector) });
+
+        var contact = Assert.Single(
+            IntelligenceSnapshot(s, 2).Contacts);
+
+        Assert.Equal(
+            TacticalBattalionContactStatus.CurrentSuspected,
+            contact.Status);
+
+        Assert.Equal(2, contact.Contact.LastObservedHour);
+        Assert.Equal(1L, contact.Contact.LastLocatedHour);
+
+        // La position est encore memorisee,
+        // mais elle date de H1, pas de H2.
+        Assert.Equal(
+            new TacticalPoint(100, 0, 100),
+            contact.Contact.LastKnownPosition);
+
+        Assert.Equal(
+            TacticalKnowledgeLevel.Suspected,
+            contact.Contact.CurrentObservationLevel);
+    }
+
+    [Fact]
+    public void OldContactIsMarkedStaleAndExpires()
+    {
+        var (s, a, _, enemy) = CreateIntelligenceScenario();
+
+        s.Perception.Apply(
+            1,
+            new[] { Located(a, enemy, s.Sector) });
+
+        s.Perception.Apply(
+            2,
+            Array.Empty<TacticalObservationEvent>());
+
+        var retained = Assert.Single(
+            IntelligenceSnapshot(
+                s, 2, maxAgeHours: 1).Contacts);
+
+        Assert.Equal(
+            TacticalBattalionContactStatus.Stale,
+            retained.Status);
+
+        Assert.Equal(1, retained.AgeHours);
+        Assert.False(retained.Contact.IsCurrentlyObserved);
+
+        Assert.Empty(
+            IntelligenceSnapshot(
+                s, 2, maxAgeHours: 0).Contacts);
+    }
+
+    [Fact]
+    public void IntelligenceSnapshotRemainsFrozenAfterNextHour()
+    {
+        var (s, a, _, enemy) = CreateIntelligenceScenario();
+
+        s.Perception.Apply(
+            1,
+            new[] { Located(a, enemy, s.Sector) });
+
+        var original = IntelligenceSnapshot(s, 1);
+        var firstContact = Assert.Single(original.Contacts);
+
+        s.Perception.Apply(
+            2,
+            Array.Empty<TacticalObservationEvent>());
+
+        var later = IntelligenceSnapshot(
+            s, 2, maxAgeHours: 1);
+
+        Assert.Equal(
+            TacticalBattalionContactStatus.CurrentLocalized,
+            firstContact.Status);
+
+        Assert.True(firstContact.Contact.IsCurrentlyObserved);
+
+        Assert.Equal(
+            TacticalBattalionContactStatus.Stale,
+            Assert.Single(later.Contacts).Status);
+
+        // Impossible de recalculer H1 a partir
+        // de la memoire de perception de H2.
+        Assert.Throws<InvalidOperationException>(() =>
+            IntelligenceSnapshot(s, 1));
+    }
+
+    [Fact]
+    public void NoObservationProducesNoInventedEnemyContact()
+    {
+        var (s, _, _, _) = CreateIntelligenceScenario();
+
+        s.Perception.Apply(
+            1,
+            Array.Empty<TacticalObservationEvent>());
+
+        var snapshot = IntelligenceSnapshot(s, 1);
+
+        Assert.Empty(snapshot.Contacts);
+
+        // Aucun contact connu ne signifie pas
+        // que le secteur est physiquement vide.
+    }
+
+    [Fact]
+    public void EnemyObserversDoNotFeedFriendlyBattalion()
+    {
+        var (s, a, _, enemy) = CreateIntelligenceScenario();
+
+        // Ici, seul l'ennemi observe une compagnie amie.
+        s.Perception.Apply(
+            1,
+            new[] { Located(enemy, a, s.Sector) });
+
+        var frenchIntelligence = IntelligenceSnapshot(s, 1);
+
+        Assert.Empty(frenchIntelligence.Contacts);
+        Assert.Single(s.Perception.GetReports(enemy));
+    }
+
+    [Fact]
+    public void IntelligenceRejectsWrongHourAndForeignBattalion()
+    {
+        var (s, a, _, enemy) = CreateIntelligenceScenario();
+
+        var system = new TacticalBattalionIntelligenceSystem(
+            s.Battle,
+            s.Perception);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            IntelligenceSnapshot(s, 1));
+
+        s.Perception.Apply(
+            1,
+            new[] { Located(a, enemy, s.Sector) });
+
+        Assert.Throws<InvalidOperationException>(() =>
+            IntelligenceSnapshot(s, 2));
+
+        var foreign = new Battalion(
+            99, "Foreign Battalion", BattalionType.Infantry);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            system.Capture(foreign, 1, 0));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            system.Capture(s.French.Battalions[0], 1, -1));
+    }
+
+    [Fact]
+    public void SharingIntelligenceDoesNotMutateMilitaryState()
+    {
+        var (s, a, _, enemy) = CreateIntelligenceScenario();
+
+        s.Perception.Apply(
+            1,
+            new[] { Located(a, enemy, s.Sector) });
+
+        var resourcesBefore =
+            s.French.GetCurrentResourceTotals();
+
+        double cohesionBefore = a.Company.Cohesion;
+        long revisionBefore = s.Battle.DeploymentRevision;
+
+        var first = IntelligenceSnapshot(s, 1);
+        var second = IntelligenceSnapshot(s, 1);
+
+        Assert.Equal(
+            first.Contacts.ToArray(),
+            second.Contacts.ToArray());
+
+        Assert.Equal(
+            resourcesBefore,
+            s.French.GetCurrentResourceTotals());
+
+        Assert.Equal(
+            cohesionBefore,
+            a.Company.Cohesion,
+            6);
+
+        Assert.Equal(
+            revisionBefore,
+            s.Battle.DeploymentRevision);
+
+        Assert.Equal(1L, s.Perception.LastUpdateHour);
+    }
+
+
+    [Fact]
+    public void BattalionIntelligenceExposesOnlyFriendlyMetadata()
+    {
+        var (s, a, _, enemy) =
+            CreateIntelligenceScenario();
+
+        s.Perception.Apply(
+            1,
+            new[] { Located(a, enemy, s.Sector) });
+
+        var snapshot = IntelligenceSnapshot(s, 1);
+
+        var battalion = s.French.Battalions[0];
+
+        Assert.Equal(
+            battalion.Id,
+            snapshot.BattalionId);
+
+        Assert.Equal(
+            battalion.Name,
+            snapshot.BattalionName);
+
+        Assert.Equal(
+            s.French.Name,
+            snapshot.FriendlyDivisionName);
+
+        Assert.Equal(1, snapshot.Hour);
+        Assert.Single(snapshot.Contacts);
+
+        // L'ancien acces direct a l'objet Battalion
+        // ne doit plus exister dans le contrat.
+        Assert.Null(
+            typeof(TacticalBattalionIntelligenceSnapshot)
+                .GetProperty("Battalion"));
+    }
+
+    [Fact]
+    public void IntelligenceDtoGraphContainsOnlyValueTypes()
+    {
+        static bool IsSafeType(Type type)
+        {
+            var actual =
+                Nullable.GetUnderlyingType(type) ?? type;
+
+            return actual.IsPrimitive
+                || actual.IsEnum
+                || actual == typeof(string)
+                || actual == typeof(TacticalPoint)
+                || actual ==
+                    typeof(TacticalEnemyContactReport)
+                || actual ==
+                    typeof(IReadOnlyList<
+                        TacticalBattalionContactReport>);
+        }
+
+        var dtoTypes = new[]
+        {
+            typeof(TacticalBattalionIntelligenceSnapshot),
+            typeof(TacticalBattalionContactReport),
+            typeof(TacticalEnemyContactReport),
+            typeof(TacticalPoint)
+        };
+
+        foreach (var dto in dtoTypes)
+        {
+            foreach (var property in dto.GetProperties())
+            {
+                Assert.True(
+                    IsSafeType(property.PropertyType),
+                    $"{dto.Name}.{property.Name} exposes " +
+                    $"un type non autorise : " +
+                    $"{property.PropertyType.Name}");
+            }
+        }
+    }
 
 }
