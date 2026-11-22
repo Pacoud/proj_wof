@@ -142,6 +142,129 @@ public sealed class ProvinceHexGrid
         return GetCoord(cell).CenterYMeters(SpacingMeters);
     }
 
+    // ---- Positions continues ----
+
+    /// <summary>
+    /// Case dont l'hexagone contient le point, ou false si le point
+    /// tombe hors du cadre.
+    /// </summary>
+    public bool TryGetCellAt(double xMeters, double yMeters, out int cell)
+    {
+        if (!IsNearFrame(xMeters, yMeters))
+        {
+            cell = -1;
+            return false;
+        }
+
+        return TryGetIndex(
+            HexCoord.FromMeters(xMeters, yMeters, SpacingMeters),
+            out cell);
+    }
+
+    /// <summary>
+    /// Altitude du sol en un point quelconque.
+    ///
+    /// Les centres des cases forment un réseau de triangles équilatéraux :
+    /// l'altitude est interpolée linéairement entre les trois centres du
+    /// triangle qui contient le point. Elle vaut exactement l'altitude de
+    /// la case en son centre et suit exactement une pente régulière.
+    ///
+    /// Au bord du cadre, seuls les centres existants comptent, avec des
+    /// poids renormalisés. Faux si aucun des trois centres n'existe.
+    /// </summary>
+    public bool TryGetGroundElevation(
+        double xMeters,
+        double yMeters,
+        out double elevationMeters)
+    {
+        elevationMeters = 0;
+
+        if (!IsNearFrame(xMeters, yMeters))
+            return false;
+
+        var (q, r) = HexCoord.FractionalFromMeters(
+            xMeters, yMeters, SpacingMeters);
+
+        double baseQ = Math.Floor(q);
+        double baseR = Math.Floor(r);
+        double fq = q - baseQ;
+        double fr = r - baseR;
+
+        int q0 = (int)baseQ;
+        int r0 = (int)baseR;
+
+        // Le losange (q0, r0) – (q0 + 1, r0 + 1) est coupé par sa petite
+        // diagonale, (q0 + 1, r0) – (q0, r0 + 1), qui relie deux voisines.
+        Span<(int Q, int R, double Weight)> vertices = stackalloc (int, int, double)[3];
+
+        if (fq + fr <= 1)
+        {
+            vertices[0] = (q0, r0, 1 - fq - fr);
+            vertices[1] = (q0 + 1, r0, fq);
+            vertices[2] = (q0, r0 + 1, fr);
+        }
+        else
+        {
+            vertices[0] = (q0 + 1, r0 + 1, fq + fr - 1);
+            vertices[1] = (q0, r0 + 1, 1 - fq);
+            vertices[2] = (q0 + 1, r0, 1 - fr);
+        }
+
+        // Au centre d'une case, sa propre altitude, sans erreur d'arrondi :
+        // toutes les lectures d'un même centre donnent la même valeur.
+        foreach (var vertex in vertices)
+        {
+            if (vertex.Weight >= 1 - CenterWeightTolerance
+                && TryGetIndex(new HexCoord(vertex.Q, vertex.R), out int center))
+            {
+                elevationMeters = _elevation[center];
+                return true;
+            }
+        }
+
+        double sum = 0;
+        double weight = 0;
+
+        foreach (var vertex in vertices)
+        {
+            if (vertex.Weight > 0
+                && TryGetIndex(new HexCoord(vertex.Q, vertex.R), out int cell))
+            {
+                sum += vertex.Weight * _elevation[cell];
+                weight += vertex.Weight;
+            }
+        }
+
+        if (weight <= 0)
+            return false;
+
+        elevationMeters = sum / weight;
+        return true;
+    }
+
+    private const double CenterWeightTolerance = 1e-9;
+
+    /// <summary>
+    /// Filtre grossier : rejette les points à plus d'une case du cadre,
+    /// avant toute conversion en coordonnées entières.
+    /// </summary>
+    private bool IsNearFrame(double xMeters, double yMeters)
+    {
+        if (!double.IsFinite(xMeters))
+            throw new ArgumentOutOfRangeException(nameof(xMeters));
+
+        if (!double.IsFinite(yMeters))
+            throw new ArgumentOutOfRangeException(nameof(yMeters));
+
+        double maxX = Columns * SpacingMeters + SpacingMeters;
+        double maxY = Rows * SpacingMeters * HexCoord.RowSpacingFactor + SpacingMeters;
+
+        return xMeters >= -2 * SpacingMeters
+            && xMeters <= maxX
+            && yMeters >= -2 * SpacingMeters
+            && yMeters <= maxY;
+    }
+
     /// <summary>Une case du bord a au moins un voisin hors du cadre.</summary>
     public bool IsFrameBoundary(int cell)
     {

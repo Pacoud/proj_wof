@@ -137,18 +137,21 @@ internal sealed class TacticalBattalionFrontContinuitySystem
         foreach (var sector in front)
             adjacency.Add(sector, new List<BattleSector>());
 
-        foreach (var connection in _battle.Battlefield.Connections)
+        // Liaisons lues dans l'index du champ de bataille,
+        // dans l'ordre de leur creation : le meme ordre que
+        // le parcours de toutes les liaisons.
+        foreach (var sector in front)
         {
-            if (!adjacency.TryGetValue(
-                    connection.A, out var a)
-                || !adjacency.TryGetValue(
-                    connection.B, out var b))
-            {
-                continue;
-            }
+            var neighbors = adjacency[sector];
 
-            a.Add(connection.B);
-            b.Add(connection.A);
+            foreach (var connection in
+                _battle.Battlefield.GetConnections(sector))
+            {
+                var other = connection.GetOther(sector);
+
+                if (adjacency.ContainsKey(other))
+                    neighbors.Add(other);
+            }
         }
 
         // Groupes de secteurs physiquement occupes.

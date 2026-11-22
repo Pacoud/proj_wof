@@ -5,7 +5,8 @@ public enum TacticalSightStatus
 {
     Unknown,
     ClearOfKnownObstacles,
-    BlockedByObstacle
+    BlockedByObstacle,
+    BlockedByTerrain
 }
 
 public sealed record TacticalSightResult(
@@ -16,6 +17,10 @@ public sealed record TacticalSightResult(
 
 /// <summary>
 /// Évaluation géométrique d'un corridor d'observation.
+///
+/// Bloquent la vue : les obstacles tracés à la main et, quand la
+/// géométrie est reliée à une grille, le sol et le couvert des cases
+/// traversées. La première obstruction le long du corridor l'emporte.
 ///
 /// Ne simule ni détection effective, ni météo,
 /// ni camouflage, ni portée d'une arme.
@@ -142,6 +147,26 @@ public static class TacticalSightEvaluator
             }
         }
 
+        // Le relief n'est cherché qu'avant le premier obstacle tracé :
+        // à égalité, l'obstacle tracé l'emporte.
+        if (geometry.Terrain is TacticalTerrainSurface terrain
+            && TryFindTerrainObstruction(
+                terrain,
+                a,
+                b,
+                horizontal,
+                startHeight,
+                endHeight,
+                closestParameter,
+                out double terrainParameter))
+        {
+            return new TacticalSightResult(
+                TacticalSightStatus.BlockedByTerrain,
+                horizontal,
+                null,
+                horizontal * terrainParameter);
+        }
+
         if (closestObstacle is not null)
         {
             return new TacticalSightResult(
@@ -255,6 +280,69 @@ public static class TacticalSightEvaluator
             Math.Max(t0, t1));
 
         return enter <= exit;
+    }
+
+    /// <summary>
+    /// Parcourt le corridor par pas d'au plus 25 m, extrémités exclues.
+    /// En chaque point, la ligne de vue est comparée au sol interpolé,
+    /// augmenté du couvert de la case traversée. Le couvert des cases de
+    /// l'observateur et de la cible n'est pas compté : la dissimulation
+    /// de la cible dans sa propre case relève de sa signature.
+    ///
+    /// Renvoie le premier paramètre bloquant, strictement inférieur à
+    /// <paramref name="beforeParameter"/>.
+    /// </summary>
+    private static bool TryFindTerrainObstruction(
+        TacticalTerrainSurface terrain,
+        TacticalPoint a,
+        TacticalPoint b,
+        double horizontal,
+        double startHeight,
+        double endHeight,
+        double beforeParameter,
+        out double parameter)
+    {
+        parameter = double.PositiveInfinity;
+
+        int steps = (int)Math.Ceiling(
+            horizontal / TacticalTerrainSurface.SightSampleSpacingMeters);
+
+        if (steps < 2)
+            return false;
+
+        int observerCell = terrain.FindCell(a.XMeters, a.YMeters);
+        int targetCell = terrain.FindCell(b.XMeters, b.YMeters);
+
+        double dx = b.XMeters - a.XMeters;
+        double dy = b.YMeters - a.YMeters;
+        double slope = endHeight - startHeight;
+
+        for (int i = 1; i < steps; i++)
+        {
+            double t = (double)i / steps;
+
+            if (t >= beforeParameter)
+                return false;
+
+            double x = a.XMeters + dx * t;
+            double y = a.YMeters + dy * t;
+
+            if (!terrain.TryGetGroundElevation(x, y, out double top))
+                continue;
+
+            int cell = terrain.FindCell(x, y);
+
+            if (cell >= 0 && cell != observerCell && cell != targetCell)
+                top += terrain.GetCoverHeight(cell);
+
+            if (top + HeightEpsilonMeters >= startHeight + slope * t)
+            {
+                parameter = t;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static double Cross(

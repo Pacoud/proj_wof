@@ -7,6 +7,10 @@ namespace WoF.Simulation.Military.Combat.Tactical;
 ///
 /// L'index est un instantane : reconstruire apres
 /// modification des positions ou des secteurs.
+///
+/// Seuls les secteurs occupes ou couverts sont stockes :
+/// la construction depend du nombre de compagnies,
+/// pas du nombre de secteurs de la bataille.
 /// </summary>
 public sealed class TacticalSectorPresenceIndex
 {
@@ -27,6 +31,9 @@ public sealed class TacticalSectorPresenceIndex
         CompanyDeployment,
         TacticalCompanyFootprint> _footprints =
             new(ReferenceEqualityComparer.Instance);
+
+    private static readonly IReadOnlyList<CompanyDeployment> Empty =
+        Array.AsReadOnly(Array.Empty<CompanyDeployment>());
 
     private readonly int _deploymentCount;
     private readonly int _positionCount;
@@ -65,7 +72,8 @@ public sealed class TacticalSectorPresenceIndex
         _connectionCount = battlefield.Connections.Count;
 
         // Tables temporaires utilisees uniquement
-        // pendant la construction de l'index.
+        // pendant la construction de l'index, limitees
+        // aux secteurs occupes ou couverts.
         var assigned = new Dictionary<
             BattleSector,
             List<CompanyDeployment>>(
@@ -76,32 +84,13 @@ public sealed class TacticalSectorPresenceIndex
             List<CompanyDeployment>>(
                 ReferenceEqualityComparer.Instance);
 
-        var neighbors = new Dictionary<
-            BattleSector,
-            List<BattleSector>>(
-                ReferenceEqualityComparer.Instance);
-
-        foreach (var sector in battlefield.Sectors)
-        {
-            assigned.Add(sector, new List<CompanyDeployment>());
-            covering.Add(sector, new List<CompanyDeployment>());
-            neighbors.Add(sector, new List<BattleSector>());
-        }
-
-        // Construire une fois les voisins directs.
-        foreach (var connection in battlefield.Connections)
-        {
-            neighbors[connection.A].Add(connection.B);
-            neighbors[connection.B].Add(connection.A);
-        }
-
         foreach (var deployment in _battle.Deployments)
         {
             BattleSector primary = deployment.Sector;
 
             // Une affectation existe meme si la
             // compagnie n'a pas encore de position.
-            assigned[primary].Add(deployment);
+            Add(assigned, primary, deployment);
 
             var position = _geometry.GetPosition(deployment);
 
@@ -119,35 +108,46 @@ public sealed class TacticalSectorPresenceIndex
                 || (primaryGeometry is not null
                     && primaryGeometry.Contains(position.Point)))
             {
-                covering[primary].Add(deployment);
+                Add(covering, primary, deployment);
             }
 
-            // Ne tester que les voisins directs :
-            // pas tous les secteurs de la bataille.
-            foreach (var neighbor in neighbors[primary])
+            // Ne tester que les voisins directs, lus dans
+            // l'index du champ de bataille.
+            foreach (var connection in battlefield.GetConnections(primary))
             {
+                var neighbor = connection.GetOther(primary);
+
                 var sectorGeometry =
                     _geometry.GetSectorGeometry(neighbor);
 
                 if (sectorGeometry is not null
                     && footprint.Intersects(sectorGeometry))
                 {
-                    covering[neighbor].Add(deployment);
+                    Add(covering, neighbor, deployment);
                 }
             }
         }
 
         // Exposer des vues non modifiables.
-        foreach (var sector in battlefield.Sectors)
-        {
-            _assigned.Add(
-                sector,
-                Array.AsReadOnly(assigned[sector].ToArray()));
+        foreach (var (sector, list) in assigned)
+            _assigned.Add(sector, Array.AsReadOnly(list.ToArray()));
 
-            _covering.Add(
-                sector,
-                Array.AsReadOnly(covering[sector].ToArray()));
+        foreach (var (sector, list) in covering)
+            _covering.Add(sector, Array.AsReadOnly(list.ToArray()));
+    }
+
+    private static void Add(
+        Dictionary<BattleSector, List<CompanyDeployment>> table,
+        BattleSector sector,
+        CompanyDeployment deployment)
+    {
+        if (!table.TryGetValue(sector, out var list))
+        {
+            list = new List<CompanyDeployment>();
+            table.Add(sector, list);
         }
+
+        list.Add(deployment);
     }
 
     /// <summary>
@@ -160,7 +160,9 @@ public sealed class TacticalSectorPresenceIndex
         EnsureCurrent();
         ValidateSector(sector);
 
-        return _assigned[sector];
+        return _assigned.TryGetValue(sector, out var list)
+            ? list
+            : Empty;
     }
 
     /// <summary>
@@ -173,7 +175,9 @@ public sealed class TacticalSectorPresenceIndex
         EnsureCurrent();
         ValidateSector(sector);
 
-        return _covering[sector];
+        return _covering.TryGetValue(sector, out var list)
+            ? list
+            : Empty;
     }
 
     /// <summary>

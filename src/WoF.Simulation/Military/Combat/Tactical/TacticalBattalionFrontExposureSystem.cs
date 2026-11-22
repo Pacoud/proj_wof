@@ -84,26 +84,9 @@ internal sealed class TacticalBattalionFrontExposureSystem
             ?? throw new InvalidOperationException(
                 "Battalion has no country.");
 
-        // Construire le voisinage une seule fois.
-        var adjacency = new Dictionary<
-            BattleSector,
-            HashSet<BattleSector>>(
-                ReferenceEqualityComparer.Instance);
-
-        foreach (var sector in _battle.Battlefield.Sectors)
-        {
-            adjacency.Add(
-                sector,
-                new HashSet<BattleSector>(
-                    ReferenceEqualityComparer.Instance));
-        }
-
-        foreach (var connection in
-            _battle.Battlefield.Connections)
-        {
-            adjacency[connection.A].Add(connection.B);
-            adjacency[connection.B].Add(connection.A);
-        }
+        // Les voisins sont lus dans l'index du champ de bataille :
+        // aucun parcours de toutes ses liaisons.
+        var battlefield = _battle.Battlefield;
 
         // Presence des compagnies adverses capables
         // d'occuper physiquement une premiere ligne.
@@ -155,7 +138,7 @@ internal sealed class TacticalBattalionFrontExposureSystem
                 hostiles);
 
             var nearby = Sum(
-                adjacency[friendly.Sector],
+                battlefield.GetNeighbors(friendly.Sector),
                 hostiles);
 
             sectorReports.Add(
@@ -182,7 +165,7 @@ internal sealed class TacticalBattalionFrontExposureSystem
 
             foreach (var sector in inside)
             {
-                foreach (var neighbor in adjacency[sector])
+                foreach (var neighbor in battlefield.GetNeighbors(sector))
                 {
                     if (!inside.Contains(neighbor))
                         border.Add(neighbor);

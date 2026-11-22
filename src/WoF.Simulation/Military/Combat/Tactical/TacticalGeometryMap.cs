@@ -125,62 +125,55 @@ public sealed class TacticalGeometryMap
     internal long Revision { get; private set; }
 
 
+    /// <summary>
+    /// Sol et couvert de la province, quand le champ de bataille vient
+    /// de sa grille. Null pour un champ de bataille construit à la main.
+    /// </summary>
+    internal TacticalTerrainSurface? Terrain { get; private set; }
+
+    /// <summary>
+    /// Change le secteur d'une compagnie et la place au point donné,
+    /// qui doit se trouver dans la géométrie du secteur de destination.
+    /// Le point n'est plus recalculé au centre du secteur.
+    /// </summary>
     internal void RelocateCompany(
         CompanyDeployment deployment,
-        BattleSector destination)
+        BattleSector destination,
+        TacticalPoint point)
     {
-    ArgumentNullException.ThrowIfNull(deployment);
-    ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(deployment);
+        ArgumentNullException.ThrowIfNull(destination);
 
-    EnsureActive();
+        EnsureActive();
 
-    if (!_battle.ContainsDeployment(deployment)
-        || !_battle.Battlefield.ContainsSector(destination))
-    {
-        throw new InvalidOperationException(
-            "Invalid tactical relocation.");
-    }
+        if (!_battle.ContainsDeployment(deployment)
+            || !_battle.Battlefield.ContainsSector(destination))
+        {
+            throw new InvalidOperationException(
+                "Invalid tactical relocation.");
+        }
 
-    if (!_byDeployment.TryGetValue(
-        deployment, out var previous))
-    {
-        throw new InvalidOperationException(
-            "Company has no tactical position.");
-    }
+        if (!_byDeployment.TryGetValue(
+            deployment, out var previous))
+        {
+            throw new InvalidOperationException(
+                "Company has no tactical position.");
+        }
 
-    if (!_bySector.TryGetValue(
-        destination, out var destinationGeometry))
-    {
-        throw new InvalidOperationException(
-            "Destination has no sector geometry.");
-    }
+        if (!_bySector.TryGetValue(
+            destination, out var destinationGeometry))
+        {
+            throw new InvalidOperationException(
+                "Destination has no sector geometry.");
+        }
 
-    // Première approximation : position au centre
-    // du secteur, à son altitude déclarée.
-    var point = new TacticalPoint(
-        destinationGeometry.CenterXMeters,
-        destinationGeometry.CenterYMeters,
-        destination.ElevationMeters);
+        if (!destinationGeometry.Contains(point))
+            throw new InvalidOperationException(
+                "Company position is outside its destination sector.");
 
-    var replacement = new CompanyTacticalPosition(
-        deployment,
-        point,
-        previous.FacingDegrees,
-        previous.FrontageMeters);
+        EnsureOnGround(point);
 
-    int index = _positions.FindIndex(p =>
-        ReferenceEquals(p, previous));
-
-    if (index < 0)
-    {
-        throw new InvalidOperationException(
-            "Geometry position index is inconsistent.");
-    }
-
-    _positions[index] = replacement;
-    _byDeployment[deployment] = replacement;
-
-    Revision++;
+        Replace(previous, point);
     }
 
     public TacticalGeometryMap(TacticalBattle battle)
@@ -307,6 +300,8 @@ public sealed class TacticalGeometryMap
         if (!sectorGeometry.Contains(point))
             throw new InvalidOperationException(
                 "Company position is outside its assigned sector.");
+
+        EnsureOnGround(point);
 
         if (!double.IsFinite(facingDegrees)
             || facingDegrees < 0
@@ -459,6 +454,166 @@ public sealed class TacticalGeometryMap
                 "Company has no tactical position.");
         }
 
+        EnsureOnGround(point);
+
+        Replace(previous, point);
+    }
+
+    // ---- Sol ----
+
+    /// <summary>
+    /// Relie la carte au sol d'une province. Appelé par
+    /// ProvinceBattlefieldLayout.DefineGeometry, avant tout placement.
+    /// </summary>
+    internal void AttachTerrain(TacticalTerrainSurface terrain)
+    {
+        ArgumentNullException.ThrowIfNull(terrain);
+
+        EnsureActive();
+
+        if (Terrain is not null)
+            throw new InvalidOperationException(
+                "Terrain is already attached to this geometry map.");
+
+        if (_positions.Count > 0)
+            throw new InvalidOperationException(
+                "Terrain must be attached before placing companies.");
+
+        Terrain = terrain;
+
+        Revision++;
+    }
+
+    /// <summary>
+    /// Point au sol dans un secteur : altitude du terrain si la carte
+    /// est reliée à une grille, sinon altitude déclarée du secteur.
+    /// À utiliser pour construire les points passés à PlaceCompany.
+    /// </summary>
+    public TacticalPoint GetGroundPoint(
+        BattleSector sector,
+        double xMeters,
+        double yMeters)
+    {
+        ArgumentNullException.ThrowIfNull(sector);
+
+        if (!_battle.Battlefield.ContainsSector(sector))
+            throw new InvalidOperationException(
+                "Sector does not belong to this battlefield.");
+
+        if (!double.IsFinite(xMeters))
+            throw new ArgumentOutOfRangeException(nameof(xMeters));
+
+        if (!double.IsFinite(yMeters))
+            throw new ArgumentOutOfRangeException(nameof(yMeters));
+
+        double elevation = Terrain is null
+            ? sector.ElevationMeters
+            : Terrain.GetGroundElevation(xMeters, yMeters);
+
+        return new TacticalPoint(xMeters, yMeters, elevation);
+    }
+
+    /// <summary>Centre de la géométrie d'un secteur, au sol.</summary>
+    public TacticalPoint GetSectorCenterPoint(BattleSector sector)
+    {
+        ArgumentNullException.ThrowIfNull(sector);
+
+        var geometry = GetSectorGeometry(sector)
+            ?? throw new InvalidOperationException(
+                "Sector geometry is not defined.");
+
+        return GetGroundPoint(
+            sector,
+            geometry.CenterXMeters,
+            geometry.CenterYMeters);
+    }
+
+    /// <summary>
+    /// Point d'un trajet entre deux secteurs. Sur une grille, l'altitude
+    /// est celle du sol ; sinon l'altitude calculée par l'appelant
+    /// (interpolée entre les deux extrémités) est conservée.
+    /// </summary>
+    internal TacticalPoint ToGroundPoint(TacticalPoint point)
+    {
+        return Terrain is null
+            ? point
+            : new TacticalPoint(
+                point.XMeters,
+                point.YMeters,
+                Terrain.GetGroundElevation(point.XMeters, point.YMeters));
+    }
+
+    /// <summary>
+    /// Point où s'arrête une compagnie dont le mouvement est annulé :
+    /// sa position actuelle si elle est encore dans la géométrie du
+    /// secteur, sinon le point le plus proche sur le bord de celle-ci.
+    /// </summary>
+    internal TacticalPoint GetRetreatPoint(
+        BattleSector sector,
+        TacticalPoint point)
+    {
+        ArgumentNullException.ThrowIfNull(sector);
+
+        var geometry = GetSectorGeometry(sector)
+            ?? throw new InvalidOperationException(
+                "Sector geometry is not defined.");
+
+        double x = point.XMeters;
+        double y = point.YMeters;
+
+        double dx = x - geometry.CenterXMeters;
+        double dy = y - geometry.CenterYMeters;
+        double distance = double.Hypot(dx, dy);
+
+        if (distance > geometry.RadiusMeters)
+        {
+            double scale = geometry.RadiusMeters / distance;
+
+            x = geometry.CenterXMeters + dx * scale;
+            y = geometry.CenterYMeters + dy * scale;
+
+            // L'arrondi peut laisser le point juste hors du cercle :
+            // le rapprocher du centre jusqu'à ce qu'il y soit.
+            while (double.Hypot(
+                       x - geometry.CenterXMeters,
+                       y - geometry.CenterYMeters)
+                   > geometry.RadiusMeters)
+            {
+                scale = Math.BitDecrement(scale);
+                x = geometry.CenterXMeters + dx * scale;
+                y = geometry.CenterYMeters + dy * scale;
+            }
+        }
+
+        return GetGroundPoint(sector, x, y);
+    }
+
+    /// <summary>
+    /// Sur une grille, une position doit être exactement au sol :
+    /// tout le moteur lit la même altitude.
+    /// </summary>
+    private void EnsureOnGround(TacticalPoint point)
+    {
+        if (Terrain is null)
+            return;
+
+        double ground = Terrain.GetGroundElevation(
+            point.XMeters, point.YMeters);
+
+        if (Math.Abs(point.GroundElevationMeters - ground)
+            > GroundToleranceMeters)
+        {
+            throw new InvalidOperationException(
+                "Company elevation does not match the terrain.");
+        }
+    }
+
+    private const double GroundToleranceMeters = 1e-6;
+
+    private void Replace(
+        CompanyTacticalPosition previous,
+        TacticalPoint point)
+    {
         int index = _positions.FindIndex(p =>
             ReferenceEquals(p, previous));
 
@@ -467,15 +622,14 @@ public sealed class TacticalGeometryMap
                 "Tactical geometry index is inconsistent.");
 
         var replacement = new CompanyTacticalPosition(
-            deployment,
+            previous.Deployment,
             point,
             previous.FacingDegrees,
             previous.FrontageMeters);
 
         _positions[index] = replacement;
-        _byDeployment[deployment] = replacement;
+        _byDeployment[previous.Deployment] = replacement;
 
         Revision++;
     }
-
 }

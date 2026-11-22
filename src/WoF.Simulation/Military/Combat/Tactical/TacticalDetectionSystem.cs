@@ -264,10 +264,12 @@ public static class TacticalDetectionSystem
             
                 bool hasClearSight;
 
-                if (geometry.LineObstacles.Count == 0)
+                if (geometry.LineObstacles.Count == 0
+                    && geometry.Terrain is null)
                 {
-                    // Pas d'intersection a calculer.
-                    // Pas d'objet TacticalSightResult a allouer.
+                    // Ni obstacle ni relief : pas d'intersection
+                    // a calculer, pas d'objet TacticalSightResult
+                    // a allouer.
                     hasClearSight =
                         TacticalSightEvaluator.IsClearWithoutObstacles(
                             a,
@@ -276,8 +278,8 @@ public static class TacticalDetectionSystem
                 }
                 else
                 {
-                    // Tous les cas avec obstacles conservent
-                    // exactement l'evaluateur historique.
+                    // Obstacles tracés ou relief : l'evaluateur
+                    // complet, comme pour le tir.
                     hasClearSight =
                         TacticalSightEvaluator.Evaluate(
                             geometry,

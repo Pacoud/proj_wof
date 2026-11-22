@@ -208,10 +208,12 @@ public sealed class TacticalBattlefieldBuilderTests
         var center = layout.GetCellCenter(first);
         var secondCenter = layout.GetCellCenter(second);
 
-        var offset = new TacticalPoint(
+        // Le point décalé est pris au sol : la carte refuse une altitude
+        // différente de celle de la grille.
+        var offset = map.GetGroundPoint(
+            second,
             secondCenter.XMeters + 100,
-            secondCenter.YMeters,
-            secondCenter.GroundElevationMeters);
+            secondCenter.YMeters);
 
         map.PlaceCompany(frenchDeployment, center, 0, 300);
         map.PlaceCompany(germanDeployment, offset, 180, 300);
@@ -231,23 +233,28 @@ public sealed class TacticalBattlefieldBuilderTests
     }
 
     [Fact]
-    public void CellCenter_UsesTheSectorElevationLikeTheEngine()
+    public void CellCenter_UsesTheGroundElevationLikeTheEngine()
     {
         var (grid, partition, requested) = CreateRiverSelection();
         var layout = TacticalBattlefieldBuilder.Build(grid, partition, requested);
-
-        foreach (int c in layout.CellIndices)
-        {
-            var s = layout.GetSector(c);
-            Assert.Equal(s.ElevationMeters, layout.GetCellCenter(s).GroundElevationMeters);
-        }
 
         var (battle, french, _) = CreateBattle(layout.Battlefield);
         var map = new TacticalGeometryMap(battle);
         layout.DefineGeometry(map);
 
+        // Le centre d'une case est à l'altitude de la grille, la même
+        // pour la disposition et pour la carte du moteur.
+        foreach (int c in layout.CellIndices)
+        {
+            var s = layout.GetSector(c);
+            var center = layout.GetCellCenter(s);
+
+            Assert.Equal((double)grid.GetElevation(c), center.GroundElevationMeters);
+            Assert.Equal(center, map.GetSectorCenterPoint(s));
+        }
+
         // Une case d'altitude non entière, reliée à une voisine incluse :
-        // c'est là qu'apparaissait l'écart entre la grille et le moteur.
+        // l'altitude entière du secteur n'est plus lue pour les positions.
         int cell = layout.CellIndices.First(c =>
             grid.GetElevation(c) != MathF.Round(grid.GetElevation(c))
             && Enumerable.Range(0, 6).Any(d =>
@@ -259,18 +266,18 @@ public sealed class TacticalBattlefieldBuilderTests
         var sector = layout.GetSector(cell);
         var neighbor = layout.GetSector(grid.GetNeighborIndex(cell, direction));
 
+        Assert.NotEqual(sector.ElevationMeters, layout.GetCellCenter(sector).GroundElevationMeters);
+
         var deployment = battle.DeployCompany(
             french.Battalions[0].Companies[0], sector, CompanyDeploymentRole.FrontLine);
 
         var placed = map.PlaceCompany(deployment, layout.GetCellCenter(sector), 0, 300);
 
-        // L'annulation d'un mouvement replace la compagnie au centre de son secteur :
-        // elle ne doit pas changer d'altitude sans avoir bougé.
-        map.RelocateCompany(deployment, sector);
-        Assert.Equal(placed.Point, map.GetPosition(deployment)!.Point);
+        // Une annulation sans avoir quitté la case ne déplace pas la compagnie.
+        Assert.Equal(placed.Point, map.GetRetreatPoint(sector, placed.Point));
 
-        // Déplacée par le moteur dans la case voisine : même point que GetCellCenter.
-        map.RelocateCompany(deployment, neighbor);
+        // Déplacée par le moteur au centre de la case voisine : même point que GetCellCenter.
+        map.RelocateCompany(deployment, neighbor, map.GetSectorCenterPoint(neighbor));
         Assert.Equal(layout.GetCellCenter(neighbor), map.GetPosition(deployment)!.Point);
     }
 

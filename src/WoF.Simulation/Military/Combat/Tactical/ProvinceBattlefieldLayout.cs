@@ -76,29 +76,38 @@ public sealed class ProvinceBattlefieldLayout
     }
 
     /// <summary>
-    /// Centre de la case d'un secteur, à l'altitude déclarée du secteur.
+    /// Centre de la case d'un secteur, à l'altitude du sol.
     ///
-    /// Même convention que le moteur (RelocateCompany, centres des itinéraires) :
-    /// une compagnie au centre d'un secteur est à BattleSector.ElevationMeters,
-    /// l'altitude entière, et non à l'altitude flottante de la grille.
+    /// Même lecture que le moteur (TacticalGeometryMap.GetSectorCenterPoint,
+    /// itinéraires, ligne de vue) : l'altitude de la grille au centre de la
+    /// case, et non l'altitude entière BattleSector.ElevationMeters, qui
+    /// reste un résumé pour l'affichage.
     /// </summary>
     public TacticalPoint GetCellCenter(BattleSector sector)
     {
         int cell = GetCellIndex(sector);
 
-        return new TacticalPoint(
-            Grid.GetCenterXMeters(cell),
-            Grid.GetCenterYMeters(cell),
-            sector.ElevationMeters);
+        double x = Grid.GetCenterXMeters(cell);
+        double y = Grid.GetCenterYMeters(cell);
+
+        if (!Grid.TryGetGroundElevation(x, y, out double elevation))
+            throw new InvalidOperationException(
+                "Cell center is outside the province grid.");
+
+        return new TacticalPoint(x, y, elevation);
     }
 
     /// <summary>
     /// Définit la géométrie de chaque case : un cercle centré sur la case,
-    /// de rayon égal au rayon circonscrit de l'hexagone.
+    /// de rayon égal au rayon circonscrit de l'hexagone. Relie ensuite la
+    /// carte au sol de la province : positions, itinéraires et ligne de vue
+    /// liront l'altitude et le couvert de la grille.
     ///
     /// Tout est vérifié avant la première écriture : en cas de refus,
-    /// la carte reste inchangée. Après ces contrôles, DefineSector ne peut
-    /// plus échouer (secteurs de ce champ de bataille, centres finis, rayon positif).
+    /// la carte reste inchangée. Après ces contrôles, DefineSector et
+    /// AttachTerrain ne peuvent plus échouer (secteurs de ce champ de
+    /// bataille, centres finis, rayon positif, carte sans terrain ni
+    /// compagnie placée).
     /// </summary>
     public void DefineGeometry(TacticalGeometryMap map)
     {
@@ -111,6 +120,14 @@ public sealed class ProvinceBattlefieldLayout
         if (!map.Battle.Engagement.IsActive)
             throw new InvalidOperationException(
                 "Cannot define geometry for an ended battle.");
+
+        if (map.Terrain is not null)
+            throw new InvalidOperationException(
+                "Geometry map already has a terrain.");
+
+        if (map.CompanyPositions.Count > 0)
+            throw new InvalidOperationException(
+                "Geometry must be defined before placing companies.");
 
         foreach (int cell in CellIndices)
         {
@@ -127,5 +144,7 @@ public sealed class ProvinceBattlefieldLayout
                 Grid.GetCenterYMeters(cell),
                 ProvinceHexGrid.CircumradiusMeters);
         }
+
+        map.AttachTerrain(new TacticalTerrainSurface(Grid));
     }
 }

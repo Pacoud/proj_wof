@@ -7975,3 +7975,135 @@ La relecture avant livraison a relevé trois défauts :
   le moteur.
 - DefineGeometry_ChecksEveryCellBeforeWriting : refus
   sans aucune écriture dans la carte.
+
+### Champ de bataille, étape 2a — Voisinage indexé, relief dans la vue, positions au sol
+
+**Objectif**
+
+Parties A, B et D de l'étape 2 de
+`CONCEPTION_CHAMP_DE_BATAILLE.md` : un voisinage
+indexé qui permet une province entière, une ligne
+de vue qui lit la grille, et des positions continues
+au sol. L'emprise dans la détection et le tir
+(partie C) et le contrôle des secteurs (partie E)
+forment l'étape 2b. Rien n'est raccordé aux
+engagements ni à `SimulationEngine.Tick()`.
+
+**Fonctionnalités**
+
+- Province entière : 18 000 secteurs et 53 375
+  liaisons se construisent en quelques dizaines de
+  millisecondes ; un itinéraire la traverse d'un bord
+  à l'autre.
+- Altitude du sol en tout point : interpolation
+  linéaire dans le triangle de trois centres voisins.
+  Exacte aux centres, continue, exacte sur un plan
+  incliné.
+- Sur une grille, toute position est au sol :
+  placement, pas d'un mouvement, centre d'un secteur,
+  arrivée, annulation. Une altitude qui s'écarte du
+  sol de plus de 1e-6 m est refusée. Sans grille, un
+  secteur garde son altitude déclarée.
+- Ligne de vue : en plus des obstacles tracés, le sol
+  et le couvert des cases traversées (bois 15 m,
+  bâtiments 8 m), échantillonnés tous les 25 m au
+  plus. Le couvert des cases de l'observateur et de la
+  cible est ignoré : il relève de leur dissimulation.
+  Le masque le plus proche de l'observateur l'emporte ;
+  à égalité, l'obstacle tracé. Nouveau statut
+  `BlockedByTerrain`.
+- Mouvements : point d'arrivée facultatif dans l'ordre
+  (centre de la destination par défaut) ; la compagnie
+  change de secteur aux points de passage. Un
+  mouvement annulé ne ramène plus la compagnie au
+  centre : elle reste où elle est si elle se trouve
+  dans le dernier secteur atteint, sinon elle recule
+  jusqu'à son bord.
+
+**Architecture**
+
+- `TacticalBattlefield` tient la liste des liaisons de
+  chaque secteur, dans leur ordre de création.
+  `GetNeighbors`, `AreConnected`, `GetConnections` et
+  `TryGetConnection` la lisent ; la liste plate
+  `Connections` reste pour les parcours globaux. Le
+  refus d'un doublon ne parcourt plus toutes les
+  liaisons.
+- Lecteurs passés à l'index, dans le même ordre de
+  visite qu'avant : itinéraires (voisins triés par
+  identifiant pour départager les égalités),
+  candidats au contact (secteurs occupés seulement,
+  triés par identifiant), index de présence (creux),
+  exposition et continuité des fronts de bataillon.
+- `HexCoord.FromMeters`, `ProvinceHexGrid.TryGetCellAt`
+  et `TryGetGroundElevation` : du point à la case et à
+  l'altitude.
+- `TacticalTerrainSurface` (interne) : la grille et les
+  hauteurs de couvert. `ProvinceBattlefieldLayout.
+  DefineGeometry` la rattache à `TacticalGeometryMap`,
+  une seule fois, avant tout placement.
+- `TacticalGeometryMap` : `GetGroundPoint`,
+  `GetSectorCenterPoint`, `GetRetreatPoint`, et
+  `RelocateCompany` avec un point explicite.
+  `TacticalSectorMovementOrder` porte son
+  `DestinationPoint`.
+- Le centre d'une case suit désormais l'altitude de la
+  grille, et non plus l'altitude entière du secteur
+  retenue par le correctif de l'étape 1 : le moteur et
+  la disposition lisent la même altitude du sol.
+- Benchmark `terrain` : province entière, itinéraire,
+  lecture de l'altitude, ligne de vue sur le relief.
+
+**Tests — intérêt**
+
+- `ProvinceHexGridGroundTests` : case qui contient un
+  point, de part et d'autre de chaque bord ; altitude
+  exacte aux centres, exacte sur un plan, sans marche
+  le long d'un segment, et au bord du cadre.
+- `TacticalTerrainSightTests` : une montagne masque la
+  vue dans les deux sens ; plaine et pente régulière
+  restent dégagées ; bois masquants sauf dans les
+  cases extrêmes ; bâtiments plus bas que les bois ;
+  masque le plus proche ; la détection lit le relief.
+- `TacticalTerrainGeometryTests` : positions au sol,
+  refus d'une altitude fausse sans écriture, contrôle
+  de la destination, point de recul, champ de bataille
+  construit à la main inchangé, rattachement unique
+  du terrain.
+- `TacticalBattlefieldIndexTests` : voisins et
+  liaisons identiques au parcours de la liste plate ;
+  candidats au contact dans l'ordre de l'ancien
+  algorithme, reproduit dans le test ; province
+  entière construite et traversée par le plus court
+  chemin, comparé à un parcours en largeur de la
+  grille.
+- `TacticalGridMovementTests` : renfort sur un relief
+  irrégulier, au sol à chaque pas, jusqu'à son point
+  d'arrivée ; départ décalé qui suit le sol, pas la
+  ligne droite.
+- `TacticalReactionExecutionTests` : annulation au
+  bord du dernier secteur atteint ; point d'arrivée
+  atteint, point hors destination refusé.
+- `TacticalBattlefieldBuilderTests` : le test de
+  l'étape 1 sur l'altitude du centre devient
+  `CellCenter_UsesTheGroundElevationLikeTheEngine`
+  (altitude de la grille, même point pour la
+  disposition et le moteur) ; le placement décalé
+  d'une compagnie se fait au sol.
+- Chaque fonction a été retirée une fois dans la copie
+  de travail (relief, cases extrêmes, interpolation,
+  recul, ordre des liaisons, projection au sol) : au
+  moins un test échoue à chaque fois.
+
+**Limites**
+
+- Les points de contact prédits du combat mobile
+  gardent une altitude interpolée en ligne droite ;
+  seule leur distance horizontale est utilisée. Les
+  positions appliquées sont au sol.
+- Une case boisée masque sur tout son hexagone jusqu'à
+  15 m. Un sommet étroit peut être manqué de quelques
+  mètres entre deux échantillons de 25 m.
+- L'emprise n'entre pas encore dans la détection ni
+  dans le tir ; le contrôle des secteurs reste à
+  l'échelle de la province : étape 2b.

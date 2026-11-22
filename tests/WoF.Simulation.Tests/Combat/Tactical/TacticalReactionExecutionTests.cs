@@ -678,7 +678,8 @@ public sealed class TacticalReactionExecutionTests
         // se replier. On simule directement ce changement
         // pour tester la revalidation a l'arrivee.
         s.Geometry.RelocateCompany(
-            s.Enemy, s.RearSector);
+            s.Enemy, s.RearSector,
+            s.Geometry.GetSectorCenterPoint(s.RearSector));
 
         s.Enemy.ApplyMovementArrival(
             s.RearSector,
@@ -704,6 +705,81 @@ public sealed class TacticalReactionExecutionTests
     }
 
 
+
+    [Fact]
+    public void CancelledWithdrawal_StopsAtTheEdgeOfTheLastReachedSector()
+    {
+        // 1 000 m/h : après une heure, la compagnie est au milieu
+        // de la liaison de 2 000 m entre le front et l'arrière.
+        var s = CreateScenario(hasReserve: false, movementSpeed: 1000);
+        var request = ReachConfirmedRupture(s);
+
+        s.Movements.Decide(
+            request,
+            TacticalReactionDecision.Approve,
+            company: s.Front,
+            destination: s.RearSector);
+
+        s.Engine.Tick(); // Heure 4 : à 1 000 m du front.
+
+        Assert.True(s.Front.IsInTransit);
+        Assert.Equal(1000, s.Geometry.GetPosition(s.Front)!.Point.XMeters, 6);
+
+        // L'arrière est occupé avant l'arrivée : le repli est annulé.
+        Relocate(s, s.Enemy, s.RearSector);
+
+        s.Engine.Tick(); // Heure 5.
+
+        var completion = Assert.Single(s.Orchestrator.LastMovementPhase!.Completed);
+        Assert.Equal(TacticalMovementOutcome.BlockedByEnemy, completion.Outcome);
+
+        // La compagnie recule seulement jusqu'au bord du secteur du front
+        // (rayon 100 m), au lieu de revenir à son centre.
+        var point = s.Geometry.GetPosition(s.Front)!.Point;
+
+        Assert.Same(s.FrontSector, s.Front.Sector);
+        Assert.False(s.Front.IsInTransit);
+        Assert.Equal(100, point.XMeters, 6);
+        Assert.Equal(0, point.YMeters);
+        Assert.True(s.Geometry.GetSectorGeometry(s.FrontSector)!.Contains(point));
+    }
+
+    [Fact]
+    public void Movement_ArrivesAtTheDestinationPointOfItsOrder()
+    {
+        var s = CreateScenario();
+        var request = ReachConfirmedRupture(s);
+
+        // Hors de la géométrie du front (rayon 100 m) : refusé.
+        Assert.Throws<InvalidOperationException>(() => s.Movements.Decide(
+            request, TacticalReactionDecision.Approve,
+            company: s.Reserve, destinationPoint: new TacticalPoint(150, 0, 0)));
+
+        // Pas à l'altitude du secteur (0 m) : refusé.
+        Assert.Throws<InvalidOperationException>(() => s.Movements.Decide(
+            request, TacticalReactionDecision.Approve,
+            company: s.Reserve, destinationPoint: new TacticalPoint(30, 40, 5)));
+
+        // Un refus n'accepte aucun point.
+        Assert.Throws<ArgumentException>(() => s.Movements.Decide(
+            request, TacticalReactionDecision.Reject,
+            destinationPoint: new TacticalPoint(30, 40, 0)));
+
+        Assert.False(s.Reserve.IsInTransit);
+
+        var decision = s.Movements.Decide(
+            request, TacticalReactionDecision.Approve,
+            company: s.Reserve, destinationPoint: new TacticalPoint(30, 40, 0));
+
+        Assert.Equal(new TacticalPoint(30, 40, 0), decision.Movement!.DestinationPoint);
+
+        s.Engine.Tick(); // Heure 4 : en route.
+        s.Engine.Tick(); // Heure 5 : arrivée.
+
+        Assert.Same(s.FrontSector, s.Reserve.Sector);
+        Assert.False(s.Reserve.IsInTransit);
+        Assert.Equal(new TacticalPoint(30, 40, 0), s.Geometry.GetPosition(s.Reserve)!.Point);
+    }
 
     [Fact]
     public void DirectReinforcementProgressesAlongItsConnection()
@@ -800,7 +876,8 @@ public sealed class TacticalReactionExecutionTests
         if (useSimultaneousContacts)
         {
             // Tester la progression sur un trajet sans contact.
-            s.Geometry.RelocateCompany(s.Enemy, s.ReserveSector);
+            s.Geometry.RelocateCompany(s.Enemy, s.ReserveSector,
+                s.Geometry.GetSectorCenterPoint(s.ReserveSector));
             s.Enemy.ApplyMovementArrival(s.ReserveSector, CompanyDeploymentRole.FrontLine);
         }
 
@@ -931,7 +1008,8 @@ public sealed class TacticalReactionExecutionTests
 
         // Eloigner l'ennemi du corridor Front -> Rear.
         s.Geometry.RelocateCompany(
-            s.Enemy, s.ReserveSector);
+            s.Enemy, s.ReserveSector,
+            s.Geometry.GetSectorCenterPoint(s.ReserveSector));
 
         s.Enemy.ApplyMovementArrival(
             s.ReserveSector,
@@ -1029,7 +1107,8 @@ public sealed class TacticalReactionExecutionTests
 
     private static void Relocate(Scenario s, CompanyDeployment company, BattleSector sector)
     {
-        s.Geometry.RelocateCompany(company, sector);
+        s.Geometry.RelocateCompany(company, sector,
+            s.Geometry.GetSectorCenterPoint(sector));
         company.ApplyMovementArrival(sector, company.Role);
     }
 
@@ -1621,7 +1700,8 @@ public sealed class TacticalReactionExecutionTests
         Assert.Same(s.RearSector, s.Front.Sector);
 
         // L'ennemi occupe maintenant le secteur final.
-        s.Geometry.RelocateCompany(s.Enemy, farRear);
+        s.Geometry.RelocateCompany(s.Enemy, farRear,
+            s.Geometry.GetSectorCenterPoint(farRear));
 
         s.Enemy.ApplyMovementArrival(
             farRear,
@@ -1721,7 +1801,8 @@ public sealed class TacticalReactionExecutionTests
         // Changer la position et l'affectation d'une
         // compagnie en utilisant les APIs existantes.
         s.Geometry.RelocateCompany(
-            s.Enemy, s.RearSector);
+            s.Enemy, s.RearSector,
+            s.Geometry.GetSectorCenterPoint(s.RearSector));
 
         s.Enemy.ApplyMovementArrival(
             s.RearSector,

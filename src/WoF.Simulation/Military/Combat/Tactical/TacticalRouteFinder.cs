@@ -6,7 +6,8 @@ internal sealed record TacticalSectorRoute(
     double TotalDistanceMeters);
 
 /// <summary>
-/// Recherche de route sur le graphe tactique.
+/// Recherche de route sur le graphe tactique (Dijkstra).
+/// Les voisins sont lus dans l'index de TacticalBattlefield.
 /// N'utilise ni les positions ennemies visibles par
 /// le joueur ni les renseignements des compagnies.
 /// C'est un outil de validation autoritaire du moteur.
@@ -44,6 +45,10 @@ internal static class TacticalRouteFinder
         var queue = new PriorityQueue<
             BattleSector, (double Distance, int SectorId)>();
 
+        // Voisins du secteur courant, triés par identifiant :
+        // même départage des égalités que le parcours historique.
+        var neighbors = new List<(int Id, SectorConnection Connection)>(6);
+
         distances[origin] = 0;
         queue.Enqueue(origin, (0, origin.Id));
 
@@ -56,14 +61,16 @@ internal static class TacticalRouteFinder
             if (ReferenceEquals(current, destination))
                 break;
 
-            foreach (var connection in battlefield.Connections
-                .Where(c => ReferenceEquals(c.A, current)
-                         || ReferenceEquals(c.B, current))
-                .OrderBy(c => ReferenceEquals(c.A, current)
-                    ? c.B.Id : c.A.Id))
+            neighbors.Clear();
+
+            foreach (var connection in battlefield.GetConnections(current))
+                neighbors.Add((connection.GetOther(current).Id, connection));
+
+            neighbors.Sort(static (x, y) => x.Id.CompareTo(y.Id));
+
+            foreach (var (_, connection) in neighbors)
             {
-                var next = ReferenceEquals(connection.A, current)
-                    ? connection.B : connection.A;
+                var next = connection.GetOther(current);
 
                 if (!canEnter(next))
                     continue;

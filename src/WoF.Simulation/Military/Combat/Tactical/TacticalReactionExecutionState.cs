@@ -25,7 +25,8 @@ internal sealed record TacticalSectorMovementOrder(
     long IssuedHour,
     long ArrivalHour,
     IReadOnlyList<BattleSector> Route,
-    double TotalDistanceMeters);
+    double TotalDistanceMeters,
+    TacticalPoint DestinationPoint);
 
 internal sealed record TacticalReactionDecisionResult(
     TacticalBattalionReactionRequest Request,
@@ -179,7 +180,8 @@ internal sealed class TacticalReactionExecutionState
         TacticalBattalionReactionRequest request,
         TacticalReactionDecision decision,
         CompanyDeployment? company = null,
-        BattleSector? destination = null)
+        BattleSector? destination = null,
+        TacticalPoint? destinationPoint = null)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -208,9 +210,13 @@ internal sealed class TacticalReactionExecutionState
             || request.Type ==
                 TacticalBattalionReactionType.Reorganize)
         {
-            if (company is not null || destination is not null)
+            if (company is not null
+                || destination is not null
+                || destinationPoint is not null)
+            {
                 throw new ArgumentException(
                     "This decision does not accept a movement.");
+            }
 
             _decided.Add(request);
 
@@ -319,6 +325,32 @@ internal sealed class TacticalReactionExecutionState
             ?? throw new InvalidOperationException(
                 "Company has no initial position.");
 
+        // Point d'arrivée : le centre du secteur par défaut, au sol.
+        // Un point fourni doit être dans la géométrie de la destination
+        // et à l'altitude du sol.
+        TacticalPoint arrivalPoint = _geometry.GetSectorCenterPoint(target);
+
+        if (destinationPoint is TacticalPoint requestedPoint)
+        {
+            if (!_geometry.GetSectorGeometry(target)!.Contains(requestedPoint))
+                throw new InvalidOperationException(
+                    "Destination point is outside the destination sector.");
+
+            var ground = _geometry.GetGroundPoint(
+                target,
+                requestedPoint.XMeters,
+                requestedPoint.YMeters);
+
+            if (Math.Abs(ground.GroundElevationMeters
+                    - requestedPoint.GroundElevationMeters) > 1e-6)
+            {
+                throw new InvalidOperationException(
+                    "Destination point is not on the ground.");
+            }
+
+            arrivalPoint = requestedPoint;
+        }
+
         double theoreticalHours = Math.Max(
             1,
             Math.Ceiling(
@@ -343,7 +375,8 @@ internal sealed class TacticalReactionExecutionState
             request.Hour,
             arrivalHour,
             route.Sectors,
-            route.TotalDistanceMeters);
+            route.TotalDistanceMeters,
+            arrivalPoint);
 
         _pending.Add(
             company,
@@ -834,9 +867,10 @@ internal sealed class TacticalReactionExecutionState
 
                     if (plan.Cancellation is not null)
                     {
-                        point = SectorCenter(
-                            finalSector,
-                            _geometry.GetSectorGeometry(finalSector)!);
+                        // Meme point que Cancel : recul jusqu'au
+                        // bord du dernier secteur atteint.
+                        point = _geometry.GetRetreatPoint(
+                            finalSector, point);
                     }
                     else if (finalLeg < state.Order.Route.Count - 1)
                     {
@@ -1102,12 +1136,16 @@ internal sealed class TacticalReactionExecutionState
         double length = ConnectionLength(from, to);
         double distance = Math.Min(budget, length - distanceOnLeg);
         bool atWaypoint = distanceOnLeg + distance >= length - 1e-9;
-        var end = SectorCenter(to, _geometry.GetSectorGeometry(to)!);
+        var end = WaypointPoint(order, legIndex + 1);
         var start = legIndex == 0
             ? startingPoint
-            : SectorCenter(from, _geometry.GetSectorGeometry(from)!);
+            : WaypointPoint(order, legIndex);
         double fraction = Math.Clamp((distanceOnLeg + distance) / length, 0, 1);
-        var position = Interpolate(start, end, fraction);
+
+        // Sur une grille, le point suit le sol ; sinon l'altitude
+        // reste interpolée entre les deux extrémités.
+        var position = _geometry.ToGroundPoint(
+            Interpolate(start, end, fraction));
         return new MovementStep(to, position, distance, atWaypoint);
     }
 
@@ -1134,7 +1172,10 @@ internal sealed class TacticalReactionExecutionState
             return;
         }
 
-        _geometry.RelocateCompany(company, step.Destination);
+        _geometry.RelocateCompany(
+            company,
+            step.Destination,
+            WaypointPoint(state.Order, state.LegIndex + 1));
         company.ApplyMovementArrival(step.Destination, company.Role);
         _battle.DefensiveState.Clear(company);
         spatialIndex?.RefreshPosition(company);
@@ -1214,7 +1255,10 @@ internal sealed class TacticalReactionExecutionState
             exposedDepthMeters:
                 oldExposure.ExposedDepthMeters);
 
-        _geometry.RelocateCompany(company, destination);
+        _geometry.RelocateCompany(
+            company,
+            destination,
+            state.Order.DestinationPoint);
         spatialIndex?.RefreshPosition(company);
 
         company.ApplyMovementArrival(
@@ -1241,9 +1285,16 @@ internal sealed class TacticalReactionExecutionState
     {
         var company = state.Order.Company;
 
-        // Revenir au dernier secteur effectivement
-        // atteint, et non a l'origine de toute la route.
-        _geometry.RelocateCompany(company, company.Sector);
+        // Rester dans le dernier secteur effectivement
+        // atteint : la compagnie s'arrete ou elle est si
+        // elle s'y trouve encore, sinon elle recule
+        // seulement jusqu'au bord de ce secteur.
+        var current = _geometry.GetPosition(company)!.Point;
+
+        _geometry.RelocateCompany(
+            company,
+            company.Sector,
+            _geometry.GetRetreatPoint(company.Sector, current));
         spatialIndex?.RefreshPosition(company);
 
         company.SetInTransit(false);
@@ -1261,22 +1312,24 @@ internal sealed class TacticalReactionExecutionState
         BattleSector from,
         BattleSector to)
     {
-        var connection = _battle.Battlefield.Connections
-            .SingleOrDefault(c => c.Connects(from, to));
-
-        return connection?.DistanceMeters
-            ?? throw new InvalidOperationException(
-                "Tactical route connection disappeared.");
+        return _battle.Battlefield.TryGetConnection(
+            from, to, out var connection)
+                ? connection.DistanceMeters
+                : throw new InvalidOperationException(
+                    "Tactical route connection disappeared.");
     }
 
-    private static TacticalPoint SectorCenter(
-        BattleSector sector,
-        SectorGeometry geometry)
+    /// <summary>
+    /// Point de passage d'un itinéraire : le centre du secteur, au sol,
+    /// sauf le dernier, qui est le point d'arrivée de l'ordre.
+    /// </summary>
+    private TacticalPoint WaypointPoint(
+        TacticalSectorMovementOrder order,
+        int routeIndex)
     {
-        return new TacticalPoint(
-            geometry.CenterXMeters,
-            geometry.CenterYMeters,
-            sector.ElevationMeters);
+        return routeIndex == order.Route.Count - 1
+            ? order.DestinationPoint
+            : _geometry.GetSectorCenterPoint(order.Route[routeIndex]);
     }
 
     private static TacticalPoint Interpolate(
@@ -1445,7 +1498,7 @@ internal sealed class TacticalReactionExecutionState
             double partialDistance =
                 step.Distance * fraction;
 
-            var point = new TacticalPoint(
+            var point = _geometry.ToGroundPoint(new TacticalPoint(
                 segment.From.XMeters
                     + (segment.To.XMeters
                     - segment.From.XMeters) * fraction,
@@ -1455,7 +1508,7 @@ internal sealed class TacticalReactionExecutionState
                 segment.From.GroundElevationMeters
                     + (segment.To.GroundElevationMeters
                     - segment.From.GroundElevationMeters)
-                    * fraction);
+                    * fraction));
 
             ApplyStep(
                 state,

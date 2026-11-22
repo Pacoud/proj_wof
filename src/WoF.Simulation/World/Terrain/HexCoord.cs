@@ -65,6 +65,67 @@ public readonly record struct HexCoord(int Q, int R)
         return spacingMeters * RowSpacingFactor * R;
     }
 
+    /// <summary>
+    /// Coordonnées axiales fractionnaires d'un point en mètres :
+    /// inverse exact de CenterXMeters et CenterYMeters.
+    /// </summary>
+    internal static (double Q, double R) FractionalFromMeters(
+        double xMeters,
+        double yMeters,
+        double spacingMeters)
+    {
+        double r = yMeters / (spacingMeters * RowSpacingFactor);
+        double q = xMeters / spacingMeters - r / 2.0;
+
+        return (q, r);
+    }
+
+    /// <summary>
+    /// Case dont l'hexagone contient le point (arrondi cubique).
+    /// Un point situé exactement sur un bord est attribué de façon
+    /// déterministe à l'une des deux cases.
+    /// </summary>
+    public static HexCoord FromMeters(
+        double xMeters,
+        double yMeters,
+        double spacingMeters)
+    {
+        if (!double.IsFinite(xMeters))
+            throw new ArgumentOutOfRangeException(nameof(xMeters));
+
+        if (!double.IsFinite(yMeters))
+            throw new ArgumentOutOfRangeException(nameof(yMeters));
+
+        if (!double.IsFinite(spacingMeters) || spacingMeters <= 0)
+            throw new ArgumentOutOfRangeException(nameof(spacingMeters));
+
+        var (q, r) = FractionalFromMeters(xMeters, yMeters, spacingMeters);
+        double s = -q - r;
+
+        if (Math.Abs(q) > MaxCoordinate || Math.Abs(r) > MaxCoordinate)
+            throw new ArgumentOutOfRangeException(
+                nameof(xMeters), "Point is too far from the origin.");
+
+        double roundedQ = Math.Round(q);
+        double roundedR = Math.Round(r);
+        double roundedS = Math.Round(s);
+
+        double dq = Math.Abs(roundedQ - q);
+        double dr = Math.Abs(roundedR - r);
+        double ds = Math.Abs(roundedS - s);
+
+        // La coordonnée la plus éloignée de son arrondi
+        // est recalculée à partir des deux autres.
+        if (dq > dr && dq > ds)
+            roundedQ = -roundedR - roundedS;
+        else if (dr > ds)
+            roundedR = -roundedQ - roundedS;
+
+        return new HexCoord((int)roundedQ, (int)roundedR);
+    }
+
+    private const double MaxCoordinate = 1e9;
+
     private static void ValidateDirection(int direction)
     {
         if (direction < 0 || direction >= DirectionCount)
