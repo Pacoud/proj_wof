@@ -14,7 +14,8 @@ namespace WoF.Benchmarks;
 /// Mesure la génération d'une province entière, pour chaque type de terrain,
 /// puis la construction d'un champ de bataille d'environ 2 000 cases et
 /// celle de la province entière, un itinéraire d'un bord à l'autre,
-/// la lecture de l'altitude du sol et la ligne de vue sur le relief.
+/// la lecture de l'altitude du sol, la ligne de vue sur le relief et le
+/// choix des paires au contact sur un front dense.
 /// Affiche aussi les compteurs fonctionnels, pour comparer deux versions.
 ///
 /// Usage : terrain [répétitions=20] [échauffement=3] [graineDuMonde=20261122]
@@ -94,6 +95,7 @@ public static class TerrainGenerationBenchmark
         MeasureGround(worldSeed, repetitions, warmup);
         MeasureSight(TerrainType.Plains, worldSeed, repetitions, warmup);
         MeasureSight(TerrainType.Hills, worldSeed, repetitions, warmup);
+        MeasureContactSelection(worldSeed, repetitions, warmup);
 
         return 0;
     }
@@ -269,6 +271,126 @@ public static class TerrainGenerationBenchmark
         Console.WriteLine(
             $"Sight {terrain} | pairs {pairs.Count} (<= {MaxRangeMeters:0} m) | clear {clear} " +
             $"| blocked by terrain {terrainBlocked} | {timing}");
+    }
+
+    /// <summary>
+    /// Front dense sur une plaine générée : de chaque côté, 4 colonnes de
+    /// 120 rangées, une compagnie par case, au front de 300 m, une colonne
+    /// vide entre les camps. Aucune paire n'est dans des cases voisines :
+    /// toutes viennent de la sélection selon la portée (étape 2b).
+    ///
+    /// Compte aussi les paires dont les centres sont à moins de la portée
+    /// visuelle simple plus les demi-fronts : l'écart avec les paires
+    /// retenues mesure ce qu'apporterait une sélection plus fine (option c).
+    /// Puis une passe de détection complète, toutes compagnies immobiles.
+    /// </summary>
+    private static void MeasureContactSelection(ulong worldSeed, int repetitions, int warmup)
+    {
+        const int ColumnsPerSide = 4;
+        const int RowsPerSide = 120;
+        const int GapColumns = 1;
+        const double Frontage = 300;
+        const double VisualRange = 500;
+
+        var grid = ProvinceTerrainGenerator.Generate(CreateDescriptor(TerrainType.Plains, worldSeed));
+        var partition = GrandSectorPartition.Build(grid);
+        var layout = TacticalBattlefieldBuilder.Build(
+            grid, partition, partition.Sectors.Select(s => s.Id));
+
+        var engine = new SimulationEngine();
+        var west = new Country(1, "West");
+        var east = new Country(2, "East");
+        var province = new Province(10, "Benchmark", TerrainType.Plains);
+
+        var westDivision = CreateDivision(west, province, ColumnsPerSide * RowsPerSide);
+        var eastDivision = CreateDivision(east, province, ColumnsPerSide * RowsPerSide);
+
+        engine.AddDivision(westDivision);
+        engine.AddDivision(eastDivision);
+        engine.DeclareWar(west, east);
+        engine.Tick();
+
+        var battle = new TacticalBattle(engine.Engagements.ActiveEngagements.Single(), layout.Battlefield);
+        var map = new TacticalGeometryMap(battle);
+        layout.DefineGeometry(map);
+
+        var signatures = new TacticalSignatureFrame(battle);
+        var stationary = new TacticalUnitSignature(TacticalActivity.Stationary, TacticalConcealment.None);
+
+        int firstColumn = (grid.Columns - (2 * ColumnsPerSide + GapColumns)) / 2;
+        int firstRow = (grid.Rows - RowsPerSide) / 2;
+
+        void Deploy(Division division, int column0, double facing)
+        {
+            var companies = division.Battalions[0].Companies;
+
+            for (int i = 0; i < companies.Count; i++)
+            {
+                int column = column0 + i % ColumnsPerSide;
+                int row = firstRow + i / ColumnsPerSide;
+                var sector = layout.GetSector(row * grid.Columns + column);
+
+                var deployment = battle.DeployCompany(companies[i], sector, CompanyDeploymentRole.FrontLine);
+                map.PlaceCompany(deployment, layout.GetCellCenter(sector), facing, Frontage);
+                signatures.Set(deployment, stationary);
+            }
+        }
+
+        Deploy(westDivision, firstColumn, 90);
+        Deploy(eastDivision, firstColumn + ColumnsPerSide + GapColumns, 270);
+
+        var profile = new TacticalDetectionProfile(
+            VisualRange, maxAcousticRangeMeters: 0, fieldOfViewDegrees: 160, localizationCellMeters: 50);
+
+        double range = profile.MaxDetectionRangeMeters;
+        var diplomacy = engine.Diplomacy;
+        long hour = engine.Clock.CurrentHour;
+
+        int topological = TacticalContactDetector.Detect(battle, diplomacy).Count;
+
+        IReadOnlyList<TacticalContactCandidate> candidates = null!;
+
+        var selection = Measure(repetitions, warmup, () =>
+            candidates = TacticalContactDetector.Detect(battle, diplomacy, map, range));
+
+        int withinRange = candidates.Count(c => c.Topology == TacticalContactTopology.WithinDetectionRange);
+
+        int withinVisual = candidates.Count(c =>
+        {
+            var a = map.GetPosition(c.First)!;
+            var b = map.GetPosition(c.Second)!;
+
+            return a.Point.HorizontalDistanceTo(b.Point)
+                <= VisualRange + a.FrontageMeters / 2 + b.FrontageMeters / 2;
+        });
+
+        int located = 0;
+
+        var detection = Measure(repetitions, warmup, () =>
+        {
+            var perception = new TacticalPerceptionState(battle);
+
+            TacticalDetectionSystem.Update(battle, map, diplomacy, perception, signatures, hour, profile);
+
+            located = 0;
+
+            foreach (var deployment in battle.Deployments)
+            {
+                foreach (var report in perception.GetReports(deployment))
+                {
+                    if (report.CurrentObservationLevel == TacticalKnowledgeLevel.Located)
+                        located++;
+                }
+            }
+        });
+
+        Console.WriteLine(
+            $"Contacts dense front | companies {battle.Deployments.Count} | frontage {Frontage:0} m " +
+            $"| selection radius {range:0} m + fronts | topological pairs {topological} " +
+            $"| range pairs {withinRange} | within {VisualRange:0} m + fronts {withinVisual} | {selection}");
+
+        Console.WriteLine(
+            $"Detection dense front | located reports {located} | {detection}");
     }
 
     private static Division CreateDivision(Country country, Province province, int companies)

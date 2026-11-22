@@ -101,7 +101,8 @@ public sealed class ProvinceBattlefieldLayout
     /// Définit la géométrie de chaque case : un cercle centré sur la case,
     /// de rayon égal au rayon circonscrit de l'hexagone. Relie ensuite la
     /// carte au sol de la province : positions, itinéraires et ligne de vue
-    /// liront l'altitude et le couvert de la grille.
+    /// liront l'altitude et le couvert de la grille, et la détection la case
+    /// d'un point vu.
     ///
     /// Tout est vérifié avant la première écriture : en cas de refus,
     /// la carte reste inchangée. Après ces contrôles, DefineSector et
@@ -145,6 +146,6 @@ public sealed class ProvinceBattlefieldLayout
                 ProvinceHexGrid.CircumradiusMeters);
         }
 
-        map.AttachTerrain(new TacticalTerrainSurface(Grid));
+        map.AttachTerrain(new TacticalTerrainSurface(Grid, _sectorByCell));
     }
 }

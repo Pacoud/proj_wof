@@ -20,7 +20,7 @@ Thumbs.db
 
 # For Benchmarking results
 benchmark-results/
-
+tests/WoF.Simulation.Tests/benchmark-archives/
 # Agents 
 
 AGENTS.md
@@ -31,3 +31,4 @@ REPRISE_TECHNIQUE_9n1_9o.md
 passation/
 CLAUDE.md
 CONCEPTION_CHAMP_DE_BATAILLE.md
+VISITE_GUIDEE_CHAMP_DE_BATAILLE.md

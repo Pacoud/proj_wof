@@ -94,7 +94,7 @@ internal static class TacticalGridTestFactory
 
     /// <summary>
     /// Déploie une compagnie en première ligne dans une case et la place
-    /// au sol, au centre décalé de (dx, dy).
+    /// au sol, au centre décalé de (dx, dy), avec le front donné.
     /// </summary>
     internal static CompanyDeployment Place(
         GridBattle b,
@@ -104,7 +104,8 @@ internal static class TacticalGridTestFactory
         int row,
         double dx = 0,
         double dy = 0,
-        double facingDegrees = 90)
+        double facingDegrees = 90,
+        double frontageMeters = 20)
     {
         var sector = b.Layout.GetSector(Cell(b.Grid, column, row));
 
@@ -119,7 +120,7 @@ internal static class TacticalGridTestFactory
             deployment,
             b.Map.GetGroundPoint(sector, center.XMeters + dx, center.YMeters + dy),
             facingDegrees,
-            frontageMeters: 20);
+            frontageMeters);
 
         return deployment;
     }

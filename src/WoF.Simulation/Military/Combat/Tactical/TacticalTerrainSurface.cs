@@ -23,9 +23,33 @@ internal sealed class TacticalTerrainSurface
 
     internal ProvinceHexGrid Grid { get; }
 
-    internal TacticalTerrainSurface(ProvinceHexGrid grid)
+    // Secteur du champ de bataille de chaque case incluse ; null quand
+    // la surface est créée sans champ de bataille.
+    private readonly IReadOnlyDictionary<int, BattleSector>? _sectorsByCell;
+
+    internal TacticalTerrainSurface(
+        ProvinceHexGrid grid,
+        IReadOnlyDictionary<int, BattleSector>? sectorsByCell = null)
     {
         Grid = grid ?? throw new ArgumentNullException(nameof(grid));
+        _sectorsByCell = sectorsByCell;
+    }
+
+    /// <summary>
+    /// Secteur du champ de bataille dont la case contient le point.
+    /// Faux hors du cadre, dans une case qui n'appartient pas au champ
+    /// de bataille, ou sans correspondance entre cases et secteurs.
+    /// </summary>
+    internal bool TryGetSectorAt(
+        double xMeters,
+        double yMeters,
+        out BattleSector sector)
+    {
+        sector = null!;
+
+        return _sectorsByCell is not null
+            && Grid.TryGetCellAt(xMeters, yMeters, out int cell)
+            && _sectorsByCell.TryGetValue(cell, out sector!);
     }
 
     /// <summary>

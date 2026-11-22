@@ -177,40 +177,61 @@ internal static class TacticalDirectFireEvaluator
         if (first is null || second is null)
             return Denied(TacticalDirectFireStatus.MissingPosition);
 
-        var relation = geometry.Measure(attacker, target);
+        // Option b : le centre de la cible, puis les extremites de
+        // son front. Le premier point qui passe autorise le tir ;
+        // sinon, le refus est celui du centre.
+        var points = geometry.GetFrontPoints(second);
+        var centerStatus = TacticalDirectFireStatus.Allowed;
 
-        if (relation.HorizontalDistanceMeters <= 0
-            || relation.RelativeBearingDegrees is null)
+        for (int i = 0; i < points.Count; i++)
         {
-            return Denied(TacticalDirectFireStatus.MissingPosition);
+            var status = EvaluatePoint(
+                geometry, first, points[i], profile);
+
+            if (status == TacticalDirectFireStatus.Allowed)
+                return new TacticalDirectFireDecision(status);
+
+            if (i == 0)
+                centerStatus = status;
         }
 
-        if (relation.HorizontalDistanceMeters
-            > profile.MaxRangeMeters)
-        {
-            return Denied(TacticalDirectFireStatus.OutOfRange);
-        }
+        return Denied(centerStatus);
+    }
 
-        double angle = relation.RelativeBearingDegrees.Value;
+    /// <summary>
+    /// Portee, arc de tir puis vue, du centre du tireur vers un point
+    /// de la cible, dans l'ordre historique des controles.
+    /// </summary>
+    private static TacticalDirectFireStatus EvaluatePoint(
+        TacticalGeometryMap geometry,
+        CompanyTacticalPosition shooter,
+        TacticalPoint point,
+        TacticalDirectFireProfile profile)
+    {
+        double distance = shooter.Point.HorizontalDistanceTo(point);
+
+        if (distance <= 0)
+            return TacticalDirectFireStatus.MissingPosition;
+
+        if (distance > profile.MaxRangeMeters)
+            return TacticalDirectFireStatus.OutOfRange;
+
+        double angle = TacticalGeometryMap.RelativeBearingDegrees(
+            shooter.Point,
+            shooter.FacingDegrees,
+            point);
+
         double deviation = Math.Min(angle, 360.0 - angle);
 
         if (deviation > profile.FireArcDegrees / 2.0)
-        {
-            return Denied(TacticalDirectFireStatus.OutsideFiringArc);
-        }
+            return TacticalDirectFireStatus.OutsideFiringArc;
 
-        var sight = TacticalSightEvaluator.Evaluate(
-            geometry, attacker, target);
+        var sight = TacticalSightEvaluator.EvaluatePoints(
+            geometry, shooter.Point, point);
 
-        if (sight.Status
-            != TacticalSightStatus.ClearOfKnownObstacles)
-        {
-            return Denied(
-                TacticalDirectFireStatus.LineOfSightUnavailable);
-        }
-
-        return new TacticalDirectFireDecision(
-            TacticalDirectFireStatus.Allowed);
+        return sight.Status == TacticalSightStatus.ClearOfKnownObstacles
+            ? TacticalDirectFireStatus.Allowed
+            : TacticalDirectFireStatus.LineOfSightUnavailable;
     }
 
     private static TacticalDirectFireDecision Denied(

@@ -11,7 +11,14 @@ public enum TacticalContactTopology
 {
     SameSector,
     ConnectedSectors,
-    MobileEncounter
+    MobileEncounter,
+
+    /// <summary>
+    /// Secteurs distincts et non reliés, mais compagnies à portée de
+    /// détection : leurs centres sont à moins de la portée maximale,
+    /// augmentée de la demi-largeur du front de chacune.
+    /// </summary>
+    WithinDetectionRange
 }
 
 /// <summary>
@@ -47,15 +54,89 @@ public static class TacticalContactDetector
             : Array.Empty<TacticalContactCandidate>();
     }
 
+    /// <summary>
+    /// Variante qui ajoute aux paires topologiques les paires à portée
+    /// de détection (voir VisitCandidates avec géométrie).
+    /// Opération sans mutation de l'état militaire.
+    /// </summary>
+    internal static IReadOnlyList<TacticalContactCandidate> Detect(
+        TacticalBattle battle,
+        DiplomacySystem diplomacy,
+        TacticalGeometryMap geometry,
+        double detectionRangeMeters,
+        long? currentHour = null)
+    {
+        ArgumentNullException.ThrowIfNull(geometry);
+
+        var contacts = new List<TacticalContactCandidate>();
+        VisitCandidates(battle, diplomacy, currentHour, geometry, detectionRangeMeters,
+            (first, second, topology, distance) =>
+                contacts.Add(new TacticalContactCandidate(first, second, topology, distance)));
+
+        return battle.Engagement.IsActive
+            ? contacts.AsReadOnly()
+            : Array.Empty<TacticalContactCandidate>();
+    }
+
+    /// <summary>
+    /// Paires topologiques seules : même secteur, secteurs reliés,
+    /// contacts mobiles.
+    /// </summary>
     internal static void VisitCandidates(
         TacticalBattle battle,
         DiplomacySystem diplomacy,
         long? currentHour,
         Action<CompanyDeployment, CompanyDeployment, TacticalContactTopology, double?> visitor)
     {
+        VisitCandidates(
+            battle,
+            diplomacy,
+            currentHour,
+            geometry: null,
+            detectionRangeMeters: 0,
+            visitor);
+    }
+
+    /// <summary>
+    /// Visite les paires candidates dans un ordre déterministe :
+    /// 1. même secteur ;
+    /// 2. secteurs reliés ;
+    /// 3. si la géométrie est fournie, secteurs distincts et non reliés
+    ///    dont les compagnies sont à portée de détection ;
+    /// 4. contacts mobiles de l'heure.
+    ///
+    /// Cet ordre fixe la numérotation des pistes, donc la cible retenue
+    /// au tir : les passages 1 et 2 reproduisent le parcours historique,
+    /// et le passage 3 ne dépend que des identifiants de secteur et de
+    /// l'ordre des déploiements.
+    /// </summary>
+    internal static void VisitCandidates(
+        TacticalBattle battle,
+        DiplomacySystem diplomacy,
+        long? currentHour,
+        TacticalGeometryMap? geometry,
+        double detectionRangeMeters,
+        Action<CompanyDeployment, CompanyDeployment, TacticalContactTopology, double?> visitor)
+    {
         ArgumentNullException.ThrowIfNull(battle);
         ArgumentNullException.ThrowIfNull(diplomacy);
         ArgumentNullException.ThrowIfNull(visitor);
+
+        if (geometry is not null)
+        {
+            if (!ReferenceEquals(geometry.Battle, battle))
+            {
+                throw new InvalidOperationException(
+                    "Geometry belongs to another tactical battle.");
+            }
+
+            if (!double.IsFinite(detectionRangeMeters)
+                || detectionRangeMeters <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(detectionRangeMeters));
+            }
+        }
 
         if (!battle.Engagement.IsActive)
             return;
@@ -160,6 +241,18 @@ public static class TacticalContactDetector
             }
         }
 
+        // 3. Candidats à portée de détection, dans des secteurs
+        // distincts et non reliés.
+        if (geometry is not null)
+        {
+            VisitWithinRange(
+                battle,
+                geometry,
+                detectionRangeMeters,
+                diplomacy,
+                visitor);
+        }
+
         if (currentHour is long hour)
         {
             foreach (var mobile in battle.MobileEngagements.GetContacts(hour))
@@ -172,6 +265,128 @@ public static class TacticalContactDetector
                     diplomacy,
                     visitor);
             }
+        }
+    }
+
+    private readonly record struct RangePair(
+        CompanyDeployment First,
+        int FirstOrder,
+        CompanyDeployment Second,
+        int SecondOrder);
+
+    /// <summary>
+    /// Paires de compagnies de première ligne, ennemies, dans des secteurs
+    /// distincts et non reliés, dont les centres sont à moins de la portée
+    /// de détection augmentée de la demi-largeur du front de chacune.
+    ///
+    /// L'index spatial ne fait que proposer des paires proches ; elles
+    /// sont ensuite triées par identifiant de secteur (le plus petit, puis
+    /// le plus grand), puis par ordre de déploiement. La première compagnie
+    /// est celle du secteur d'identifiant le plus petit.
+    /// </summary>
+    private static void VisitWithinRange(
+        TacticalBattle battle,
+        TacticalGeometryMap geometry,
+        double detectionRangeMeters,
+        DiplomacySystem diplomacy,
+        Action<CompanyDeployment, CompanyDeployment, TacticalContactTopology, double?> visitor)
+    {
+        // Rang de chaque compagnie admise dans battle.Deployments.
+        var orders = new Dictionary<CompanyDeployment, int>(
+            ReferenceEqualityComparer.Instance);
+
+        double maxFrontage = 0;
+
+        for (int i = 0; i < battle.Deployments.Count; i++)
+        {
+            var deployment = battle.Deployments[i];
+
+            if (!CanParticipate(deployment))
+                continue;
+
+            var position = geometry.GetPosition(deployment);
+
+            if (position is null)
+                continue;
+
+            orders.Add(deployment, i);
+            maxFrontage = Math.Max(maxFrontage, position.FrontageMeters);
+        }
+
+        if (orders.Count < 2)
+            return;
+
+        // Aucune paire retenue ne dépasse ce rayon. La cellule est un peu
+        // plus grande que lui : deux compagnies à portée sont alors dans
+        // la même cellule ou dans deux cellules voisines, même quand les
+        // arrondis tombent sur une limite de cellule.
+        double searchRadius = detectionRangeMeters + maxFrontage;
+
+        var index = new TacticalCompanySpatialIndex(
+            battle,
+            geometry,
+            searchRadius * (1 + 1e-6));
+
+        var battlefield = battle.Battlefield;
+        var pairs = new List<RangePair>();
+
+        index.VisitNearbyPairs(searchRadius, (a, b) =>
+        {
+            // Filtres du moins cher au plus cher : la plupart des paires
+            // proposées sont dans un même secteur (déjà vues au passage 1)
+            // ou dans un même camp, et ne coûtent aucune recherche.
+            if (ReferenceEquals(a.Sector, b.Sector)
+                || !CanParticipate(a)
+                || !CanParticipate(b)
+                || !AreHostile(a, b, diplomacy))
+            {
+                return;
+            }
+
+            var aPosition = geometry.GetPosition(a)!;
+            var bPosition = geometry.GetPosition(b)!;
+
+            double limit = detectionRangeMeters
+                + aPosition.FrontageMeters / 2.0
+                + bPosition.FrontageMeters / 2.0;
+
+            if (aPosition.Point.HorizontalDistanceTo(bPosition.Point) > limit)
+                return;
+
+            // Le passage 2 a déjà examiné les secteurs reliés.
+            if (battlefield.AreConnected(a.Sector, b.Sector))
+                return;
+
+            int aOrder = orders[a];
+            int bOrder = orders[b];
+
+            pairs.Add(a.Sector.Id < b.Sector.Id
+                ? new RangePair(a, aOrder, b, bOrder)
+                : new RangePair(b, bOrder, a, aOrder));
+        });
+
+        pairs.Sort(static (x, y) =>
+        {
+            int result = x.First.Sector.Id.CompareTo(y.First.Sector.Id);
+
+            if (result == 0)
+                result = x.Second.Sector.Id.CompareTo(y.Second.Sector.Id);
+
+            if (result == 0)
+                result = x.FirstOrder.CompareTo(y.FirstOrder);
+
+            return result != 0
+                ? result
+                : x.SecondOrder.CompareTo(y.SecondOrder);
+        });
+
+        foreach (var pair in pairs)
+        {
+            visitor(
+                pair.First,
+                pair.Second,
+                TacticalContactTopology.WithinDetectionRange,
+                null);
         }
     }
 
@@ -199,18 +414,25 @@ public static class TacticalContactDetector
         DiplomacySystem diplomacy,
         Action<CompanyDeployment, CompanyDeployment, TacticalContactTopology, double?> visitor)
     {
+        if (!AreHostile(first, second, diplomacy))
+            return;
+
+        visitor(first, second, topology, connectionDistance);
+    }
+
+    private static bool AreHostile(
+        CompanyDeployment first,
+        CompanyDeployment second,
+        DiplomacySystem diplomacy)
+    {
         var firstCountry =
             first.Company.ParentBattalion?.ParentDivision?.Country;
 
         var secondCountry =
             second.Company.ParentBattalion?.ParentDivision?.Country;
 
-        if (firstCountry is null || secondCountry is null)
-            return;
-
-        if (!diplomacy.AreAtWar(firstCountry, secondCountry))
-            return;
-
-        visitor(first, second, topology, connectionDistance);
+        return firstCountry is not null
+            && secondCountry is not null
+            && diplomacy.AreAtWar(firstCountry, secondCountry);
     }
 }

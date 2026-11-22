@@ -69,8 +69,30 @@ public static class TacticalSightEvaluator
                 null, null, null);
         }
 
-        TacticalPoint a = first.Point;
-        TacticalPoint b = second.Point;
+        return EvaluatePoints(
+            geometry,
+            first.Point,
+            second.Point,
+            observerEyeHeightMeters,
+            targetHeightMeters);
+    }
+
+    /// <summary>
+    /// Corridor entre deux points quelconques de la carte : l'œil de
+    /// l'observateur au-dessus du point a, le point visé au-dessus de b.
+    /// Sert à viser une extrémité du front d'une compagnie (option b).
+    ///
+    /// Les hauteurs ne sont pas revérifiées : l'appelant les fournit
+    /// finies et positives, comme Evaluate le contrôle.
+    /// </summary>
+    internal static TacticalSightResult EvaluatePoints(
+        TacticalGeometryMap geometry,
+        TacticalPoint a,
+        TacticalPoint b,
+        double observerEyeHeightMeters = 1.7,
+        double targetHeightMeters = 1.7)
+    {
+        ArgumentNullException.ThrowIfNull(geometry);
 
         double horizontal = a.HorizontalDistanceTo(b);
 

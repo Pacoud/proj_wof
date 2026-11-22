@@ -8107,3 +8107,112 @@ engagements ni à `SimulationEngine.Tick()`.
 - L'emprise n'entre pas encore dans la détection ni
   dans le tir ; le contrôle des secteurs reste à
   l'échelle de la province : étape 2b.
+
+### Champ de bataille, étape 2b — Paires à portée, mesure vers le front
+
+**Objectif**
+
+Parties 1 à 3 de la préparation de 2b, selon les
+choix du 22 novembre consignés dans
+`CONCEPTION_CHAMP_DE_BATAILLE.md` : choisir les
+paires au contact selon la portée de détection, et
+mesurer la détection et le tir vers le front de la
+cible (option b). La couverture exacte des cases et
+le contrôle des grands secteurs forment l'étape 2c.
+Rien n'est raccordé aux engagements ni à
+`SimulationEngine.Tick()`.
+
+**Fonctionnalités**
+
+- Paires à portée : deux compagnies ennemies de
+  secteurs distincts et non reliés sont candidates si
+  leurs centres sont à moins de max(2,5 × portée
+  visuelle, portée acoustique) plus la moitié de
+  chaque front. Le facteur 2,5 est celui d'une
+  compagnie qui tire. Sur la grille, la détection
+  n'est plus limitée aux cases voisines.
+- Ces paires viennent après celles d'un même secteur
+  et des secteurs reliés, avant les contacts mobiles :
+  les pistes existantes gardent leur numéro, donc la
+  cible retenue au tir.
+- Détection : centre, puis extrémité gauche, puis
+  extrémité droite. Le premier point vu donne la
+  position signalée (arrondie) et le secteur : la
+  case vue sur la grille, le secteur principal pour
+  le centre. Une extrémité hors du cadre est ignorée.
+- Audition : distance au point le plus proche, y
+  compris un centre confondu avec l'observateur.
+- Tir : autorisé si l'un des trois points passe la
+  portée, l'arc et la vue ; sinon, refus du centre.
+  Le tir vise le point signalé : visé à une
+  extrémité, il touche environ deux fois moins.
+
+**Architecture**
+
+- `TacticalContactDetector` : passage 3
+  `WithinDetectionRange`, actif quand une géométrie
+  et une portée sont fournies. Filtres du moins cher
+  au plus cher, puis tri par secteur et par ordre de
+  déploiement. L'ancienne signature reste
+  topologique.
+- `TacticalCompanySpatialIndex.VisitNearbyPairs` :
+  chaque paire proche une seule fois, par
+  demi-voisinage, sur un instantané trié des
+  cellules ; ordre de visite déterministe.
+- `TacticalDetectionProfile.MaxDetectionRangeMeters`
+  et `TacticalDetectionSystem.FiringVisualRangeFactor`.
+- `TacticalGeometryMap` : `GetFrontPoints` (centre et
+  extrémités au sol, par `TacticalCompanyFootprint`),
+  `FindSectorAt` (secteur d'un point vu),
+  `RelativeBearingDegrees`. `TacticalTerrainSurface`
+  connaît le secteur de chaque case.
+- `TacticalSightEvaluator.EvaluatePoints` : vue d'un
+  point à un autre ; `Evaluate` s'y ramène.
+- `TacticalDetectionSystem` : entrée de détection en
+  classe (les trois points ne sont plus copiés à
+  chaque paire), sortie anticipée quand même
+  l'extrémité la plus proche est hors de portée.
+- Benchmark `terrain` : front dense de 960
+  compagnies, paires topologiques, à portée et à
+  portée visuelle simple, passe de détection.
+
+**Tests — intérêt**
+
+- `TacticalRangeContactTests` : paires de cases non
+  voisines après les passages existants, dans le même
+  ordre d'une construction à l'autre et quand les
+  déploiements sont inversés ; front qui entre dans la
+  portée ; compagnie qui tire vue à 2,5 fois la
+  portée ; réserve écartée ; champ construit à la
+  main ; refus d'une géométrie étrangère ; index
+  comparé à une recherche exhaustive pour quatre
+  tailles de cellule.
+- `TacticalFrontMeasurementTests` : front de trois
+  cases vu par trois observateurs à travers trois
+  ouvertures, chacun dans la case vue ; extrémité vue
+  quand le centre est hors de portée ; audition au
+  point le plus proche ; extrémités au sol, hors du
+  cadre ignorées ; secteur d'un point sans grille ;
+  tir vers une extrémité visible ou à portée, refus
+  du centre, compagnies au même point ; probabilité
+  de contact réduite de moitié et protection comptée
+  une fois.
+- `TacticalDetectionTests` : le cas des centres
+  confondus localise désormais la cible par ses
+  extrémités ; le raccourci sans obstacle reste
+  comparé à l'évaluateur complet.
+- Chaque règle nouvelle a été cassée une fois dans la
+  copie de travail : au moins un test échoue, sauf
+  deux mutations équivalentes (point à 0 m déjà
+  refusé par la vue, marge d'arrondi).
+
+**Limites**
+
+- Rayon de sélection unique : sur le front dense
+  immobile, 14 % seulement des paires retenues sont à
+  portée visuelle simple. Un rayon propre à chaque
+  paire (option c) reste à décider.
+- Une compagnie vue par une extrémité est signalée
+  dans la case de cette extrémité.
+- L'index des paires est reconstruit à chaque passe.
+- `TacticalContactEvaluator` reste topologique.

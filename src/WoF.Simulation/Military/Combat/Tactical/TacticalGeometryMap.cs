@@ -78,6 +78,62 @@ public sealed record TacticalSpatialRelation(
     double? BearingDegrees,
     double? RelativeBearingDegrees);
 
+/// <summary>
+/// Points d'une compagnie vers lesquels la détection et le tir mesurent,
+/// dans l'ordre où ils sont essayés (option b) : le centre, puis
+/// l'extrémité gauche, puis l'extrémité droite du front.
+///
+/// Sur une grille, les extrémités sont au sol ; une extrémité sans sol
+/// (hors du cadre de la province) est absente. Le centre est toujours
+/// présent, à l'indice 0.
+/// </summary>
+internal readonly struct TacticalFrontPoints
+{
+    private readonly TacticalPoint _center;
+    private readonly TacticalPoint _first;
+    private readonly TacticalPoint _second;
+
+    internal int Count { get; }
+
+    internal TacticalFrontPoints(
+        TacticalPoint center,
+        TacticalPoint? leftEnd,
+        TacticalPoint? rightEnd)
+    {
+        _center = center;
+        _first = default;
+        _second = default;
+        Count = 1;
+
+        // Les extrémités présentes sont rangées à la suite du centre,
+        // la gauche avant la droite.
+        if (leftEnd is TacticalPoint left)
+        {
+            _first = left;
+            Count++;
+        }
+
+        if (rightEnd is TacticalPoint right)
+        {
+            if (Count == 1)
+                _first = right;
+            else
+                _second = right;
+
+            Count++;
+        }
+    }
+
+    // Une valeur par défaut ne contient aucun point.
+    internal TacticalPoint this[int index] => index switch
+    {
+        0 when Count > 0 => _center,
+        1 when Count > 1 => _first,
+        2 when Count > 2 => _second,
+        _ => throw new ArgumentOutOfRangeException(nameof(index))
+    };
+}
+
 
 
 public sealed class TacticalGeometryMap
@@ -541,6 +597,119 @@ public sealed class TacticalGeometryMap
                 point.XMeters,
                 point.YMeters,
                 Terrain.GetGroundElevation(point.XMeters, point.YMeters));
+    }
+
+    /// <summary>
+    /// Centre et extrémités du front d'une compagnie placée, pour la
+    /// détection et le tir (option b).
+    ///
+    /// Les extrémités viennent de TacticalCompanyFootprint. Sans grille,
+    /// elles gardent l'altitude du centre ; sur une grille, elles sont
+    /// ramenées au sol, et une extrémité sans sol est absente.
+    /// </summary>
+    internal TacticalFrontPoints GetFrontPoints(
+        CompanyTacticalPosition position)
+    {
+        ArgumentNullException.ThrowIfNull(position);
+
+        var footprint = new TacticalCompanyFootprint(position);
+
+        return new TacticalFrontPoints(
+            position.Point,
+            OnGroundOrNull(footprint.LeftEnd),
+            OnGroundOrNull(footprint.RightEnd));
+    }
+
+    private TacticalPoint? OnGroundOrNull(TacticalPoint point)
+    {
+        if (Terrain is null)
+            return point;
+
+        return Terrain.TryGetGroundElevation(
+            point.XMeters,
+            point.YMeters,
+            out double elevation)
+                ? new TacticalPoint(point.XMeters, point.YMeters, elevation)
+                : null;
+    }
+
+    /// <summary>
+    /// Secteur où se trouve un point vu du front d'une compagnie, dont le
+    /// secteur principal est donné.
+    ///
+    /// - Sur une grille : le secteur de la case qui contient le point.
+    /// - Sans grille : parmi le secteur principal et ses voisins, celui
+    ///   dont l'enveloppe contient le point et dont le centre est le plus
+    ///   proche ; à égalité, le plus petit identifiant.
+    ///
+    /// À défaut (point hors du champ de bataille), le secteur principal.
+    /// </summary>
+    internal BattleSector FindSectorAt(
+        BattleSector primary,
+        TacticalPoint point)
+    {
+        ArgumentNullException.ThrowIfNull(primary);
+
+        if (Terrain is not null
+            && Terrain.TryGetSectorAt(
+                point.XMeters,
+                point.YMeters,
+                out var cellSector))
+        {
+            return cellSector;
+        }
+
+        if (Terrain is not null)
+            return primary;
+
+        BattleSector? best = null;
+        double bestDistance = double.PositiveInfinity;
+
+        Consider(primary);
+
+        foreach (var connection in _battle.Battlefield.GetConnections(primary))
+            Consider(connection.GetOther(primary));
+
+        return best ?? primary;
+
+        void Consider(BattleSector sector)
+        {
+            var geometry = GetSectorGeometry(sector);
+
+            if (geometry is null || !geometry.Contains(point))
+                return;
+
+            double distance = double.Hypot(
+                point.XMeters - geometry.CenterXMeters,
+                point.YMeters - geometry.CenterYMeters);
+
+            if (distance < bestDistance
+                || (distance == bestDistance && sector.Id < best!.Id))
+            {
+                best = sector;
+                bestDistance = distance;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Relèvement d'un point vu depuis une position orientée :
+    /// 0 = devant, 90 = à droite, 180 = derrière, 270 = à gauche.
+    /// Mêmes formules que Measure. Le point doit être distinct de l'origine.
+    /// </summary>
+    internal static double RelativeBearingDegrees(
+        TacticalPoint from,
+        double facingDegrees,
+        TacticalPoint to)
+    {
+        double dx = to.XMeters - from.XMeters;
+        double dy = to.YMeters - from.YMeters;
+
+        double bearing =
+            (Math.Atan2(dx, dy) * 180.0 / Math.PI
+             + 360.0) % 360.0;
+
+        return (bearing - facingDegrees + 360.0) % 360.0;
     }
 
     /// <summary>

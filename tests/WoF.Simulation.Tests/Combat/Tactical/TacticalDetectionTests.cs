@@ -779,11 +779,12 @@ public sealed class TacticalDetectionTests
 
     [Theory]
     [InlineData(123.0, 17.0, true)]
+    // Centres confondus : la vue vers le centre reste inconnue.
     [InlineData(5e-11, 0.0, false)]
     public void NoObstacleFastPathMatchesReferenceSight(
         double targetX,
         double targetY,
-        bool expectedVisible)
+        bool expectedCenterVisible)
     {
         var s = CreateScenario(
             targetX: targetX,
@@ -798,9 +799,19 @@ public sealed class TacticalDetectionTests
             s.Target);
 
         Assert.Equal(
-            expectedVisible,
+            expectedCenterVisible,
             reference.Status ==
                 TacticalSightStatus.ClearOfKnownObstacles);
+
+        // Le raccourci sans obstacle donne la même réponse que
+        // l'évaluateur complet, vers le centre.
+        var a = s.Geometry.GetPosition(s.Observer)!.Point;
+        var b = s.Geometry.GetPosition(s.Target)!.Point;
+
+        Assert.Equal(
+            expectedCenterVisible,
+            TacticalSightEvaluator.IsClearWithoutObstacles(
+                a, b, a.HorizontalDistanceTo(b)));
 
         Update(
             s,
@@ -814,20 +825,16 @@ public sealed class TacticalDetectionTests
                 acoustic: 0,
                 fov: 360));
 
-        var reports = s.Perception.GetReports(s.Observer);
+        // Dans les deux cas, la cible est localisée : par son centre,
+        // ou, centres confondus, par les extrémités de son front, à
+        // 20 m (option b, choix 5 de l'étape 2b ; avant 2b, aucune
+        // observation dans ce cas).
+        var report = Assert.Single(
+            s.Perception.GetReports(s.Observer));
 
-        if (expectedVisible)
-        {
-            var report = Assert.Single(reports);
-
-            Assert.Equal(
-                TacticalKnowledgeLevel.Located,
-                report.CurrentObservationLevel);
-        }
-        else
-        {
-            Assert.Empty(reports);
-        }
+        Assert.Equal(
+            TacticalKnowledgeLevel.Located,
+            report.CurrentObservationLevel);
     }
 
     [Fact]

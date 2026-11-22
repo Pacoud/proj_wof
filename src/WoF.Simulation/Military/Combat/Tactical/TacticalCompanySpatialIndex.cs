@@ -209,6 +209,115 @@ internal sealed class TacticalCompanySpatialIndex
         return Array.AsReadOnly(ordered);
     }
 
+    /// <summary>
+    /// Visite une seule fois chaque paire de compagnies indexées dont les
+    /// cellules sont assez proches pour que leurs positions puissent être
+    /// à radiusMeters ou moins l'une de l'autre.
+    ///
+    /// Recherche conservative : la distance exacte reste à tester par
+    /// l'appelant. Dans chaque paire, la première compagnie précède la
+    /// seconde dans l'ordre des déploiements. L'ordre de visite est
+    /// déterministe : cellules par (Y, X), puis compagnies par ordre de
+    /// déploiement, sans dépendre de l'ordre interne des tables.
+    ///
+    /// Alloue un instantané trié des cellules ; ne modifie pas les
+    /// statistiques des requêtes.
+    /// </summary>
+    internal void VisitNearbyPairs(
+        double radiusMeters,
+        Action<CompanyDeployment, CompanyDeployment> visitor)
+    {
+        ArgumentNullException.ThrowIfNull(visitor);
+
+        EnsureCurrent();
+
+        if (!double.IsFinite(radiusMeters)
+            || radiusMeters < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(radiusMeters));
+        }
+
+        // Deux points à radiusMeters l'un de l'autre au plus ont des
+        // cellules distantes d'au plus ring sur chaque axe.
+        double ringValue = Math.Ceiling(radiusMeters / _cellSize);
+
+        if (ringValue > 16)
+        {
+            throw new InvalidOperationException(
+                "Search radius is too large for this grid size.");
+        }
+
+        int ring = (int)ringValue;
+
+        // Instantané : chaque cellule devient un tableau trié par ordre de
+        // déploiement, ce qui évite toute recherche dans les boucles.
+        var snapshot = new Dictionary<Cell, Occupant[]>(_cells.Count);
+
+        foreach (var (cell, occupants) in _cells)
+        {
+            var entries = new Occupant[occupants.Count];
+            int k = 0;
+
+            foreach (var deployment in occupants)
+                entries[k++] = new Occupant(deployment, _order[deployment]);
+
+            Array.Sort(entries, static (x, y) => x.Order.CompareTo(y.Order));
+            snapshot.Add(cell, entries);
+        }
+
+        var cells = new Cell[snapshot.Count];
+        snapshot.Keys.CopyTo(cells, 0);
+
+        Array.Sort(cells, static (x, y) =>
+            x.Y != y.Y ? x.Y.CompareTo(y.Y) : x.X.CompareTo(y.X));
+
+        foreach (var cell in cells)
+        {
+            var occupants = snapshot[cell];
+
+            // Paires d'une même cellule.
+            for (int i = 0; i < occupants.Length; i++)
+            {
+                for (int j = i + 1; j < occupants.Length; j++)
+                    visitor(occupants[i].Deployment, occupants[j].Deployment);
+            }
+
+            // Demi-voisinage : chaque couple de cellules distinctes
+            // n'est examiné qu'une fois, depuis l'une des deux.
+            for (int dy = 0; dy <= ring; dy++)
+            {
+                for (int dx = -ring; dx <= ring; dx++)
+                {
+                    if (dy == 0 && dx <= 0)
+                        continue;
+
+                    var other = new Cell(
+                        checked(cell.X + dx),
+                        checked(cell.Y + dy));
+
+                    if (!snapshot.TryGetValue(other, out var neighbors))
+                        continue;
+
+                    foreach (var first in occupants)
+                    {
+                        foreach (var second in neighbors)
+                        {
+                            if (first.Order < second.Order)
+                                visitor(first.Deployment, second.Deployment);
+                            else
+                                visitor(second.Deployment, first.Deployment);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private readonly record struct Occupant(
+        CompanyDeployment Deployment,
+        int Order);
+
     private void Insert(
         CompanyDeployment company,
         Cell cell)
