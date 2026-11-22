@@ -7825,3 +7825,153 @@ Tests ajoutés (`TacticalBinomialSamplingTests`) :
   position à sa cellule de localisation.
 - Les tirages restent dans `TacticalImpactResolver`
   jusqu'au lot 2.
+
+### Champ de bataille, étape 1 — Grille provinciale et constructeur tactique
+
+**Objectif**
+
+Générer de façon déterministe la grille hexagonale
+d'une province et en tirer un `TacticalBattlefield`
+avec sa géométrie, utilisable par le moteur actuel,
+sans modifier le combat ni le raccorder aux
+engagements (étape 1 de
+`CONCEPTION_CHAMP_DE_BATAILLE.md`).
+
+**Fonctionnalités**
+
+- Grille de 125 × 144 cases hexagonales de 200 m,
+  pointe en haut (environ 18 000 cases, 25 km de
+  côté), régénérée à l'identique depuis la graine du
+  monde et l'identifiant de la province.
+- Relief : somme d'octaves de bruit, ramenée à
+  l'amplitude du type de province (30 m en plaine,
+  150 m en collines, 800 m en montagne, 10 m en
+  marais).
+- Collines, montagne et marais : seuils sur le relief
+  lui-même ; les marais n'occupent que les cases les
+  plus basses. Bois : seuil sur un second champ de
+  bruit, hors marais.
+- Frontières : chaque voisine reçoit un arc du bord
+  du cadre selon son relèvement. Routes et rivières
+  y passent en des points tirés de la graine de la
+  frontière, identiques des deux côtés.
+- Rivières : bords de cases infranchissables, sauf
+  aux ponts posés là où une route les franchit.
+- Localités : villages, bourgs et villes en nombre et
+  en taille fixés par le type de province, reliés par
+  un réseau de routes.
+- Grands secteurs : pavage exact en hexagones de
+  37 cases (environ 1,4 km), partiels au bord.
+- Champ de bataille : les grands secteurs demandés et
+  leurs voisins. Une case devient un `BattleSector`,
+  deux cases voisines une liaison de 200 m, sauf à
+  travers une rivière sans pont.
+
+**Architecture**
+
+- `World/Terrain/` : descripteur, grille en tableaux
+  parallèles (environ 8 octets par case), générateur
+  pur, tracés (`ProvinceBorderLayout`, `RiverTracer`,
+  `LocalityPlacer`, `RoadNetworkBuilder`) et
+  `GrandSectorPartition`. Aucune dépendance vers le
+  code tactique : `TerrainCellFeature` est traduit en
+  `SectorFeature` par le constructeur.
+- `Core/DeterministicRandom` : SplitMix64 et hachage
+  enchaîné (graine, puis chaque coordonnée).
+  `TacticalImpactResolver.NextUniform` y délègue,
+  avec une suite identique.
+- Rivières tracées par un A* sur le graphe des coins
+  des cases, routes par un A* sur les cases. Les
+  égalités sont départagées par indice.
+- `TacticalBattlefieldBuilder` construit le champ de
+  bataille. `ProvinceBattlefieldLayout.DefineGeometry`
+  pose la géométrie une fois la bataille créée, car
+  `TacticalGeometryMap` exige une bataille active.
+- `TacticalBattlefield` n'est pas modifié : la
+  construction de 2 000 cases reste sous le seuil
+  qui aurait justifié un index de liaisons.
+- Benchmark `terrain` dans `WoF.Benchmarks`.
+
+**Tests — intérêt**
+
+- `DeterministicRandomTests` : suite SplitMix64 de
+  référence, même suite pour le combat, hachage sans
+  état sensible à l'ordre des arguments.
+- `HexCoordTests` : voisinage, directions et 200 m
+  entre deux centres.
+- `ProvinceTerrainGeneratorTests` : déterminisme et
+  rôle de la graine ; géométrie et symétrie de la
+  grille, des rivières et des ponts ; proportions et
+  amplitude par type de province ; marais dans les
+  seules zones basses ; collines et montagne par
+  seuil de relief ; localités conformes au profil ;
+  coïncidence des points de passage entre deux
+  provinces voisines.
+- `GrandSectorPartitionTests` : chaque case dans un
+  seul grand secteur, hexagones de 37 cases,
+  voisinage symétrique, résumé fidèle aux cases,
+  secteurs de bord.
+- `TacticalBattlefieldBuilderTests` : périmètre,
+  traduction du terrain, aucune liaison à travers une
+  rivière sans pont, compagnies placées et mesurées
+  dans deux cases voisines.
+
+**Limites**
+
+- Relief discontinu d'une province à l'autre :
+  chaque province a son propre bruit.
+- Deux arcs de frontière qui se font face peuvent
+  avoir des longueurs différentes : les points de
+  passage coïncident en position relative, pas en
+  mètres.
+- Une localité sans site disponible n'est pas placée,
+  sans signalement.
+- `Connect` reste quadratique : la province entière
+  attend l'étape 2.
+
+**Correctifs Post build et tests**
+
+**Raisons**
+
+La relecture avant livraison a relevé trois défauts :
+- un profil incohérent était appliqué faux sans
+  erreur, par exemple 40 % de marais pour 60 %
+  demandés, ou des altitudes NaN qui n'échouaient
+  que plus tard, dans `TacticalPoint` ;
+- `GetCellCenter` donnait l'altitude flottante de la
+  grille, alors que le moteur utilise l'altitude
+  entière du secteur : une compagnie replacée au
+  centre de son secteur changeait d'altitude sans
+  bouger ;
+- `DefineGeometry` pouvait laisser la carte à moitié
+  remplie après un refus.
+
+**Objectifs**
+
+- Refuser un profil invalide avant toute génération.
+- Une seule altitude pour le centre d'un secteur.
+- Aucune écriture dans la carte si un contrôle
+  échoue.
+
+**Modifications**
+
+- `TerrainGenerationProfile.Validate`, appelée par
+  `ProvinceTerrainGenerator.Generate` : terrain de
+  base Plains ou Desert, altitude de base finie,
+  amplitude positive, fractions dans [0, 1] et
+  cumuls d'au plus 1, localités d'au moins une case.
+- `GetCellCenter` utilise `BattleSector.ElevationMeters`.
+- `DefineGeometry` vérifie la bataille et toutes les
+  cases avant la première écriture.
+
+**Tests ajoutés**
+
+- Generate_RejectsInvalidProfiles (10 cas) : chaque
+  incohérence de profil est refusée.
+- DefaultProfiles_AreValid : la validation n'écarte
+  aucun profil par défaut.
+- CellCenter_UsesTheSectorElevationLikeTheEngine :
+  même altitude avant et après un replacement par
+  le moteur.
+- DefineGeometry_ChecksEveryCellBeforeWriting : refus
+  sans aucune écriture dans la carte.

@@ -9,6 +9,13 @@ using System.Text.Json;
 
 
 
+if (args.Length > 0 && args[0] == "terrain")
+{
+    Environment.ExitCode = TerrainGenerationBenchmark.Run(args[1..]);
+
+    return;
+}
+
 if (args.Length > 0 && args[0] == "tactical-mobile")
 {
     Environment.ExitCode = TacticalMobileCombatBenchmark.Run(args[1..]);

@@ -1,3 +1,4 @@
+using WoF.Simulation.Core;
 
 namespace WoF.Simulation.Military.Combat.Tactical;
 
@@ -106,24 +107,10 @@ internal static class TacticalImpactResolver
     /// <summary>
     /// Generateur deterministe SplitMix64.
     /// La graine est locale a chaque salve.
+    /// Delegue a <see cref="DeterministicRandom.NextUniform"/>.
     /// </summary>
     internal static double NextUniform(ref ulong state)
     {
-        state = unchecked(
-            state + 0x9E3779B97F4A7C15UL);
-
-        ulong z = state;
-
-        z = unchecked(
-            (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9UL);
-
-        z = unchecked(
-            (z ^ (z >> 27)) * 0x94D049BB133111EBUL);
-
-        z ^= z >> 31;
-
-        // Valeur dans ]0,1[, avec 53 bits de precision.
-        return ((z >> 12) + 0.5)
-            / 4503599627370496.0;
+        return DeterministicRandom.NextUniform(ref state);
     }
 }
