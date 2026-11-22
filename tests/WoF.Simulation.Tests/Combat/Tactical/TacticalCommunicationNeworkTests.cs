@@ -505,4 +505,126 @@ public sealed class TacticalCommunicationNetworkTests
 
         Assert.Equal(3, s.Battle.Deployments.Count);
     }
+
+    [Fact]
+    public void RepublishingRequiresNewerObservation()
+    {
+        var s = CreateScenario();
+
+        var first = Observe(s, 1);
+
+        Assert.True(s.Relay.Publish(s.Source, first, 60));
+        Assert.False(s.Relay.Publish(s.Source, first, 60));
+
+        // Des pas repetes a la meme minute ne
+        // redistribuent pas le meme message.
+        s.Relay.Step(75);
+        s.Relay.Step(75);
+
+        var oldDivision = Assert.Single(
+            s.Relay.GetDivisionReports(s.French));
+
+        Assert.Equal(75L, oldDivision.ReceivedMinute);
+        Assert.Equal(2L, s.Relay.DeliveredHopCount);
+
+        // Une observation plus recente doit refaire
+        // tout le trajet hierarchique.
+        var second = Observe(s, 2);
+
+        Assert.True(s.Relay.Publish(s.Source, second, 120));
+
+        s.Relay.Step(125);
+
+        var battalion = Assert.Single(
+            s.Relay.GetBattalionReports(s.BattalionA));
+
+        Assert.Equal(2L, battalion.Contact.LastObservedHour);
+        Assert.Equal(125L, battalion.ReceivedMinute);
+
+        // La division garde l'ancien rapport tant que
+        // le second segment n'est pas arrive.
+        Assert.Equal(
+            1L,
+            Assert.Single(
+                s.Relay.GetDivisionReports(s.French))
+                .Contact.LastObservedHour);
+
+        s.Relay.Step(135);
+
+        var newDivision = Assert.Single(
+            s.Relay.GetDivisionReports(s.French));
+
+        Assert.Equal(2L, newDivision.Contact.LastObservedHour);
+        Assert.Equal(135L, newDivision.ReceivedMinute);
+
+        // Le premier rapport recu reste une copie stable.
+        Assert.Equal(1L, oldDivision.Contact.LastObservedHour);
+    }
+
+    [Fact]
+    public void TwoCompaniesReportingSameEnemy_KeepSeparateTracks()
+    {
+        var s = CreateScenario();
+
+        var neighborCompanyNode =
+            s.Network.ForCompany(s.NeighborCompany);
+
+        s.Network.AddDirectedLink(
+            neighborCompanyNode,
+            s.NeighborNode,
+            TacticalCommunicationMedium.Radio,
+            delayMinutes: 5);
+
+        s.Network.AddDirectedLink(
+            s.NeighborNode,
+            s.DivisionNode,
+            TacticalCommunicationMedium.Radio,
+            delayMinutes: 10);
+
+        TacticalObservationEvent Seen(CompanyDeployment observer) =>
+            new(
+                observer,
+                s.Enemy,
+                new TacticalPoint(120, 20, 100),
+                ObservedSectorId: 1,
+                KnowledgeLevel: TacticalKnowledgeLevel.Located,
+                PositionUncertaintyMeters: 40);
+
+        s.Perception.Apply(1, new[]
+        {
+            Seen(s.Source),
+            Seen(s.NeighborCompany)
+        });
+
+        Assert.True(s.Relay.Publish(
+            s.Source,
+            Assert.Single(s.Perception.GetReports(s.Source)),
+            60));
+
+        Assert.True(s.Relay.Publish(
+            s.NeighborCompany,
+            Assert.Single(s.Perception.GetReports(s.NeighborCompany)),
+            60));
+
+        s.Relay.Step(75);
+
+        var division = s.Relay.GetDivisionReports(s.French);
+
+        Assert.Equal(2, division.Count);
+
+        // Pas de fusion automatique de pistes provenant
+        // d'observateurs distincts.
+        Assert.NotEqual(
+            division[0].Contact.TrackId,
+            division[1].Contact.TrackId);
+
+        Assert.Equal(1, division[0].SourceBattalionId);
+        Assert.Equal(2, division[1].SourceBattalionId);
+
+        // Les deux rapports concernent pourtant
+        // la meme compagnie ennemie reelle.
+        Assert.Equal(
+            division[0].Contact.LastKnownPosition,
+            division[1].Contact.LastKnownPosition);
+    }
 }

@@ -2,121 +2,12 @@
 namespace WoF.Simulation.Military.Combat.Tactical;
 
 /// <summary>
-/// Resultat interne d'une salve resolue.
-/// Impacts ne signifie pas victimes distinctes.
-/// </summary>
-internal readonly record struct TacticalImpactEvent(
-    long Hour,
-    CompanyDeployment Shooter,
-    int TargetTrackId,
-    long RoundsExpended,
-    double RealAimOffsetMeters,
-    double ImpactProbabilityPerRound,
-    long Impacts);
-
-internal sealed record TacticalImpactPhaseResult(
-    long Hour,
-    ulong Seed,
-    IReadOnlyList<TacticalImpactEvent> Events);
-
-/// <summary>
-/// Resolution statistique des impacts.
+/// Tirages aleatoires deterministes partages par
+/// les resolveurs de contacts et d'effets.
 /// Ne modifie pas les ressources militaires.
 /// </summary>
 internal static class TacticalImpactResolver
 {
-    internal static TacticalImpactEvent Resolve(
-        TacticalFireSnapshot snapshot,
-        TacticalHitProfile hitProfile,
-        TacticalDefenseProfile defenseProfile,
-        ulong seed)
-    {
-        ArgumentNullException.ThrowIfNull(hitProfile);
-        ArgumentNullException.ThrowIfNull(defenseProfile);
-
-        var fire = snapshot.FireEvent
-            ?? throw new ArgumentException(
-                "Missing fire event.", nameof(snapshot));
-
-        if (fire.RoundsExpended <= 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(snapshot));
-        }
-
-        // Portee vers le point connu du tireur.
-        double range = snapshot.ShooterPoint
-            .SpatialDistanceTo(snapshot.ReportedTargetPoint);
-
-        double rangeDispersion =
-            hitProfile.DispersionAt100Meters * range / 100.0;
-
-        // Dispersion physique du tir.
-        // Ne pas ajouter l'incertitude de localisation :
-        // nous connaissons ici l'erreur reelle observee.
-        double dispersion = double.Hypot(
-            hitProfile.MinimumDispersionMeters,
-            rangeDispersion);
-
-        if (!double.IsFinite(dispersion)
-            || dispersion <= 0)
-        {
-            throw new InvalidOperationException(
-                "Invalid physical shot dispersion.");
-        }
-
-        // Ecart horizontal entre point vise et
-        // centre reel de la compagnie cible.
-        double aimOffset = snapshot.ReportedTargetPoint
-            .HorizontalDistanceTo(snapshot.RealTargetPoint);
-
-        // Approximation d'une cible circulaire :
-        // probabilite si parfaitement centree.
-        double radiusRatio =
-            hitProfile.EffectiveTargetRadiusMeters / dispersion;
-
-        double centeredProbability =
-            1.0 - Math.Exp(
-                -0.5 * radiusRatio * radiusRatio);
-
-        // Approximation de decalage pour une
-        // cible excentree. Ce n'est pas encore
-        // l'integrale exacte d'une gaussienne
-        // sur un disque decale.
-        double offsetRatio = aimOffset / dispersion;
-        double offsetFactor = Math.Exp(
-            -0.5 * offsetRatio * offsetRatio);
-
-        double exposure = defenseProfile.GetExposureFactor(
-            snapshot.TargetDefense.Stance);
-
-        double interception =
-            defenseProfile.GetInterceptionFraction(
-                snapshot.TargetDefense.Cover);
-
-        double probability = Math.Clamp(
-            centeredProbability
-            * offsetFactor
-            * exposure
-            * (1.0 - interception),
-            0.0,
-            1.0);
-
-        long impacts = SampleBinomial(
-            fire.RoundsExpended,
-            probability,
-            seed);
-
-        return new TacticalImpactEvent(
-            Hour: fire.Hour,
-            Shooter: fire.Shooter,
-            TargetTrackId: fire.TargetTrackId,
-            RoundsExpended: fire.RoundsExpended,
-            RealAimOffsetMeters: aimOffset,
-            ImpactProbabilityPerRound: probability,
-            Impacts: impacts);
-    }
-
     /// <summary>
     /// Tirage binomial sans iterer sur chaque cartouche.
     /// Exact par sauts pour les faibles esperances,

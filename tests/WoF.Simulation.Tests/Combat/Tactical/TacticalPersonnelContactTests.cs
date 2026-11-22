@@ -239,6 +239,32 @@ public sealed class TacticalPersonnelContactTests
             seed);
     }
 
+    /// <summary>
+    /// Ajoute un petit secteur voisin couvert par
+    /// l'emprise de la cible (front de 200 m).
+    /// </summary>
+    private static BattleSector AddCoveredNeighbor(Scenario s)
+    {
+        var neighbor = new BattleSector(
+            2, "Neighbor", TerrainType.Plains);
+
+        s.Battle.Battlefield.AddSector(neighbor);
+        s.Battle.Battlefield.Connect(
+            s.Sector, neighbor, 100);
+
+        s.Geometry.DefineSector(
+            neighbor, 100, 80, radiusMeters: 30);
+
+        var index = new TacticalSectorPresenceIndex(
+            s.Battle, s.Geometry);
+
+        Assert.Contains(
+            s.Target,
+            index.GetCovering(neighbor));
+
+        return neighbor;
+    }
+
     [Fact]
     public void Exposure_MustMatchExistingPersonnel()
     {
@@ -416,22 +442,7 @@ public sealed class TacticalPersonnelContactTests
             exposed: 80,
             frontage: 200);
 
-        var neighbor = new BattleSector(
-            2, "Neighbor", TerrainType.Plains);
-
-        s.Battle.Battlefield.AddSector(neighbor);
-        s.Battle.Battlefield.Connect(
-            s.Sector, neighbor, 100);
-
-        s.Geometry.DefineSector(
-            neighbor, 100, 80, radiusMeters: 30);
-
-        var index = new TacticalSectorPresenceIndex(
-            s.Battle, s.Geometry);
-
-        Assert.Contains(
-            s.Target,
-            index.GetCovering(neighbor));
+        AddCoveredNeighbor(s);
 
         Fire(s);
         var result = Resolve(s);
@@ -444,6 +455,69 @@ public sealed class TacticalPersonnelContactTests
             100,
             s.German.GetCurrentResourceTotals()
                 .Personnel.Available);
+    }
+
+    [Fact]
+    public void MultipleSectorCoverage_DoesNotMultiplyProtection()
+    {
+        var open = CreateScenario(
+            exposed: 80,
+            frontage: 200);
+
+        var covered = CreateScenario(
+            exposed: 80,
+            frontage: 200);
+
+        // L'emprise de la cible traverse deux secteurs.
+        AddCoveredNeighbor(covered);
+
+        covered.Battle.DefensiveState.Set(
+            covered.Target,
+            new TacticalDefensiveDisposition(
+                TacticalStance.Crouched,
+                TacticalCover.Building));
+
+        Fire(open);
+        Fire(covered);
+
+        var unprotected = Assert.Single(Resolve(open).Events);
+        var protectedOnce = Assert.Single(Resolve(covered).Events);
+
+        // Accroupi (0,6) derriere un batiment (1 - 0,5) :
+        // la protection s'applique une seule fois, meme
+        // si la compagnie couvre deux secteurs.
+        Assert.True(unprotected.ProbabilityPerRound > 0);
+
+        Assert.Equal(
+            unprotected.ProbabilityPerRound * 0.3,
+            protectedOnce.ProbabilityPerRound,
+            10);
+    }
+
+    [Fact]
+    public void ReportedPositionError_ReducesContactProbability()
+    {
+        // Meme cible reelle ; seul le point signale
+        // a l'observateur differe.
+        var accurate = CreateScenario(
+            exposed: 80,
+            reportedY: 0);
+
+        var displaced = CreateScenario(
+            exposed: 80,
+            reportedY: 50);
+
+        Fire(accurate);
+        Fire(displaced);
+
+        var a = Assert.Single(Resolve(accurate).Events);
+        var b = Assert.Single(Resolve(displaced).Events);
+
+        // Le tir vise le point connu du tireur,
+        // jamais la position reelle de la cible.
+        Assert.True(
+            b.ProbabilityPerRound <
+            a.ProbabilityPerRound);
     }
 
     [Fact]

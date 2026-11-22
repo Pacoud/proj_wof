@@ -20,16 +20,6 @@ internal sealed class TacticalDirectFireSystem
     private TacticalFireSnapshot[] _lastSnapshots =
         Array.Empty<TacticalFireSnapshot>();
 
-    // Identite de la derniere phase deja resolue.
-    private TacticalFirePhaseResult? _resolvedSource;
-
-    internal TacticalImpactPhaseResult? LastImpactPhase
-    {
-        get;
-        private set;
-    }
-
-
         private TacticalFirePhaseResult? _suppressionResolvedSource;
 
         internal TacticalSuppressionPhaseResult? LastSuppressionPhase
@@ -73,103 +63,6 @@ internal sealed class TacticalDirectFireSystem
         _battle = battle
             ?? throw new ArgumentNullException(nameof(battle));
     }
-
-
-    /// <summary>
-    /// Estime les impacts de la derniere phase de tir.
-    /// A appeler avant la prochaine mise a jour des contacts.
-    /// Ne consomme aucune munition supplementaire.
-    /// </summary>
-    internal IReadOnlyList<TacticalHitEstimate> EstimateLastPhase(
-        TacticalGeometryMap geometry,
-        TacticalPerceptionState perception,
-        TacticalHitProfile profile)
-    {
-        ArgumentNullException.ThrowIfNull(geometry);
-        ArgumentNullException.ThrowIfNull(perception);
-        ArgumentNullException.ThrowIfNull(profile);
-
-        if (!ReferenceEquals(geometry.Battle, _battle)
-            || !ReferenceEquals(perception.Battle, _battle))
-        {
-            throw new InvalidOperationException(
-                "Estimation services belong to another battle.");
-        }
-
-        var phase = LastPhase
-            ?? throw new InvalidOperationException(
-                "No fire phase has been executed.");
-
-        var estimates = new TacticalHitEstimate[phase.Events.Count];
-
-        for (int i = 0; i < phase.Events.Count; i++)
-        {
-            estimates[i] = TacticalHitProbabilityEvaluator.Evaluate(
-                phase.Events[i],
-                geometry,
-                perception,
-                profile);
-        }
-
-        return Array.AsReadOnly(estimates);
-    }
-
-
-    /// <summary>
-    /// Estime les impacts non interceptes de la derniere
-    /// phase, avec la defense REELLE de chaque cible.
-    ///
-    /// A appeler avant changement des perceptions ou
-    /// dispositions defensives concernees.
-    /// Ne modifie aucune ressource.
-    /// </summary>
-    internal IReadOnlyList<TacticalProtectedHitEstimate>
-        EstimateProtectedLastPhase(
-            TacticalGeometryMap geometry,
-            TacticalPerceptionState perception,
-            TacticalHitProfile hitProfile,
-            TacticalDefenseProfile defenseProfile)
-    {
-        ArgumentNullException.ThrowIfNull(defenseProfile);
-
-        // Cette methode valide deja les appartenances
-        // de bataille et la fraicheur des contacts.
-        var geometricEstimates = EstimateLastPhase(
-            geometry,
-            perception,
-            hitProfile);
-
-        var phase = LastPhase
-            ?? throw new InvalidOperationException(
-                "No fire phase has been executed.");
-
-        var results = new TacticalProtectedHitEstimate[
-            phase.Events.Count];
-
-        for (int i = 0; i < phase.Events.Count; i++)
-        {
-            var fire = phase.Events[i];
-
-            // La cible reelle n'est retrouvee qu'ici,
-            // dans le traitement interne du moteur.
-            var target = perception.ResolveCurrentTarget(
-                fire.Shooter,
-                fire.TargetTrackId,
-                fire.Hour)
-                ?? throw new InvalidOperationException(
-                    "No current target for this salvo.");
-
-            var disposition = _battle.DefensiveState.Get(target);
-
-            results[i] = TacticalProtectedHitEvaluator.Evaluate(
-                geometricEstimates[i],
-                disposition,
-                defenseProfile);
-        }
-
-        return Array.AsReadOnly(results);
-    }
-
 
 
     private readonly record struct PlannedSalvo(
@@ -374,9 +267,6 @@ internal sealed class TacticalDirectFireSystem
         _lastProcessedHour = hour;
         LastPhase = result;
 
-        _resolvedSource = null;
-        LastImpactPhase = null;
-
         _personnelResolvedSource = null;
         LastPersonnelPhase = null;
 
@@ -439,63 +329,6 @@ internal sealed class TacticalDirectFireSystem
             TargetFacingDegrees: targetPosition.FacingDegrees);
     }
 
-
-
-    /// <summary>
-    /// Resout une seule fois les impacts de la derniere phase.
-    /// Aucun nouveau tir et aucune mutation des effectifs.
-    /// </summary>
-    internal TacticalImpactPhaseResult ResolveLastPhase(
-        TacticalHitProfile hitProfile,
-        TacticalDefenseProfile defenseProfile,
-        ulong seed)
-    {
-        ArgumentNullException.ThrowIfNull(hitProfile);
-        ArgumentNullException.ThrowIfNull(defenseProfile);
-
-        var phase = LastPhase
-            ?? throw new InvalidOperationException(
-                "No fire phase has been executed.");
-
-        if (ReferenceEquals(_resolvedSource, phase))
-        {
-            throw new InvalidOperationException(
-                "This fire phase has already been resolved.");
-        }
-
-        if (_lastSnapshots.Length != phase.Events.Count)
-        {
-            throw new InvalidOperationException(
-                "Fire snapshots do not match the executed phase.");
-        }
-
-        var impacts = new TacticalImpactEvent[
-            _lastSnapshots.Length];
-
-        // Chaque salve possede une graine derivee.
-        // L'ordre est celui des evenements executes.
-        for (int i = 0; i < _lastSnapshots.Length; i++)
-        {
-            ulong salvoSeed = unchecked(
-                seed + (ulong)i * 0x9E3779B97F4A7C15UL);
-
-            impacts[i] = TacticalImpactResolver.Resolve(
-                _lastSnapshots[i],
-                hitProfile,
-                defenseProfile,
-                salvoSeed);
-        }
-
-        var result = new TacticalImpactPhaseResult(
-            Hour: phase.Hour,
-            Seed: seed,
-            Events: Array.AsReadOnly(impacts));
-
-        _resolvedSource = phase;
-        LastImpactPhase = result;
-
-        return result;
-    }
 
 
     /// <summary>

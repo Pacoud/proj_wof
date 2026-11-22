@@ -7738,3 +7738,90 @@ avec le calcul des statuts défensifs de 9c.
   rejette une capacité positive sans effectif disponible.
 - PublicationAcceptsAtRiskWithZeroReadinessAtZeroThreshold :
   conserve un cas limite autorisé par le profil défensif.
+
+# COMMIT # 
+
+### Lot qualité 1 — Retrait du code remplacé
+
+**Objectif**
+
+Retirer les mécanismes tactiques remplacés qui
+n'avaient plus aucun appelant hors de leurs propres
+tests, sans changer aucune règle ni aucun résultat
+du combat horaire.
+
+**Code retiré**
+
+- Estimation d'impacts « disque gaussien » :
+  `TacticalHitProbabilityEvaluator`, `TacticalHitEstimate`,
+  `TacticalProtectedHitEvaluator`, ainsi que
+  `EstimateLastPhase` et `EstimateProtectedLastPhase`.
+  Remplacée par `TacticalPersonnelContactResolver`.
+- Résolution d'impacts par salve :
+  `TacticalImpactResolver.Resolve`, `TacticalImpactEvent`,
+  `TacticalImpactPhaseResult`, `ResolveLastPhase`,
+  `LastImpactPhase` et sa garde. Remplacée par
+  `ResolvePersonnelLastPhase`.
+- Première perception visuelle :
+  `TacticalPerceptionSystem` et `TacticalObservationProfile`.
+  Remplacée par `TacticalDetectionSystem`.
+- Relais de renseignement à délais horaires fixes :
+  `TacticalIntelligenceRelay`, `TacticalRelayedContactReport`
+  et `TacticalCommunicationDelays`. Remplacé par
+  `TacticalNetworkIntelligenceRelay`, avec un délai
+  propre à chaque liaison.
+
+**Architecture**
+
+- `TacticalImpactResolver` ne contient plus que les
+  tirages partagés `SampleBinomial` et `NextUniform`,
+  avant leur déplacement prévu au lot 2.
+- `TacticalDirectFireSystem` n'enchaîne plus que les
+  phases réellement utilisées par l'orchestrateur :
+  tir, contacts, effets, pertes, suppression.
+- Les composants sans appelant mais à intégrer
+  (emprise, pertes d'équipement, remplacements,
+  formatage des rapports) sont conservés.
+
+**Tests — intérêt**
+
+Tests supprimés : ils ne vérifiaient que les
+formules retirées, ou un invariant déjà couvert
+par les suites de détection, de tir, de contacts
+et de communication.
+
+Tests migrés :
+- `TacticalDefensiveStateTests` : couverture
+  exigeant l'élément de terrain, refus d'une autre
+  bataille et des entrées invalides.
+- `MultipleSectorCoverage_DoesNotMultiplyProtection` :
+  la protection ne s'applique qu'une fois lorsque
+  l'emprise couvre plusieurs secteurs.
+- `ReportedPositionError_ReducesContactProbability` :
+  le tir vise le point connu du tireur, pas la
+  position réelle.
+- Six tests de `TacticalPerceptionTests` et un de
+  `TacticalKnowledgeTests`, désormais alimentés par
+  `TacticalDetectionSystem` : portée et cible sans
+  position, perte et reprise de contact, paix, absence
+  de partage, refus du temps rétrograde et d'une autre
+  bataille, observation répétée.
+- `RepublishingRequiresNewerObservation` et
+  `TwoCompaniesReportingSameEnemy_KeepSeparateTracks` :
+  pas de renvoi sans observation plus récente,
+  pas de fusion de pistes d'observateurs distincts.
+
+Tests ajoutés (`TacticalBinomialSamplingTests`) :
+- bornes, probabilités nulle et certaine, même graine ;
+- moyenne statistique dans chacune des trois branches
+  du tirage (normale, écarts géométriques, Poisson),
+  et dans l'inversion pour p > 0,5, avec contrôle que
+  les paramètres atteignent bien la branche annoncée.
+
+**Limites**
+
+- Le test de connaissance migré attend désormais une
+  incertitude de 50 m : la détection arrondit la
+  position à sa cellule de localisation.
+- Les tirages restent dans `TacticalImpactResolver`
+  jusqu'au lot 2.

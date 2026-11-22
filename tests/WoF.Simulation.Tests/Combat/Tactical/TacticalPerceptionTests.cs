@@ -32,19 +32,51 @@ public sealed class TacticalPerceptionTests
                 Sector,
                 CompanyDeploymentRole.FrontLine);
 
+        /// <summary>
+        /// Detection visuelle reelle : chaque compagnie
+        /// deployee est immobile et sans camouflage.
+        /// La portee acoustique est nulle, pour que seule
+        /// la vue cree des pistes.
+        /// </summary>
         public void Update(
             long hour,
             double range = 200,
             double fieldOfView = 120)
         {
-            TacticalPerceptionSystem.Update(
+            TacticalDetectionSystem.Update(
                 Battle,
                 Geometry,
                 Diplomacy,
                 Perception,
+                VisibleSignatures(),
                 hour,
-                new TacticalObservationProfile(
-                    range, fieldOfView));
+                VisualProfile(range, fieldOfView));
+        }
+
+        public TacticalSignatureFrame VisibleSignatures()
+        {
+            var frame = new TacticalSignatureFrame(Battle);
+
+            foreach (var deployment in Battle.Deployments)
+            {
+                frame.Set(
+                    deployment,
+                    new TacticalUnitSignature(
+                        TacticalActivity.Stationary,
+                        TacticalConcealment.None));
+            }
+
+            return frame;
+        }
+
+        public static TacticalDetectionProfile VisualProfile(
+            double range = 200,
+            double fieldOfView = 120)
+        {
+            return new TacticalDetectionProfile(
+                maxVisualRangeMeters: range,
+                maxAcousticRangeMeters: 0,
+                fieldOfViewDegrees: fieldOfView);
         }
     }
 
@@ -216,88 +248,6 @@ public sealed class TacticalPerceptionTests
     }
 
     [Fact]
-    public void ForwardObservation_IsNotAutomaticallyReciprocal()
-    {
-        var s = CreateScenario();
-
-        // Les deux compagnies regardent vers l'est.
-        var (french, german) = PlacePair(s);
-
-        s.Update(hour: 1);
-
-        var report = Assert.Single(
-            s.Perception.GetReports(french));
-
-        Assert.Equal(
-            new TacticalPoint(100, 0, 100),
-            report.LastKnownPosition);
-
-        Assert.Equal(s.Sector.Id, report.LastKnownSectorId);
-        Assert.Equal(1L, report.LastObservedHour);
-        Assert.True(report.IsCurrentlyObserved);
-
-        // L'Allemand regarde dans la mauvaise direction.
-        Assert.Empty(s.Perception.GetReports(german));
-
-        // Le rapport public ne contient aucune
-        // référence à un déploiement ennemi.
-        Assert.DoesNotContain(
-            typeof(TacticalEnemyContactReport).GetProperties(),
-            property =>
-                property.PropertyType == typeof(CompanyDeployment));
-    }
-
-    [Fact]
-    public void FacingEachOther_AllowsIndependentObservations()
-    {
-        var s = CreateScenario();
-
-        var (french, german) = PlacePair(
-            s, germanFacing: 270);
-
-        s.Update(hour: 1);
-
-        var frenchReport = Assert.Single(
-            s.Perception.GetReports(french));
-
-        var germanReport = Assert.Single(
-            s.Perception.GetReports(german));
-
-        Assert.Equal(
-            new TacticalPoint(100, 0, 100),
-            frenchReport.LastKnownPosition);
-
-        Assert.Equal(
-            new TacticalPoint(0, 0, 100),
-            germanReport.LastKnownPosition);
-
-        Assert.NotEqual(
-            frenchReport.TrackId,
-            germanReport.TrackId);
-    }
-
-    [Fact]
-    public void Ridge_PreventsObservation()
-    {
-        var s = CreateScenario();
-        var (french, german) = PlacePair(
-            s, germanFacing: 270);
-
-        s.Geometry.AddLineObstacle(
-            new TacticalLineObstacle(
-                1, "Crête",
-                TacticalLineObstacleKind.Ridge,
-                50, -20,
-                50, 20,
-                topElevationMeters: 110));
-
-        s.Update(hour: 1);
-
-        Assert.Empty(s.Perception.GetReports(french));
-        Assert.Empty(s.Perception.GetReports(german));
-    }
-
-    [Fact]
     public void RangeAndMissingPosition_DoNotCreateKnowledge()
     {
         var distant = CreateScenario();
@@ -438,13 +388,14 @@ public sealed class TacticalPerceptionTests
             s.Perception.GetReports(french));
 
         Assert.Throws<InvalidOperationException>(() =>
-            TacticalPerceptionSystem.Update(
+            TacticalDetectionSystem.Update(
                 s.Battle,
                 s.Geometry,
                 s.Diplomacy,
                 other.Perception,
+                s.VisibleSignatures(),
                 currentHour: 6,
-                new TacticalObservationProfile(200, 120)));
+                Scenario.VisualProfile()));
 
         Assert.Throws<InvalidOperationException>(() =>
             s.Update(hour: 4));

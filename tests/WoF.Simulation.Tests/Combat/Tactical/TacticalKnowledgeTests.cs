@@ -171,14 +171,28 @@ public sealed class TacticalKnowledgeTests
     {
         var s = CreateScenario();
 
-        // Utilise le système réel de C2.2c.1.
-        TacticalPerceptionSystem.Update(
+        // Utilise le système de détection réel.
+        // Seule la cible émet une signature visible.
+        var signatures = new TacticalSignatureFrame(s.Battle);
+
+        signatures.Set(
+            s.Target,
+            new TacticalUnitSignature(
+                TacticalActivity.Stationary,
+                TacticalConcealment.None));
+
+        TacticalDetectionSystem.Update(
             s.Battle,
             s.Geometry,
             s.Diplomacy,
             s.Perception,
+            signatures,
             currentHour: 1,
-            new TacticalObservationProfile(200, 120));
+            new TacticalDetectionProfile(
+                maxVisualRangeMeters: 200,
+                maxAcousticRangeMeters: 0,
+                fieldOfViewDegrees: 120,
+                localizationCellMeters: 50));
 
         var report = Assert.Single(
             s.Perception.GetReports(s.Observer));
@@ -196,7 +210,10 @@ public sealed class TacticalKnowledgeTests
             report.LastKnownPosition);
 
         Assert.Equal(1L, report.LastLocatedHour);
-        Assert.Equal(0.0, report.PositionUncertaintyMeters);
+
+        // La position est arrondie a la cellule de
+        // localisation : l'incertitude vaut sa taille.
+        Assert.Equal(50.0, report.PositionUncertaintyMeters);
 
         // Voir l'emplacement ne révèle pas
         // automatiquement la catégorie de la cible.
