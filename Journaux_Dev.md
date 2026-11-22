@@ -8216,3 +8216,27 @@ Rien n'est raccordé aux engagements ni à
   dans la case de cette extrémité.
 - L'index des paires est reconstruit à chaque passe.
 - `TacticalContactEvaluator` reste topologique.
+
+# COMMIT # 
+### Champ de bataille, étape 2c.1 — Longueur du front dans les cases
+
+`HexFrontCoverage.Measure` mesure la portion d'un segment dans chaque
+hexagone de la grille provinciale. Il parcourt les rangées et colonnes
+candidates et renvoie les cases couvertes par indice croissant.
+Le seuil est de 20 m inclus. Une arête commune revient au plus petit
+indice provincial. L'intégration dans l'index de présence relève de 2c.2.
+
+**Correctifs Post build et tests**
+
+Le premier essai rejetait une traversée oblique de 20 m à cause de
+l'arrondi du calcul d'intersection. La comparaison ramène au seuil les
+longueurs qui en diffèrent de quelques unités d'arrondi des coordonnées.
+
+Les neuf cas de test couvrent le seuil horizontal et oblique, les cases
+intermédiaires, l'inversion des extrémités, les trois orientations
+d'arête, un léger décalage de chaque côté, les sommets et le bord de
+province.
+
+Validation en copie temporaire de 90cdef3 sous Debian WSL, en Release.
+Compilation sans erreur ni avertissement, 9/9 cas ciblés et 846/846 tests
+de la solution réussis.
