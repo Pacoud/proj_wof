@@ -23,6 +23,16 @@ internal sealed class TacticalTerrainSurface
 
     internal ProvinceHexGrid Grid { get; }
 
+    // Un terrain utilisé pour le relief seul peut ne pas avoir cette table.
+    internal bool HasSectorMap => _sectorsByCell is not null;
+
+    internal bool TryGetSectorByCell(int cell, out BattleSector sector)
+    {
+        sector = null!;
+        return _sectorsByCell is not null
+            && _sectorsByCell.TryGetValue(cell, out sector!);
+    }
+
     // Secteur du champ de bataille de chaque case incluse ; null quand
     // la surface est créée sans champ de bataille.
     private readonly IReadOnlyDictionary<int, BattleSector>? _sectorsByCell;

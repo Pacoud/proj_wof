@@ -8217,26 +8217,73 @@ Rien n'est raccordé aux engagements ni à
 - L'index des paires est reconstruit à chaque passe.
 - `TacticalContactEvaluator` reste topologique.
 
-# COMMIT # 
-### Champ de bataille, étape 2c.1 — Longueur du front dans les cases
+# COMMIT 50ff39398a0a724d3faf69e47b0c9c2c8272f7f4 # 
+### Champ de bataille, étape 2c.1 — Mesurer la longueur du front dans chaque case
 
-`HexFrontCoverage.Measure` mesure la portion d'un segment dans chaque
-hexagone de la grille provinciale. Il parcourt les rangées et colonnes
-candidates et renvoie les cases couvertes par indice croissant.
-Le seuil est de 20 m inclus. Une arête commune revient au plus petit
-indice provincial. L'intégration dans l'index de présence relève de 2c.2.
+**Objectif**
+
+Une compagnie peut étendre son front sur plusieurs hexagones. Pour savoir
+quelles cases elle couvre, il faut mesurer la longueur du front à l’intérieur
+de chacune. La règle retenue est un minimum de 20 m par case, seuil inclus.
+Ainsi, un front qui traverse trois cases sur 19 m, 200 m et 20 m couvre les
+deux dernières. La première est seulement effleurée.
+
+Cette itération fournit le calcul géométrique. L’étape 2c.2 utilisera son
+résultat pour associer les compagnies aux cases dans `TacticalSectorPresenceIndex`.
+
+**Modifications et rôle de chaque élément**
+
+Fichier moteur ajouté : `src/WoF.Simulation/World/Terrain/HexFrontCoverage.cs`.
+
+- `CoveredCell` représente un résultat individuel. `CellIndex` indique la
+  case de la grille provinciale et `LengthMeters` la longueur de front
+  mesurée dans cette case. Conserver la longueur permet de vérifier pourquoi
+  une case figure dans le résultat.
+- `HexFrontCoverage.Measure` reçoit la grille et les deux extrémités du
+  front, en mètres. Il ordonne d’abord les extrémités pour que le même
+  segment, saisi dans l’autre sens, suive exactement les mêmes calculs.
+  Il recherche ensuite les rangées que le front peut atteindre puis, pour
+  chacune, les colonnes à examiner. Un front local ne demande donc pas de
+  parcourir toutes les cases de la province.
+- `LowerBound` et `UpperBound` arrondissent cette zone de recherche vers
+  l’extérieur et la limitent aux indices de la grille. Ce premier passage
+  peut retenir une case voisine en trop. C’est volontaire : il faut pouvoir
+  examiner une case même si seule une petite portion du front y pénètre.
+- `LengthInCell` calcule la longueur effective dans une case candidate.
+  Chacun des six côtés de l’hexagone peut avancer le point d’entrée ou
+  reculer le point de sortie du segment. La distance entre les deux donne
+  la longueur intérieure. Un contact limité à un sommet donne 0 m.
+  Si le front longe une arête commune, la portion revient à la case de plus
+  petit indice. Sur le bord extérieur de la province, elle revient à la
+  seule case existante. Cette règle évite de compter deux fois les mêmes
+  mètres de front.
+- `MinimumFrontCoverageMeters` porte le seuil de 20 m. `Measure` l’applique
+  à la longueur de chaque case et renvoie les cases retenues par indice
+  provincial croissant.
+
+**Tests ajoutés et raison d’être**
+
+Fichier ajouté : `tests/WoF.Simulation.Tests/World/Terrain/HexFrontCoverageTests.cs`.
+Six méthodes produisent neuf cas xUnit.
+
+| Test | Ce qu’il vérifie | Pourquoi il existe |
+| --- | --- | --- |
+| `HorizontalFront_FiltersEachCellSeparately` | Sur une même rangée, 19 m sont exclus, 200 m et 20 m sont retenus. En raccourcissant le front de 1 cm, la dernière case sort du résultat. | Détecter un seuil appliqué à la longueur totale du front ou une comparaison stricte qui exclurait exactement 20 m. |
+| `ObliqueFront_IncludesIntermediateCellsInEitherDirection` | Un front en diagonale traverse trois cases sur 100, 200 et 100 m. Inverser les extrémités redonne les mêmes indices, dans le même ordre, avec les mêmes longueurs. | Détecter l’oubli d’une case intermédiaire, une erreur liée au décalage des rangées ou un résultat dépendant du sens du parcours. |
+| `SharedEdge_IsCountedOnce_AndAnOffsetChangesSide` — 3 cas | Pour chacune des trois orientations d’arête, 60 m exactement sur le bord reviennent au plus petit indice. Un décalage d’un micromètre de chaque côté attribue ensuite les 60 m à la case correspondante. | Détecter un double comptage sur l’arête ou une tolérance trop large qui donnerait encore la priorité au petit indice après que le front a quitté le bord. |
+| `ObliqueEntry_AppliesTheThreshold` — 2 cas | Après une entrée oblique dans la case voisine, une pénétration de 20 m la rend couverte et une pénétration de 19,99 m l’exclut. | Reproduire l’erreur d’arrondi découverte au premier passage et vérifier que son correctif préserve la distinction entre les deux longueurs. |
+| `OuterEdge_AndFrontWithBothEndsOutside` | Une arête extérieure de 60 m appartient à sa seule case. Un segment dont les deux extrémités sont hors de la province peut la traverser et couvrir toutes les cases de la rangée. | Détecter la perte des fronts situés en bord de carte ou un rejet prématuré fondé uniquement sur la position des extrémités. |
+| `Vertex_Graze_DegenerateAndOutsideFronts` | Un sommet touché, une pointe effleurée, un segment réduit à un point et un segment entièrement extérieur donnent un résultat vide. Un segment oblique de 20 m entièrement dans une case la couvre. | Vérifier dans les deux sens la décision géométrique : une simple intersection peut être insuffisante, et un front entièrement contenu peut suffire sans franchir aucune arête. |
 
 **Correctifs Post build et tests**
 
-Le premier essai rejetait une traversée oblique de 20 m à cause de
-l'arrondi du calcul d'intersection. La comparaison ramène au seuil les
-longueurs qui en diffèrent de quelques unités d'arrondi des coordonnées.
+Au premier passage ciblé, `ObliqueEntry_AppliesTheThreshold` échouait pour
+la pénétration de 20 m. Le calcul de l’intersection oblique donnait une
+longueur très légèrement inférieure au seuil en arithmétique `double`.
+La case voisine disparaissait alors du résultat.
 
-Les neuf cas de test couvrent le seuil horizontal et oblique, les cases
-intermédiaires, l'inversion des extrémités, les trois orientations
-d'arête, un léger décalage de chaque côté, les sommets et le bord de
-province.
-
-Validation en copie temporaire de 90cdef3 sous Debian WSL, en Release.
-Compilation sans erreur ni avertissement, 9/9 cas ciblés et 846/846 tests
-de la solution réussis.
+Le correctif se trouve à la fin de `LengthInCell`. Lorsqu’une longueur
+diffère de 20 m de quelques unités d’arrondi à l’échelle des coordonnées
+de la case, la méthode la ramène à 20 m avant le filtrage. Les deux cas du
+test oblique protègent ensemble ce correctif : le premier exige que la
+case soit retenue à 20 m, le second exige qu’elle soit exclue à 19,99 m.

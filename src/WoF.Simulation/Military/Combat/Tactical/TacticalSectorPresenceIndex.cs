@@ -1,4 +1,4 @@
-
+using WoF.Simulation.World.Terrain;
 namespace WoF.Simulation.Military.Combat.Tactical;
 
 /// <summary>
@@ -101,6 +101,22 @@ public sealed class TacticalSectorPresenceIndex
 
             _footprints.Add(deployment, footprint);
 
+            // Sur grille, le même seuil s'applique à toutes les cases,
+            // y compris celle de l'affectation principale.
+            if (_geometry.Terrain is { HasSectorMap: true } terrain)
+            {
+                var cells = HexFrontCoverage.Measure(terrain.Grid,
+                    (footprint.LeftEnd.XMeters, footprint.LeftEnd.YMeters),
+                    (footprint.RightEnd.XMeters, footprint.RightEnd.YMeters));
+
+                foreach (var cell in cells)
+                {
+                    if (terrain.TryGetSectorByCell(cell.CellIndex, out var sector))
+                        Add(covering, sector, deployment);
+                }
+                continue;
+            }
+
             var primaryGeometry =
                 _geometry.GetSectorGeometry(primary);
 
@@ -166,8 +182,7 @@ public sealed class TacticalSectorPresenceIndex
     }
 
     /// <summary>
-    /// Compagnies positionnees dont l'emprise
-    /// simplifiee couvre ce secteur.
+    /// Déploiements dont le front couvre ce secteur selon la géométrie du champ.
     /// </summary>
     public IReadOnlyList<CompanyDeployment> GetCovering(
         BattleSector sector)
