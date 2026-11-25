@@ -8534,7 +8534,7 @@ Un processus Release par taille, en série. Trois échauffements puis onze rép�
 | 5000 | 24,20 | 2500 / 1250 / 1250 | 1078 | 258 | 7740 | 1 / 0 | 5036 / 0 |
 | 10000 | 21,78 | 4992 / 2496 / 2512 | 7939 | 1881 | 56430 | 2 / 2 | 10080 / 0 |
 
-# COMMIT # 
+# COMMIT a1d6a18de0720a2b31e3859e7f79708a74dbc03b # 
 
 ### Champ de bataille, étape 3b — Obtenir la grille de la province d’un engagement
 
@@ -8560,3 +8560,32 @@ Cette itération fournit à chaque engagement la grille de la province retenue p
 | `ReleasedGridIsRegeneratedIdentically` | Après libération, la grille régénérée est une nouvelle instance identique : tableaux, points de passage et grands secteurs. |
 | `ProvincesWithTheSameIdStayDistinct` | Deux provinces de même identifiant gardent chacune leur grille ; libérer l’une ne touche pas l’autre. |
 | `InvalidBordersPreventGenerationAndLeaveNothingInTheCache` | Des orientations non opposées empêchent la génération et ne laissent aucune entrée. |
+
+# COMMIT # 
+### Champ de bataille, étape 3c — Zones de déploiement d’un engagement
+
+Cette itération dit, pour un engagement et la grille de sa province, quels grands secteurs reviennent à chaque camp : l’arrière et le front du camp qui entre, le front et l’arrière du camp qui lui fait face. Elle conserve aussi la province d’où vient chaque division, figée dans l’engagement quand la division le rejoint. Le calcul est pur : la répartition entre bataillons, le placement des compagnies, la construction du champ de bataille et le rattachement relèvent des itérations suivantes.
+
+**Règle et modifications**
+
+- `Division.cs` : `EnteredFrom` note, à l’arrivée, la province d’où venait le trajet. Elle est nulle pour une division placée au départ. Après un demi-tour, c’est la province vers laquelle la division était partie, puisque `TransitState.Reverse` échange origine et destination.
+- `Engagement.cs` : `GetEntryProvince` donne la provenance de chaque participant, gelée quand il rejoint l’engagement. Dans une province, c’est `EnteredFrom` ; sur une liaison, l’origine du trajet en cours. La valeur ne change plus ensuite.
+- `EngagementDeploymentZones.cs` : `TryCompute` renvoie les zones, ou faux avec une raison (`MissingSide`, `NoEntryBorder`, `BattlefieldTooShallow`), sans exception. Dans une province, les attaquants entrent et les défenseurs font face ; sur une liaison, les divisions venues de `MeetingBorderNeighbor` entrent. Le bord d’entrée se limite aux cases situées à 30° au plus du relèvement de la voisine, vu du centre. Les grands secteurs sont rangés en bandes depuis tous les bords d’entrée à la fois : arrière entrant en bande 0, front entrant en bande 1, une bande vide (`InitialEmptyBands`), front d’en face en bande 3. L’arrière d’en face est le bord du cadre opposé à chaque entrée, au-delà de ce front ; à défaut, la bande la plus éloignée. Le champ couvre la province entière, sauf étendue donnée en paramètre.
+
+**Tests ajoutés et raison d’être**
+
+Dans `EngagementDeploymentZonesTests.cs`, onze méthodes couvrent quatorze cas. Chaque calcul réussi vérifie aussi que les zones sont aux bonnes bandes et deux à deux disjointes.
+
+| Test | Raison d’être |
+| --- | --- |
+| `EntryIsFrozenWhenJoiningAndKeptAfterAHalfTurn` | Après un demi-tour, `EnteredFrom` désigne la province de l’autre côté, mais la provenance gelée dans l’engagement ne change pas. |
+| `ArrivalFromTheEastPutsTheEnteringSideEastAndTheFacingRearWest` | Avec deux voisines, une arrivée par l’est place l’arrière entrant à moins de 35° de l’est et l’arrière d’en face à moins de 35° de l’ouest, hors des coins. |
+| `MeetingAtSixtyPercentIsFoughtNearTheBorderOfBFacingA` | Une rencontre à 60 % se joue dans B, l’entrant étant la division venue de A, sur le bord de B face à A, même quand A est sa seule voisine. |
+| `TwoEntryBordersFixTheFacingFrontAtBandThreeFromBoth` | Avec deux bords, chaque bande est la plus petite des deux distances, et le front d’en face est exactement l’ensemble des secteurs à trois bandes du bord le plus proche. |
+| `TruncatedGrandSectorsBelongToTheWholeProvinceBattlefield` | Le champ couvre toute la province, grands secteurs tronqués du bord compris. |
+| `SmallProvinceOf15KmStillGetsAllZones` | Sur une province d’environ 15 km, les quatre zones existent et l’arrière d’en face est du côté opposé. |
+| `EntryBorderWithoutGrandSectorOnTheGridIsIgnoredThenRefused` | Une provenance sans bord sur la grille est ignorée ; si c’est la seule, le calcul est refusé (`NoEntryBorder`). |
+| `EngagementWithoutSidesIsRefusedWithoutException` | Un engagement sans attaquant ni défenseur est refusé (`MissingSide`) sans exception. Une grille d’une autre province est une erreur d’appel. |
+| `ExtentLimitsTheBattlefieldToTheFirstBands` | Une étendue de 2 bandes est refusée (`BattlefieldTooShallow`) ; une étendue de 5 limite le champ, et l’arrière d’en face se replie sur la bande 5. |
+| `FrontOfOneSideIsNeverInTheRearOfTheOther` (4 cas) | Pour trois orientations d’entrée et un défenseur pris entre deux entrées opposées, le front d’un camp n’est jamais dans l’arrière de l’autre. |
+| `SameInputsGiveTheSameZones` | Deux calculs sur deux grilles régénérées donnent les mêmes zones et les mêmes bandes. |

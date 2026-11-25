@@ -16,6 +16,9 @@ public sealed class Engagement
     private readonly Dictionary<Division, long>
         _joinHours = new();
 
+    // Provenance de chaque participant, gelée à son entrée dans l'engagement.
+    private readonly Dictionary<Division, Province?> _entryProvinces = new();
+
     public int Id { get; }
 
     public long StartHour { get; }
@@ -128,6 +131,14 @@ public sealed class Engagement
             ? connectionB : connectionA;
     }
 
+    /// <summary>
+    /// Province d'où venait ce participant quand il a rejoint l'engagement.
+    /// La valeur ne change plus ensuite, même après un demi-tour ou un nouveau trajet.
+    /// Nulle si la division n'avait pas de provenance ou ne participe pas.
+    /// </summary>
+    public Province? GetEntryProvince(Division division) =>
+        _entryProvinces.TryGetValue(division, out var province) ? province : null;
+
     internal ParticipantBattleSnapshot GetInitialSnapshot(
         Division division)
     {
@@ -172,6 +183,12 @@ public sealed class Engagement
             ParticipantBattleSnapshot.Capture(division);
 
         _joinHours[division] = currentHour;
+
+        // Sur une liaison, la division est encore en trajet : sa provenance est
+        // l'origine du trajet. Dans une province, c'est la province d'où elle y est entrée.
+        _entryProvinces[division] = division.CurrentProvince is null
+            ? division.Transit?.Origin
+            : division.EnteredFrom;
 
         _participants.Add(division);
 

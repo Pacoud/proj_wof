@@ -36,6 +36,13 @@ public sealed class Division
 
     public Province? CurrentProvince { get; private set; }
 
+    /// <summary>
+    /// Province d'où venait le dernier trajet achevé, notée à l'arrivée.
+    /// Nulle pour une division placée au départ. Après un demi-tour,
+    /// c'est la province vers laquelle elle était partie.
+    /// </summary>
+    public Province? EnteredFrom { get; private set; }
+
     public TransitState? Transit { get; private set; }
 
     public MovementRoute? PlannedRoute { get; private set; }
@@ -514,6 +521,9 @@ public sealed class Division
 
         CurrentProvince =
             Transit.Destination;
+
+        // Après un demi-tour (TransitState.Reverse), Origin est l'ancienne destination.
+        EnteredFrom = Transit.Origin;
 
         Transit = null;
 
