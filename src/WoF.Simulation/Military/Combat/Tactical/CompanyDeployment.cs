@@ -23,6 +23,18 @@ public sealed class CompanyDeployment
 
     public bool IsInTransit {get; private set; }
 
+    public bool IsRouted { get; private set; }
+
+    // Le scénario peut déclencher une déroute ou un ralliement sur place.
+    // Le front, le rôle, le trajet et la cohésion gardent leur propre état.
+    public void SetRouted(bool isRouted)
+    {
+        if (!_battle.Engagement.IsActive)
+            throw new InvalidOperationException("Cannot change rout in an ended battle.");
+
+        IsRouted = isRouted;
+    }
+
     internal CompanyDeployment(
         TacticalBattle battle,
         Company company,

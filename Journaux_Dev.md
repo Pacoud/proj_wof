@@ -8287,3 +8287,92 @@ diffère de 20 m de quelques unités d’arrondi à l’échelle des coordonnée
 de la case, la méthode la ramène à 20 m avant le filtrage. Les deux cas du
 test oblique protègent ensemble ce correctif : le premier exige que la
 case soit retenue à 20 m, le second exige qu’elle soit exclue à 19,99 m.
+
+# COMMIT 767deb70d745b60e10f5f588c46056542bc012bc # 
+### Champ de bataille, étape 2c.2 — Retrouver les compagnies qui couvrent chaque case
+
+**Objectif**
+
+L’étape 2c.1 mesure la longueur d’un front dans les hexagones. L’étape 2c.2
+utilise cette mesure pour répondre, secteur par secteur, à la question
+« Quelles compagnies couvrent cette case ? ». Une compagnie peut figurer
+dans plusieurs secteurs avec un seul déploiement et une seule affectation
+principale.
+
+**Modifications et rôle de chaque élément**
+
+- Dans `TacticalTerrainSurface`, `HasSectorMap` indique si la surface dispose
+  de la correspondance entre les cases provinciales et les secteurs de la
+  bataille. `TryGetSectorByCell` retrouve le secteur à partir de l’indice
+  fourni par 2c.1. Cela permet de traiter un champ de bataille qui ne couvre
+  qu’une partie de la province.
+- Dans `TacticalSectorPresenceIndex`, le constructeur transmet les deux
+  extrémités du front à `HexFrontCoverage.Measure`. Pour chaque case
+  retenue et présente dans la bataille, il inscrit dans `GetCovering`
+  une référence au déploiement existant. Le seuil de 20 m s’applique
+  également à la case principale. Une compagnie peut donc y être
+  affectée et y couvrir moins de 20 m.
+- `GetAssigned` conserve l’affectation décidée au déploiement. Les champs
+  construits à la main utilisent toujours les enveloppes circulaires et
+  les liaisons entre secteurs. À ce stade, l’index décrit une présence
+  géométrique. La prise de contrôle d’une case relève de 2c.3.
+
+**Tests ajoutés et raison d’être**
+
+| Test | Ce qu’il vérifie | Pourquoi il existe |
+| --- | --- | --- |
+| `WideFront_ReferencesOneDeploymentInThreeCells` | Un front de 300 m couvre trois cases. Chacune renvoie exactement le même déploiement et seule la case centrale le renvoie comme affecté. | Détecter une double inscription dans la case principale, une affectation supplémentaire ou la création d’une copie de la compagnie. |
+| `MoveOneMeter_ChangesNeighborCoverageAfterRebuild` | Un déplacement d’un mètre rend l’ancien index périmé. Après reconstruction, la voisine est entre à 20 m et la voisine ouest reste exclue à 18 m. | Vérifier que la mesure de 2c.1 décide réellement de la présence et que la position précédente ne continue pas d’alimenter l’index. |
+| `ShortFront_KeepsAssignmentWithoutCoveringItsCell` | Avec un front de 15 m, la compagnie reste affectée à son secteur principal. La liste de couverture est vide et son compteur vaut zéro. | Détecter l’ancien ajout automatique du secteur principal, qui contournerait le seuil de 20 m. |
+| `LongFront_StopsAtTheLimitOfAPartialBattlefield` | Sur un champ partiel, le front atteint une case située deux colonnes plus loin. La rangée se poursuit dans la province au-delà des secteurs construits. | Détecter un parcours limité aux voisins directs ou un accès invalide à une case provinciale absente de la bataille. |
+
+# COMMIT # 
+### Champ de bataille, étape 2c.3 — Contrôle des petits secteurs par occupation
+
+**Objectif**
+
+À chaque appel explicite, attribuer une case de la grille provinciale au pays
+qui peut la prendre et garder la trace du dernier détenteur. Les compagnies
+agissent par leur front réel. La province conserve son propre contrôleur.
+
+**Modifications et rôle de chaque élément**
+
+- Dans `CompanyDeployment.cs`, `IsRouted` et `SetRouted` portent la déroute
+  et le ralliement du déploiement dans cette bataille. La déroute sur place
+  conserve la présence physique de la compagnie. Le transit retire cette
+  présence pour le calcul d’occupation. Le scénario pilote la déroute.
+- Dans `TacticalSectorPresenceIndex.cs`, `GetCoveredSectors` énumère par
+  identifiant les secteurs effectivement couverts. La passe reprend ainsi
+  la mesure du front de 2c.2 et visite seulement les secteurs couverts.
+- Dans `TacticalSectorOccupationControl.cs`, le constructeur mémorise le
+  contrôleur initial de la province représentée par la grille. `GetController`
+  vérifie l’identité du secteur. Le dictionnaire des détenteurs stocke les
+  écarts au contrôleur initial. Quitter une case ne la restitue pas.
+- `ReadPresence` réunit les compagnies d’un même pays qui couvrent la case,
+  disposent de personnel et sont hors trajet. Tous les rôles comptent.
+  Une seule compagnie de ce pays en état de prendre suffit. Une compagnie
+  en déroute peut encore y contester la présence d’un ennemi.
+- `FindClaimant` conserve le détenteur si deux pays présents sont en guerre.
+  Un occupant apte peut prendre une case vacante de détenteur ou appartenant
+  à un ennemi. Un allié conserve donc sa case même en son absence. Quand
+  plusieurs pays peuvent effectivement prendre la case, le plus petit
+  identifiant départage les prétendants.
+- `ApplyOccupation` actualise les détenteurs et renvoie le nombre de prises.
+  Pour une case où la prise était bloquée, la passe mémorise les pays présents,
+  leur aptitude à prendre et les relations diplomatiques utilisées. Elle
+  réexamine la décision quand une de ces données change. Le départ de tous
+  les occupants efface cette mémoire de calcul et conserve le détenteur.
+
+**Tests ajoutés et raison d’être**
+
+Dans `TacticalSectorOccupationControlTests.cs`, sept méthodes couvrent dix cas.
+
+| Test | Raison d’être |
+| --- | --- |
+| `EachRole_TakesOnlyCoveredCells_AndKeepsThemOnDeparture` (3 rôles) | Faire prendre les trois cases d’un même front par une compagnie de ligne, de soutien ou de réserve. La case affectée à un front trop court reste au détenteur initial. Le départ préserve les prises et la province garde son contrôleur. |
+| `RoutedCompany_ContestsOnSite_AndCanRallyOnSite` | Distinguer la compagnie en déroute seule, celle qui conteste sur place et celle qui quitte la case. Un ralliement rend la prise possible au même endroit et à cohésion identique. |
+| `OneFitCompanyIsEnoughForItsCountry_InEitherOrder` (2 ordres) | Empêcher qu’une compagnie en déroute masque une compagnie apte du même pays selon leur ordre d’inscription. |
+| `ThreeCountries_KeepAlliedHolder_AndResolveJointEnemyCapture` | Conserver la case du tiers allié absent, puis départager les deux occupants après leur entrée en guerre avec ce tiers. Le plus grand identifiant se déploie en premier pour déceler un résultat dépendant de cet ordre. |
+| `DiplomacyAndManpower_AreReadAgainWithoutMovement` | La perte de tout l’effectif disponible lève la contestation. Le retour d’un homme et une déclaration de guerre permettent ensuite une prise sur place. Une décision mémorisée doit tenir compte des deux changements. |
+| `SparsePass_MatchesFullRecalculationAfterEveryChange` | Comparer les détenteurs de toute la grille et le nombre de prises à une référence indépendante qui relit toutes les cases après chaque mouvement, déroute, ralliement ou changement diplomatique. |
+| `ForeignSectorWithSameId_IsRejected_AndDefaultIsCapturedOnce` | Refuser le secteur homonyme d’une autre bataille et conserver le contrôleur initial, même nul, si le contrôleur provincial évolue après l’initialisation. |

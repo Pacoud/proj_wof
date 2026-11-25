@@ -152,6 +152,13 @@ public sealed class TacticalSectorPresenceIndex
             _covering.Add(sector, Array.AsReadOnly(list.ToArray()));
     }
 
+    /// <summary>Secteurs couverts dans cet instantané, en ordre déterministe.</summary>
+    internal IReadOnlyList<BattleSector> GetCoveredSectors()
+    {
+        EnsureCurrent();
+        return _covering.Keys.OrderBy(sector => sector.Id).ToArray();
+    }
+
     private static void Add(
         Dictionary<BattleSector, List<CompanyDeployment>> table,
         BattleSector sector,
