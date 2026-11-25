@@ -8479,7 +8479,7 @@ Fichier ajouté : `TacticalBattlefieldControlGaugeTests.cs`.
 
 L’analyseur xUnit signalait un filtrage superflu avant `Assert.Single`. Dans le test du secteur tronqué, le prédicat qui sélectionne le secteur complet est passé directement à l’assertion. Cette modification retire l’avertissement tout en conservant la vérification d’unicité. Aucun test supplémentaire.
 
-# COMMIT # 
+# COMMIT 959cd1e8ea8aa1541b11a10db887237f54e44b8d # 
 ### Champ de bataille, étape 3a — Fixer la province du champ à la création de l’engagement
 
 **Règle et modifications**
@@ -8498,3 +8498,38 @@ Dans `BattlefieldProvinceTests.cs`, cinq méthodes couvrent onze cas.
 | `DisplayRoundingDoesNotMoveTheBattleAcrossTheMidpoint` | À 0,4999999, la progression mémorisée vaut 0,5, mais le champ et le terrain restent ceux de A. Déceler un choix fait sur la valeur arrondie. |
 | `BattlefieldHasNoSetterAndStaysFixedAfterBothDivisionsMove` | Détecter une rencontre en B, terminer l’engagement et faire arriver les deux participants en A. Vérifier que B, son terrain et son bord restent ceux du combat, et que la propriété ne possède aucun setter, même privé. |
 | `InvalidProgressCannotDesignateAProvince` (3 cas) | Empêcher qu’une valeur négative, supérieure à un ou indéfinie attribue un champ de bataille. |
+
+# COMMIT (Benchmarks)# 
+
+### Mesure avant 3b — Heure tactique selon la densité sur une ou huit provinces
+
+**Modifications et rôle**
+
+- Program.cs expose la commande tactical-density.
+- TacticalDensityScenarioFactory.cs construit les champs, formations et positions de référence.
+- TacticalDensityBenchmark.cs chronomètre les heures, extrait les sous-phases après la mesure et conserve chaque répétition. La vérification des effectifs, salves et rapports ainsi que la comparaison des compteurs entre répétitions empêchent de mesurer des heures vides ou des états divergents. Aucun nouveau test xUnit pour cette itération de mesure.
+
+**Protocole et résultats**
+
+Base moteur 959cd1e sur Combat_Refonte_Universel. Copie du commit avec trois fichiers de benchmark. Au relevé du dépôt réel, Journaux_Dev.md comportait une modification locale. Debian 13 sous WSL2, Ryzen 5 3600, 12 processeurs logiques, SDK 10.0.401, runtime 10.0.12. Mode GC serveur consigné dans la dernière ligne de chaque JSONL.
+Une province entière de plaine (125 × 144 = 18 000 cases) pour les cinq premiers scénarios. Le sixième crée une chaîne de huit provinces adjacentes avec des frontières réciproques, 1 250 compagnies par province, 625 par camp, une bataille par province. Même graine de monde 20261125 ; chaque identifiant de province dérive son propre terrain. Les cartes sont générées avant les mesures. Les batailles, compagnies, inventaires, mémoires, contrôles et cartes géométriques sont recréés avant chaque répétition. L’heure 1 est traitée une fois par bataille. Le chronomètre multi-provinces englobe les huit batailles successives dans un même processus.
+Placement manuel déterministe, fronts de 300 m. Par camp, les compagnies de ligne précèdent les soutiens et les réserves. Les compagnies sont placées par rangs, à deux rangées hexagonales (346,4 m) d’intervalle le long du front et à 200 m entre échelons en profondeur ; les deux premières lignes sont distantes de 200 m. Au plus 70 positions latérales par rang. La largeur affichée inclut les deux demi-fronts terminaux. Les divisions comportent jusqu’à 12 bataillons de 4 compagnies ; 100 hommes, 100 équipements et 1 000 cartouches par compagnie au départ. Profil de scénario immobile, portée visuelle et de tir 500 m, arc 160°, audition désactivée, 10 armes au maximum et 3 coups par arme. Suppression, cohésion, évaluation et réactions de bataillon activées. Aucun ordre de mouvement, aucune heure opérationnelle du SimulationEngine.
+Un processus Release par taille, en série. Trois échauffements puis onze répétitions depuis le même état. Aucune génération, écriture de fichier ou extraction de compteurs dans le total mesuré. Le collecteur de phases du moteur est actif sans profileur externe. Les étapes et pourcentages sont ceux de la répétition au temps total médian. Le tir comprend planification, exécution, contacts, effets, application des pertes et réconciliation des effectifs exposés. Le contrôle est l’appel complet ApplyHourlyControl. Le reste comprend les autres phases de l’orchestrateur et le temps non attribué. Les rapports sont des rapports d’observateur, plusieurs pouvant porter sur une même cible. Les compteurs fonctionnels sont vérifiés identiques par bataille entre toutes les répétitions. Les grandes concentrations et les rôles sont des hypothèses de charge du jeu ; la mesure porte sur une première heure stationnaire.
+
+| Compagnies | Provinces | Total médian ms | Min–max ms | Détection ms (%) | Tir et conséquences ms (%) | Contrôle ms (%) | Reste ms (%) |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 500 | 1 | 25,65 | 19,88–56,36 | 11,32 (44,15 %) | 1,29 (5,05 %) | 9,38 (36,57 %) | 3,65 (14,23 %) |
+| 1000 | 1 | 55,80 | 48,53–138,51 | 18,88 (33,84 %) | 2,39 (4,28 %) | 26,69 (47,83 %) | 7,84 (14,05 %) |
+| 2000 | 1 | 75,10 | 66,29–146,57 | 10,10 (13,45 %) | 2,40 (3,19 %) | 38,83 (51,70 %) | 23,78 (31,66 %) |
+| 3000 | 1 | 92,03 | 55,15–186,90 | 40,02 (43,48 %) | 1,77 (1,93 %) | 14,73 (16,00 %) | 35,52 (38,59 %) |
+| 5000 | 1 | 136,87 | 115,34–237,28 | 19,99 (14,60 %) | 1,79 (1,31 %) | 40,75 (29,77 %) | 74,35 (54,32 %) |
+| 10000 | 8 | 189,03 | 163,64–293,22 | 59,84 (31,66 %) | 9,29 (4,91 %) | 72,46 (38,33 %) | 47,44 (25,10 %) |
+
+| Compagnies | Front par province (km) | Ligne / soutien / réserve (total) | Rapports | Salves | Munitions | Morts / blessés | Cases prises occupation / encerclement |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 500 | 8,61 | 250 / 124 / 126 | 361 | 89 | 2670 | 1 / 0 | 510 / 0 |
+| 1000 | 17,27 | 500 / 250 / 250 | 753 | 182 | 5460 | 1 / 0 | 1010 / 0 |
+| 2000 | 24,20 | 1000 / 500 / 500 | 1078 | 258 | 7740 | 1 / 0 | 2015 / 0 |
+| 3000 | 24,20 | 1500 / 750 / 750 | 1078 | 258 | 7740 | 1 / 0 | 3022 / 0 |
+| 5000 | 24,20 | 2500 / 1250 / 1250 | 1078 | 258 | 7740 | 1 / 0 | 5036 / 0 |
+| 10000 | 21,78 | 4992 / 2496 / 2512 | 7939 | 1881 | 56430 | 2 / 2 | 10080 / 0 |

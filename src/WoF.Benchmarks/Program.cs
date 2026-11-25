@@ -7,7 +7,11 @@ using WoF.Benchmarks;
 using System.Text.Json;
 
 
-
+if (args.Length > 0 && args[0] == "tactical-density")
+{
+    Environment.ExitCode = TacticalDensityBenchmark.Run(args[1..]);
+    return;
+}
 
 if (args.Length > 0 && args[0] == "terrain")
 {
