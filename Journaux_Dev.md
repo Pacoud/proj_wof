@@ -8499,7 +8499,7 @@ Dans `BattlefieldProvinceTests.cs`, cinq méthodes couvrent onze cas.
 | `BattlefieldHasNoSetterAndStaysFixedAfterBothDivisionsMove` | Détecter une rencontre en B, terminer l’engagement et faire arriver les deux participants en A. Vérifier que B, son terrain et son bord restent ceux du combat, et que la propriété ne possède aucun setter, même privé. |
 | `InvalidProgressCannotDesignateAProvince` (3 cas) | Empêcher qu’une valeur négative, supérieure à un ou indéfinie attribue un champ de bataille. |
 
-# COMMIT (Benchmarks)# 
+# COMMIT (Benchmarks) 9db13693bd5f53c38265375e66d60b943ce3aef9 # 
 
 ### Mesure avant 3b — Heure tactique selon la densité sur une ou huit provinces
 
@@ -8533,3 +8533,30 @@ Un processus Release par taille, en série. Trois échauffements puis onze rép�
 | 3000 | 24,20 | 1500 / 750 / 750 | 1078 | 258 | 7740 | 1 / 0 | 3022 / 0 |
 | 5000 | 24,20 | 2500 / 1250 / 1250 | 1078 | 258 | 7740 | 1 / 0 | 5036 / 0 |
 | 10000 | 21,78 | 4992 / 2496 / 2512 | 7939 | 1881 | 56430 | 2 / 2 | 10080 / 0 |
+
+# COMMIT # 
+
+### Champ de bataille, étape 3b — Obtenir la grille de la province d’un engagement
+
+Cette itération fournit à chaque engagement la grille de la province retenue par 3a, avec son découpage en grands secteurs. La grille est générée à la première demande, puis reprise par les engagements suivants de la même province, et régénérée à l'identique après libération. Les frontières des provinces, fournies par le scénario, doivent être cohérentes des deux côtés. Le choix des grands secteurs, la construction du champ de bataille et le déploiement relèvent des itérations suivantes.
+
+**Règle et modifications**
+
+- `ProvinceTerrainCatalog.cs` conserve la graine du monde et les frontières de chaque province, fournies par le scénario, une seule fois par province. `GetDescriptor` vérifie que chaque frontière désigne une seule voisine réelle, que chaque voisine a sa frontière, et que l’autre côté décrit la même frontière : même nombre de routes et orientations opposées à 1° près, tolérance incluse, avec passage par 0°/360°. Il produit ensuite le descripteur de l’étape 1. Les provinces sont identifiées par référence. La redéfinition des frontières est refusée, pour qu’une grille déjà générée reste identique à sa régénération.
+- `ProvinceBattlefieldGridCache.cs` renvoie, pour un engagement, la grille de `BattlefieldProvince` et son découpage en grands secteurs. La première demande les génère, les suivantes reprennent la même instance. `Release` libère explicitement la grille d’une province ; une nouvelle demande la régénère. Rien n’est raccordé à `EngagementSystem` ni à `SimulationEngine.Tick()`.
+
+**Tests ajoutés et raison d’être**
+
+| Test | Raison d’être |
+| --- | --- |
+| `DescriptorCarriesSeedTerrainAndReciprocalBorders` | Vérifier que le descripteur reprend la province, la graine, le terrain et la frontière déclarée. |
+| `MissingBordersAreRefused` | Refuser une province non enregistrée, une voisine réelle sans frontière, et une frontière que l’autre côté ne décrit pas. |
+| `BorderWithAProvinceThatIsNotANeighborIsRefused` | Refuser une frontière vers une province qui n’est pas une voisine. |
+| `DifferentRoadLevelsOnEachSideAreRefused` | Refuser deux nombres de routes différents de part et d’autre, vu de chaque côté. |
+| `BearingsMustBeOppositeOnEachSide` (7 cas) | Accepter des orientations opposées, à la tolérance incluse et autour de 0°/360° ; refuser au-delà de 1°, des orientations identiques ou perpendiculaires. |
+| `BordersCannotBeRedefined` | Empêcher qu’une province change de frontières après coup. |
+| `EngagementsInTheSameProvinceShareOneGrid` | Deux engagements dans la même province reçoivent la même grille, sans seconde génération. |
+| `MeetingAtSixtyPercentUsesTheGridOfB` | Une rencontre à 60 % de A vers B reçoit la grille de B, celle de A n’est pas générée. |
+| `ReleasedGridIsRegeneratedIdentically` | Après libération, la grille régénérée est une nouvelle instance identique : tableaux, points de passage et grands secteurs. |
+| `ProvincesWithTheSameIdStayDistinct` | Deux provinces de même identifiant gardent chacune leur grille ; libérer l’une ne touche pas l’autre. |
+| `InvalidBordersPreventGenerationAndLeaveNothingInTheCache` | Des orientations non opposées empêchent la génération et ne laissent aucune entrée. |
