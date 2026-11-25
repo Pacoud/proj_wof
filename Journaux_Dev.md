@@ -8561,7 +8561,7 @@ Cette itération fournit à chaque engagement la grille de la province retenue p
 | `ProvincesWithTheSameIdStayDistinct` | Deux provinces de même identifiant gardent chacune leur grille ; libérer l’une ne touche pas l’autre. |
 | `InvalidBordersPreventGenerationAndLeaveNothingInTheCache` | Des orientations non opposées empêchent la génération et ne laissent aucune entrée. |
 
-# COMMIT # 
+# COMMIT 023a3d4838f41af936c0e251e3e2c27a4d3a5f14 # 
 ### Champ de bataille, étape 3c — Zones de déploiement d’un engagement
 
 Cette itération dit, pour un engagement et la grille de sa province, quels grands secteurs reviennent à chaque camp : l’arrière et le front du camp qui entre, le front et l’arrière du camp qui lui fait face. Elle conserve aussi la province d’où vient chaque division, figée dans l’engagement quand la division le rejoint. Le calcul est pur : la répartition entre bataillons, le placement des compagnies, la construction du champ de bataille et le rattachement relèvent des itérations suivantes.
@@ -8589,3 +8589,37 @@ Dans `EngagementDeploymentZonesTests.cs`, onze méthodes couvrent quatorze cas. 
 | `ExtentLimitsTheBattlefieldToTheFirstBands` | Une étendue de 2 bandes est refusée (`BattlefieldTooShallow`) ; une étendue de 5 limite le champ, et l’arrière d’en face se replie sur la bande 5. |
 | `FrontOfOneSideIsNeverInTheRearOfTheOther` (4 cas) | Pour trois orientations d’entrée et un défenseur pris entre deux entrées opposées, le front d’un camp n’est jamais dans l’arrière de l’autre. |
 | `SameInputsGiveTheSameZones` | Deux calculs sur deux grilles régénérées donnent les mêmes zones et les mêmes bandes. |
+
+
+# COMMIT #
+### Champ de bataille, étape 3d.1 — Rôles et grands secteurs de chaque bataillon
+
+Cette itération décide, à partir des zones de 3c, l’échelon et les grands secteurs de chaque bataillon engagé, et le rôle de chacune de ses compagnies. Les bataillons de première ligne tiennent chacun un grand secteur du front, en un bloc centré ; les autres attendent en seconde ligne, dans la zone arrière. Le calcul est pur : le placement des compagnies sur les cases et leur orientation relèvent de 3d.2, le déploiement et le rattachement de 3e.
+
+**Règle et modifications**
+
+- `EngagementDeploymentPlan.cs` (nouveau) :
+  - `DeploymentPlanOptions` porte les réglages nommés : parts des rôles (0,5 / 0,25 / 0,25), qui doivent faire 1, et largeur du front d’un bataillon (`BattalionFrontSectors`, 1 grand secteur).
+  - `SplitRoles` fixe l’arrondi : la première ligne est arrondie au-dessus, la réserve au-dessous, le soutien reçoit le reste (1 → 1/0/0, 2 → 1/1/0, 3 → 2/1/0, 4 → 2/1/1). Seules les compagnies de combat (`IsCombatCompany`) sont réparties ; les autres restent en réserve avec leur bataillon.
+  - `Compute` découpe chaque zone en une ligne par bord d’entrée : un grand secteur va à l’entrée dont le relèvement est le plus proche du sien, et la ligne est triée le long de l’axe perpendiculaire à cette entrée. Avec deux entrées opposées, chaque côté a ainsi sa propre ligne, ordonnée de bout en bout.
+  - Les divisions entrantes vont sur la ligne de leur provenance ; les bataillons d’en face sont distribués tour à tour entre les lignes. Sur chaque ligne, les bataillons qui ont des compagnies de combat forment un bloc centré sur le front ; les bataillons en trop et ceux sans compagnie de combat passent en seconde ligne, toutes compagnies en réserve.
+  - Profondeur : le camp entrant n’a que deux bandes ; sa première ligne et son soutien partagent le secteur du front, sa réserve est en bande 0. Le camp d’en face a son soutien en bande 4 et sa réserve dans sa zone arrière. Soutien et réserve sont pris juste derrière le bataillon, et toute réserve est dans la zone arrière de son camp.
+
+**Tests ajoutés et raison d’être**
+
+Dans `EngagementDeploymentPlanTests.cs`, douze méthodes couvrent dix-neuf cas. Chaque plan calculé vérifie aussi que chaque bataillon et chaque compagnie apparaissent une seule fois, que la première ligne est sur le front de son camp et que toute réserve est dans la zone arrière de son camp.
+
+| Test | Raison d’être |
+| --- | --- |
+| `FrontLineIsRoundedUpReserveDownAndSupportTakesTheRest` (8 cas) | Fixe la règle d’arrondi des rôles, de 0 à 8 compagnies. |
+| `RoleSharesAreNamedParametersThatAddUpToOne` | Les parts par défaut sont 0,5 / 0,25 / 0,25 ; d’autres parts sont respectées, sans erreur d’arrondi en virgule flottante ; des parts invalides sont refusées. |
+| `BattalionsOfOneTwoAndThreeCompaniesPlaceEachCompanyOnce` | Des bataillons de 1, 2 et 3 compagnies reçoivent les rôles de la règle, chaque compagnie une seule fois ; un QG reste en réserve. |
+| `FirstLineBattalionsHoldOneGrandSectorEachInABlockCenteredOnTheFront` | Chaque bataillon de première ligne tient un grand secteur, en un bloc centré sur le front, pour les deux camps. |
+| `WiderBattalionFrontTakesConsecutiveSectorsOfTheLine` | Avec un front de deux grands secteurs, chaque bataillon en prend deux consécutifs, toujours en bloc centré. |
+| `ExcessBattalionsAndBattalionsWithoutCombatCompaniesGoToTheSecondLine` | Les bataillons au-delà de la longueur du front et un bataillon d’artillerie, même arrivé le premier, passent en seconde ligne. |
+| `SupportAndReserveAreNeverInTheSameBand` | Attaquant : soutien en bande 1, réserve en bande 0. Défenseur : soutien en bande 4, réserve au-delà. |
+| `TwoOppositeEntriesGiveOneOrderedLinePerEntry` | Avec deux entrées opposées, chaque front a une ligne par côté, ordonnée le long de son axe ; chaque division entrante est sur sa ligne et le défenseur est distribué entre les deux. |
+| `ReserveStaysInTheRearZoneWhenAnEntryHasNoRearOfItsOwn` | Défenseur attaqué sur trois côtés : sa zone arrière n’est plus que le bord ouest, et la réserve de chaque ligne y reste. |
+| `MeetingEngagementGetsAPlanForBothSides` | Une rencontre sur une liaison donne aussi un plan aux deux camps. |
+| `ZonesOfAnotherEngagementAreRefused` | Des zones calculées pour un autre engagement sont une erreur d’appel. |
+| `SameInputsGiveTheSamePlan` | Deux calculs sur deux mondes reconstruits donnent le même plan. |
