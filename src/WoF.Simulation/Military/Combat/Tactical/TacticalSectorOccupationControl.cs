@@ -11,6 +11,10 @@ public sealed class TacticalSectorOccupationControl
     private readonly DiplomacySystem _diplomacy;
     private readonly Country? _initial;
     private readonly TacticalGrandSectorControl _grandSectors;
+
+     /// <summary>Contrôle de la zone disputée à la dernière passe horaire.</summary>
+    public TacticalBattlefieldControlGauge BattlefieldGauge { get; }
+
     private long? _lastControlHour;
     private readonly Dictionary<BattleSector, Country> _changes = new();
 
@@ -39,6 +43,7 @@ public sealed class TacticalSectorOccupationControl
             ?? throw new InvalidOperationException("Grid province does not belong to this engagement.");
         _initial = province.Controller;
         _grandSectors = new TacticalGrandSectorControl(_initial);
+        BattlefieldGauge = new TacticalBattlefieldControlGauge(_initial);
 
     }
 
@@ -100,6 +105,8 @@ public sealed class TacticalSectorOccupationControl
 
         // Les dernières cases prises par encerclement comptent dès cette heure.
         _grandSectors.Update(layout, GetController);
+        // La jauge lit les grands secteurs après leurs éventuelles prises de l'heure.
+        BattlefieldGauge.Update(layout, sector => _grandSectors.GetController(layout, sector));
         _lastControlHour = hour;
         return (byOccupation, transfers.Count);
     }

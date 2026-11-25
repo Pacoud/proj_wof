@@ -8428,7 +8428,8 @@ Dans `TacticalSectorEncirclementTests.cs`, sept méthodes couvrent neuf cas.
 | `RingAndCenterChangeSimultaneously` | Avec un centre B, un anneau A et un extérieur B, le centre doit devenir A et les six cases de l’anneau doivent devenir B. Une écriture pendant le parcours ferait disparaître l’une des deux décisions. |
 | `InvalidLayoutOrRepeatedHourFailsBeforeOccupation` | Refuser un champ étranger et les heures antérieures, répétées ou précédant l’engagement avant toute prise. L’heure valide suivante peut toujours être exécutée. |
 
-# COMMIT # 
+# COMMIT 6d47cdb85c8a7a258e14f6ebf0b6b3f1c9d621cb # 
+
 ### Champ de bataille, étape 2c.5 — Contrôle des grands secteurs
 
 **Règle**
@@ -8451,3 +8452,29 @@ Fichier ajouté : `TacticalGrandSectorControlTests.cs`.
 | `UnheldSectorWaitsForTheHourlyPassAndFullControl` | Une province sans contrôleur donne un grand secteur initialement sans détenteur. L’occupation de la dernière petite case et la lecture du grand secteur peuvent avoir lieu avant la passe horaire. Le grand secteur bascule à cette passe et la province reste sans contrôleur. |
 | `PartialNeighborUsesItsActualCells_AndLookupRejectsForeignSectors` | Un secteur du bord inclus comme voisin peut basculer avec moins de 37 cases. Un secteur de la province hors du champ, un secteur homonyme d’une autre partition et un champ étranger sont refusés à la lecture. |
 | `LastCellEncircledChangesTheGrandSectorThatHour` | Une compagnie tient la dernière case au centre. Lorsqu’elle part, l’encerclement ferme la poche et le grand secteur bascule dans la même passe. Le compteur renvoie une seule petite case prise par encerclement et la province conserve son contrôleur.
+
+# COMMIT # 
+### Champ de bataille, étape 2c.6 — Jauge pondérée de contrôle de la zone disputée
+
+**Règle et modifications**
+
+- Dans `TacticalBattlefieldControlGauge.cs`, chaque grand secteur inclus donne à son détenteur autant de poids qu’il contient de cases réelles. Un secteur complet apporte 37, un secteur de bord de 4 cases apporte 4. Les secteurs sans détenteur restent dans le poids total du champ. `GetWeight` donne le poids d’un pays et `TotalWeight` le dénominateur. Les poids sont disponibles après la première passe.
+- La jauge commence avec le contrôleur initial de la province. Un pays prend la zone dès 60 %. En l’absence de prise à 60 %, le détenteur garde la zone à partir de 40 %. Sous 40 %, elle va au pays le mieux placé, puis au plus petit identifiant à égalité. Sans détenteur, une première prise exige 60 %. Si tous les poids nationaux sont nuls, la zone devient sans détenteur. Les comparaisons entières gardent les seuils exacts.
+- Dans `TacticalSectorOccupationControl.cs`, la propriété `BattlefieldGauge` rend la jauge consultable. Le constructeur initialise son détenteur. La passe horaire la met à jour après les grands secteurs, pour compter les prises de l’heure. La province garde son contrôleur pendant l’engagement.
+
+**Tests ajoutés et raison d’être**
+
+Fichier ajouté : `TacticalBattlefieldControlGaugeTests.cs`.
+
+| Test | Pourquoi il existe |
+| --- | --- |
+| `TruncatedSectorCannotSwingTheZoneByHeadcount` | Sur 49 cases, le troisième secteur tronqué donne trois secteurs sur cinq au prétendant. Cette prise laisse la zone au détenteur du secteur complet. Le secteur de 37 cases suffit ensuite à faire basculer la zone quand il change de main. |
+| `FirstAwardNeedsSixtyPercentIncludingUnheldGround` | Sur 100 cases initialement sans détenteur, 59 restent insuffisantes et 60 donnent la zone. Le retrait de tous les poids nationaux libère la zone tout en conservant le dénominateur de 100. |
+| `FortyRetainsTheZone_BelowFortySelectsTheLeader` | Un détenteur à 40 conserve la zone face à 52. À 39, il la perd. Un prétendant à 60 l’emporte même si le détenteur est encore à 40. |
+| `EqualLeadersAreSeparatedByCountryId` | Quand le détenteur tombe à zéro et que deux autres pays sont à 50, le plus petit identifiant doit gagner quel que soit l’ordre de rencontre des pays. |
+| `OnlyIncludedSectorsContributeEvenOnAPartialBattlefield` | Vérifier que les voisins inclus ajoutent leur poids et que les grands secteurs provinciaux hors du champ n’entrent pas dans le calcul. |
+| `HourlyCaptureAndRecaptureLeaveTheProvinceWithItsInitialController` | Faire basculer la jauge dans les deux sens par l’appel horaire réel. Vérifier son initialisation, la lecture des prises de la même heure et la conservation du contrôleur provincial. |
+
+**Correctifs Post build et tests**
+
+L’analyseur xUnit signalait un filtrage superflu avant `Assert.Single`. Dans le test du secteur tronqué, le prédicat qui sélectionne le secteur complet est passé directement à l’assertion. Cette modification retire l’avertissement tout en conservant la vérification d’unicité. Aucun test supplémentaire.
