@@ -8591,7 +8591,7 @@ Dans `EngagementDeploymentZonesTests.cs`, onze méthodes couvrent quatorze cas. 
 | `SameInputsGiveTheSameZones` | Deux calculs sur deux grilles régénérées donnent les mêmes zones et les mêmes bandes. |
 
 
-# COMMIT #
+# COMMIT d0ba582790da85b760740aed0cd79b86563bfc08 #
 ### Champ de bataille, étape 3d.1 — Rôles et grands secteurs de chaque bataillon
 
 Cette itération décide, à partir des zones de 3c, l’échelon et les grands secteurs de chaque bataillon engagé, et le rôle de chacune de ses compagnies. Les bataillons de première ligne tiennent chacun un grand secteur du front, en un bloc centré ; les autres attendent en seconde ligne, dans la zone arrière. Le calcul est pur : le placement des compagnies sur les cases et leur orientation relèvent de 3d.2, le déploiement et le rattachement de 3e.
