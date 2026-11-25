@@ -30,7 +30,13 @@ public sealed class Engagement
 
     public Province? ConnectionB { get; }
 
-    public TerrainType BattleTerrain { get; }
+    /// <summary>Province du champ, fixée lors de la création de cet engagement.</summary>
+    public Province BattlefieldProvince { get; }
+
+    /// <summary>Sur une liaison, province voisine désignant le bord du champ.</summary>
+    public Province? MeetingBorderNeighbor { get; }
+
+    public TerrainType BattleTerrain => BattlefieldProvince.Terrain;
 
     public double? ConnectionProgress { get; }
 
@@ -80,7 +86,8 @@ public sealed class Engagement
 
         Province = province;
 
-        BattleTerrain = province.Terrain;
+        ArgumentNullException.ThrowIfNull(province);
+        BattlefieldProvince = province;   
     }
 
     public Engagement(
@@ -90,8 +97,7 @@ public sealed class Engagement
         Province connectionB,
         double connectionProgress)
     {
-        if (connectionProgress < 0
-        || connectionProgress > 1)
+         if (!double.IsFinite(connectionProgress) || connectionProgress < 0 || connectionProgress > 1)
 
         {
             throw new ArgumentOutOfRangeException(
@@ -114,12 +120,12 @@ public sealed class Engagement
                 6
             );
 
-        BattleTerrain = 
-            BattleTerrainResolver.ResolveMeetingTerrain(
-                connectionA,
-                connectionB,
-                connectionProgress
-            );
+        // Le choix utilise la mesure d'origine, même quand ConnectionProgress
+        // a été arrondie à 0,500000. Les mouvements ultérieurs ne le modifient pas.
+        BattlefieldProvince = BattleTerrainResolver.ResolveMeetingProvince(
+            connectionA, connectionB, connectionProgress);
+        MeetingBorderNeighbor = ReferenceEquals(BattlefieldProvince, connectionA)
+            ? connectionB : connectionA;
     }
 
     internal ParticipantBattleSnapshot GetInitialSnapshot(

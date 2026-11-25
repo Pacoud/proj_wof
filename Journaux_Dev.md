@@ -8453,7 +8453,7 @@ Fichier ajouté : `TacticalGrandSectorControlTests.cs`.
 | `PartialNeighborUsesItsActualCells_AndLookupRejectsForeignSectors` | Un secteur du bord inclus comme voisin peut basculer avec moins de 37 cases. Un secteur de la province hors du champ, un secteur homonyme d’une autre partition et un champ étranger sont refusés à la lecture. |
 | `LastCellEncircledChangesTheGrandSectorThatHour` | Une compagnie tient la dernière case au centre. Lorsqu’elle part, l’encerclement ferme la poche et le grand secteur bascule dans la même passe. Le compteur renvoie une seule petite case prise par encerclement et la province conserve son contrôleur.
 
-# COMMIT # 
+# COMMIT 4d3f1c3e67d4b00088dead48959e49d4820eaa08 # 
 ### Champ de bataille, étape 2c.6 — Jauge pondérée de contrôle de la zone disputée
 
 **Règle et modifications**
@@ -8478,3 +8478,23 @@ Fichier ajouté : `TacticalBattlefieldControlGaugeTests.cs`.
 **Correctifs Post build et tests**
 
 L’analyseur xUnit signalait un filtrage superflu avant `Assert.Single`. Dans le test du secteur tronqué, le prédicat qui sélectionne le secteur complet est passé directement à l’assertion. Cette modification retire l’avertissement tout en conservant la vérification d’unicité. Aucun test supplémentaire.
+
+# COMMIT # 
+### Champ de bataille, étape 3a — Fixer la province du champ à la création de l’engagement
+
+**Règle et modifications**
+
+- Dans `BattleTerrainResolver.cs`, `ResolveMeetingProvince` choisit A avant le milieu de la liaison et B dès le milieu. `ResolveMeetingTerrain` lit le terrain de cette province pour les appelants existants. Une progression non finie ou hors de [0, 1] est refusée.
+- Dans `Engagement.cs`, les deux constructeurs affectent `BattlefieldProvince`, propriété en lecture seule. Pour une rencontre, le choix utilise la progression reçue avant son arrondi à six décimales. `MeetingBorderNeighbor` mémorise l’autre extrémité de la liaison. Pour un engagement provincial, ce voisin reste nul. `BattleTerrain` lit le terrain de la province mémorisée. Ces lectures restent possibles après la fin du combat et le départ des participants.
+
+**Tests ajoutés et raison d’être**
+
+Dans `BattlefieldProvinceTests.cs`, cinq méthodes couvrent onze cas.
+
+| Test | Raison d’être |
+| --- | --- |
+| `ProvincialEngagementKeepsItsProvinceAndHasNoMeetingBorder` | Vérifier la référence à la province, son terrain et l’absence de bord de rencontre. |
+| `MeetingUsesTheExactProvinceEvenWithIdenticalTerrain` (5 cas) | Distinguer A et B par référence quand leurs terrains sont identiques. Couvrir les extrémités, les deux côtés et le milieu exact, avec le bon voisin dans chaque sens. |
+| `DisplayRoundingDoesNotMoveTheBattleAcrossTheMidpoint` | À 0,4999999, la progression mémorisée vaut 0,5, mais le champ et le terrain restent ceux de A. Déceler un choix fait sur la valeur arrondie. |
+| `BattlefieldHasNoSetterAndStaysFixedAfterBothDivisionsMove` | Détecter une rencontre en B, terminer l’engagement et faire arriver les deux participants en A. Vérifier que B, son terrain et son bord restent ceux du combat, et que la propriété ne possède aucun setter, même privé. |
+| `InvalidProgressCannotDesignateAProvince` (3 cas) | Empêcher qu’une valeur négative, supérieure à un ou indéfinie attribue un champ de bataille. |
