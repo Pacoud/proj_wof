@@ -9,6 +9,7 @@ public sealed class TacticalSectorOccupationControl
     private readonly TacticalGeometryMap _geometry;
     private readonly DiplomacySystem _diplomacy;
     private readonly Country? _initial;
+    private long? _lastControlHour;
     private readonly Dictionary<BattleSector, Country> _changes = new();
 
     // Pour une case restée bloquée, mémoriser les présences et les relations
@@ -46,14 +47,56 @@ public sealed class TacticalSectorOccupationControl
         return _changes.TryGetValue(sector, out var owner) ? owner : _initial;
     }
 
-    /// <summary>Applique l'occupation et renvoie le nombre de cases ayant changé de main.</summary>
-    public int ApplyOccupation()
+    /// <summary>Occupation seule, pour les scénarios qui appellent cette phase isolément.</summary>
+    public int ApplyOccupation() => ApplyOccupation(CreatePresenceIndex());
+
+    /// <summary>Nombre de cases prises par occupation puis par encerclement à cette heure.</summary>
+    public (int ByOccupation, int ByEncirclement) ApplyHourlyControl(
+        long hour, ProvinceBattlefieldLayout layout)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        var battle = _geometry.Battle;
+        if (!ReferenceEquals(layout.Battlefield, battle.Battlefield)
+            || !ReferenceEquals(layout.Grid, _geometry.Terrain?.Grid)
+            || layout.CellIndices.Count != battle.Battlefield.Sectors.Count)
+            throw new InvalidOperationException("Layout must describe this entire battlefield.");
+        if (hour < battle.Engagement.StartHour)
+            throw new ArgumentOutOfRangeException(nameof(hour));
+        if (_lastControlHour is long last && hour <= last)
+            throw new InvalidOperationException("Control hour already processed.");
+
+        var index = CreatePresenceIndex();
+        int byOccupation = ApplyOccupation(index);
+
+        // Figer le détenteur et la présence physique APRÈS l'occupation.
+        // Une compagnie en déroute et hors trajet occupe toujours sa case.
+        var cells = new Dictionary<int, TacticalSectorEncirclement.CellState>(layout.CellIndices.Count);
+        foreach (int cell in layout.CellIndices)
+        {
+            var sector = layout.GetSector(cell);
+            bool occupied = index.GetCovering(sector).Any(IsOnSite);
+            cells.Add(cell, new(GetController(sector), occupied));
+        }
+
+        var transfers = TacticalSectorEncirclement.FindTransfers(layout, cells, _diplomacy);
+        foreach (var (cell, winner) in transfers)
+            SetController(layout.GetSector(cell), winner);
+
+        _lastControlHour = hour;
+        return (byOccupation, transfers.Count);
+    }
+
+    private TacticalSectorPresenceIndex CreatePresenceIndex()
     {
         var battle = _geometry.Battle;
         if (!battle.Engagement.IsActive)
             throw new InvalidOperationException("Cannot update an ended battle.");
 
-        var index = new TacticalSectorPresenceIndex(battle, _geometry);
+        return new TacticalSectorPresenceIndex(battle, _geometry);
+    }
+
+    private int ApplyOccupation(TacticalSectorPresenceIndex index)
+    {
         var nextBlocked = new Dictionary<BattleSector, Blocked>();
         int transfers = 0;
 
@@ -82,18 +125,25 @@ public sealed class TacticalSectorOccupationControl
                 continue;
             }
 
-            // Seuls les écarts au contrôleur initial sont stockés.
-            if (winner.Id == _initial?.Id)
-                _changes.Remove(sector);
-            else
-                _changes[sector] = winner;
-
+            SetController(sector, winner);
             transfers++;
         }
 
         _blocked = nextBlocked;
         return transfers;
     }
+
+    private void SetController(BattleSector sector, Country winner)
+    {
+        // Un retour au détenteur initial efface l'écart mémorisé.
+        if (winner.Id == _initial?.Id)
+            _changes.Remove(sector);
+        else
+            _changes[sector] = winner;
+    }
+
+    private static bool IsOnSite(CompanyDeployment deployment) =>
+        !deployment.IsInTransit && deployment.Company.Composition!.Manpower.Current > 0;
 
     private static Presence[] ReadPresence(IReadOnlyList<CompanyDeployment> covering)
     {
@@ -102,7 +152,7 @@ public sealed class TacticalSectorOccupationControl
         {
             var company = deployment.Company;
             var country = company.ParentBattalion?.ParentDivision?.Country;
-            if (deployment.IsInTransit || company.Composition!.Manpower.Current == 0 || country is null)
+            if (!IsOnSite(deployment) || country is null)
                 continue;
 
             // Une compagnie en déroute reste présente. Une autre compagnie

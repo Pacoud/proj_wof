@@ -8326,7 +8326,7 @@ principale.
 | `ShortFront_KeepsAssignmentWithoutCoveringItsCell` | Avec un front de 15 m, la compagnie reste affectée à son secteur principal. La liste de couverture est vide et son compteur vaut zéro. | Détecter l’ancien ajout automatique du secteur principal, qui contournerait le seuil de 20 m. |
 | `LongFront_StopsAtTheLimitOfAPartialBattlefield` | Sur un champ partiel, le front atteint une case située deux colonnes plus loin. La rangée se poursuit dans la province au-delà des secteurs construits. | Détecter un parcours limité aux voisins directs ou un accès invalide à une case provinciale absente de la bataille. |
 
-# COMMIT # 
+# COMMIT d2db71ff6f88ae0908992df5f49d9b1c5ff18b85 # 
 ### Champ de bataille, étape 2c.3 — Contrôle des petits secteurs par occupation
 
 **Objectif**
@@ -8376,3 +8376,54 @@ Dans `TacticalSectorOccupationControlTests.cs`, sept méthodes couvrent dix cas.
 | `DiplomacyAndManpower_AreReadAgainWithoutMovement` | La perte de tout l’effectif disponible lève la contestation. Le retour d’un homme et une déclaration de guerre permettent ensuite une prise sur place. Une décision mémorisée doit tenir compte des deux changements. |
 | `SparsePass_MatchesFullRecalculationAfterEveryChange` | Comparer les détenteurs de toute la grille et le nombre de prises à une référence indépendante qui relit toutes les cases après chaque mouvement, déroute, ralliement ou changement diplomatique. |
 | `ForeignSectorWithSameId_IsRejected_AndDefaultIsCapturedOnce` | Refuser le secteur homonyme d’une autre bataille et conserver le contrôleur initial, même nul, si le contrôleur provincial évolue après l’initialisation. |
+
+# COMMIT # 
+### Champ de bataille, étape 2c.4 — Encerclement des poches vides
+
+**Règle retenue**
+
+Une poche réunit toutes les cases vides voisines de même détenteur. Une case vide
+de même pays prolonge la poche. Si une case du pourtour est tenue par ce pays
+ou par un de ses alliés, toute la poche reste à son détenteur. Elle reste
+également en place si elle touche le bord du champ ou une case sans détenteur.
+Une case sans détenteur initial peut toujours être prise par occupation.
+
+Quand tout le pourtour est ennemi, le pays qui en tient le plus de cases
+reçoit la poche. Une case du pourtour compte une fois, même si elle touche
+plusieurs membres. À égalité, le plus petit identifiant de pays l’emporte.
+
+**Modifications et rôle de chaque élément**
+
+- Dans `TacticalSectorOccupationControl.cs`, `ApplyHourlyControl` vérifie
+  l’heure et l’appartenance du champ avant l’occupation. Il partage un
+  instantané de couverture entre les deux phases. Une fois l’occupation
+  appliquée, il relève le détenteur et la présence physique sur chaque case
+  incluse. Il applique toutes les bascules à la fin et renvoie séparément
+  les nombres de cases prises par occupation et par encerclement.
+- Dans ce même fichier, `IsOnSite` donne le critère physique commun aux deux
+  phases. Une compagnie dont le front couvre la case y compte dès qu’elle a
+  du personnel et se trouve hors trajet, y compris si elle est en déroute.
+  `SetController` écrit les prises dans le registre de 2c.3 et retire
+  l’écart mémorisé lorsqu’une case revient au contrôleur initial.
+- Dans `TacticalSectorEncirclement.cs`, `FindTransfers` examine le champ
+  complet. Un parcours en largeur regroupe les membres de chaque poche.
+  Les six voisines viennent de la grille géométrique, y compris à travers une
+  rivière. Le parcours se poursuit après la découverte d’un bord pour marquer
+  toute la composante. L’ensemble du pourtour déduplique les cases communes.
+- `GetWinner` vérifie la guerre entre le détenteur et chacun des pays du
+  pourtour. Il compte leurs cases et départage les égalités par identifiant.
+  Toutes les décisions utilisent la carte figée après l’occupation de l’heure.
+
+**Tests ajoutés et raison d’être**
+
+Dans `TacticalSectorEncirclementTests.cs`, sept méthodes couvrent neuf cas.
+
+| Test | Raison d’être |
+| --- | --- |
+| `TwoEmptyCellsFallTogether_UnlessTheyTouchAFriendlyCompany` (2 cas) | Les deux cases vides basculent ensemble dès que l’occupation de l’heure ferme leur dernier côté. Si le garde ami en déroute reste sur ce côté, il protège aussi la case la plus éloignée. Les rivières à l’intérieur de la poche et sur le pourtour vérifient le voisinage géométrique. |
+| `RoutedCenterRemainsOccupied_UntilItsManpowerIsGone` | Un déploiement en déroute maintient la présence. Quand son dernier homme disponible disparaît, la case devient vide et peut basculer sur place. |
+| `OpenEdgeProtectsTheWholePocket` (2 cas) | Un membre qui touche le bord protège aussi le membre intérieur. Les variantes distinguent la limite de la province et une voisine située dans la province, hors du champ construit. |
+| `ThreeCountries_CountDistinctBorderCells_ThenBreakTiesById` | Quatre cases contre quatre reviennent au plus petit identifiant. Deux cases communes feraient gagner l’autre pays si chaque côté votait. Cinq contre trois doivent ensuite donner la majorité, et une paix avec un seul des pays doit protéger la poche. |
+| `UnheldInteriorOrUnheldBorderPreventsCapture` | Préserver une case sans détenteur entourée de cases contrôlées. Une case sans détenteur dans le pourtour interrompt aussi l’encerclement. |
+| `RingAndCenterChangeSimultaneously` | Avec un centre B, un anneau A et un extérieur B, le centre doit devenir A et les six cases de l’anneau doivent devenir B. Une écriture pendant le parcours ferait disparaître l’une des deux décisions. |
+| `InvalidLayoutOrRepeatedHourFailsBeforeOccupation` | Refuser un champ étranger et les heures antérieures, répétées ou précédant l’engagement avant toute prise. L’heure valide suivante peut toujours être exécutée. |
