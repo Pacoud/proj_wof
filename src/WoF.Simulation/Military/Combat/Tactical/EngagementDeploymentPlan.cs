@@ -153,8 +153,9 @@ public sealed class EngagementDeploymentPlan
         CompanyType.Engineer;
 
     /// <summary>
-    /// Calcule le plan. L'engagement donne la provenance de chaque division entrante ;
-    /// les zones doivent avoir été calculées pour lui.
+    /// Calcule le plan. Les zones doivent avoir été calculées pour cet engagement ;
+    /// elles donnent le bord d'entrée de chaque division entrante.
+
     /// </summary>
     public static EngagementDeploymentPlan Compute(
         EngagementDeploymentZones zones, Engagement engagement, DeploymentPlanOptions? options = null)
@@ -190,13 +191,13 @@ public sealed class EngagementDeploymentPlan
 
         var enteringByLine = enteringFront.Select(_ => new List<Battalion>()).ToArray();
         var facingByLine = facingFront.Select(_ => new List<Battalion>()).ToArray();
-
-        // Camp entrant : chaque division sur la ligne de sa provenance. Une provenance écartée
-        // par 3c (sans bord sur la grille) donne -1 : première ligne dont le front existe.
+        
+        // Camp entrant : chaque division sur la ligne de son bord d'entrée, provenance ou voisine
+        // de repli (3d.3). Une division sans bord retenu donne -1 : première ligne dont le front existe.
         foreach (var division in zones.EnteringDivisions)
         {
-            var provenance = engagement.GetEntryProvince(division);
-            int wanted = Array.FindIndex(
+            var provenance = zones.GetEntryProvince(division);   
+                int wanted = Array.FindIndex(
                 zones.EntryProvinces.ToArray(), province => ReferenceEquals(province, provenance));
 
             enteringByLine[UsableLine(enteringFront, wanted)].AddRange(division.Battalions);

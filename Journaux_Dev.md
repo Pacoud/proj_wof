@@ -8623,3 +8623,64 @@ Dans `EngagementDeploymentPlanTests.cs`, douze méthodes couvrent dix-neuf cas. 
 | `MeetingEngagementGetsAPlanForBothSides` | Une rencontre sur une liaison donne aussi un plan aux deux camps. |
 | `ZonesOfAnotherEngagementAreRefused` | Des zones calculées pour un autre engagement sont une erreur d’appel. |
 | `SameInputsGiveTheSamePlan` | Deux calculs sur deux mondes reconstruits donnent le même plan. |
+
+# COMMIT # 
+### Champ de bataille, étape 3d.2 — Placement et orientation des compagnies
+
+Cette itération place chaque compagnie du plan de 3d.1 sur une case de la grille de la province : un point au centre de la case, à l’altitude du sol, une orientation et une largeur de front. Les compagnies sont réparties sur la largeur de leur grand secteur, et chacune regarde le point du front adverse le plus proche. Le calcul est pur et ne tient pas compte du terrain : la construction du champ, l’appel à `DeployCompany` et `PlaceCompany`, et le rattachement relèvent de 3e.
+
+**Règle et modifications**
+
+- `EngagementCompanyPlacement.cs` (nouveau) :
+  - `CompanyPlacementOptions` porte les réglages nommés : front d’une compagnie de 300 m (`CompanyFrontageMeters`) et plancher de 180 m (`MinCompanyFrontageMeters`).
+  - Les compagnies qui partagent les mêmes grands secteurs et la même rangée forment un groupe, même si elles viennent de plusieurs bataillons. Le groupe garde l’ordre du plan (division, bataillon, compagnie), si bien qu’un bataillon y reste contigu.
+  - Rangées, mesurées vers l’ennemi : la première ligne au bord avant de ses grands secteurs, le soutien du camp entrant au bord arrière du même secteur, le soutien du camp d’en face et les réserves au milieu de leur secteur.
+  - La largeur du groupe est découpée en parts égales, une par compagnie. Chaque compagnie vise l’axe de sa part et y prend la case libre la mieux placée sur sa rangée ; à défaut, la case libre la plus proche de l’axe. Une case n’est reprise que lorsque toutes celles du groupe sont prises. Viser d’abord l’axe évite que la pointe avant d’un grand secteur hexagonal attire toutes les compagnies au milieu.
+  - Le front d’une compagnie est la largeur de sa part, bornée entre 180 et 300 m.
+  - Chaque compagnie regarde le centre de la case la plus proche du front adverse calculé en 3c. Sans front adverse, elle regarde perpendiculairement à son bord d’entrée.
+
+**Tests ajoutés et raison d’être**
+
+Dans `EngagementCompanyPlacementTests.cs`, dix tests. Chaque placement calculé vérifie aussi que chaque compagnie est placée une seule fois, dans l’ordre du plan, sur une case d’un grand secteur qui correspond à son rôle, au centre de la case et à l’altitude du sol, qu’elle regarde la case la plus proche du front adverse et que son front reste entre 180 et 300 m.
+
+| Test | Raison d’être |
+| --- | --- |
+| `FrontLineCompaniesSpreadAcrossTheWidthOfTheirGrandSector` | Deux compagnies de première ligne sont à au moins 400 m l’une de l’autre ; une compagnie seule sur sa rangée est au milieu de la largeur. |
+| `AttackerSupportStandsBehindItsFrontLineInTheSameGrandSector` | Le soutien de l’attaquant est dans le secteur de sa première ligne, au moins 400 m derrière elle. |
+| `CompanyAtTheEndOfAWideFrontFacesTheEnemyAheadNotTheCenterOfItsFront` | Au bout d’un front de neuf bataillons, une compagnie regarde l’ennemi droit devant, à plus de 45° de la direction du centre du front adverse. |
+| `EmptyOpposingFrontFallsBackToTheEntryDirection` | Sans front adverse, ou avec une cible confondue avec la compagnie, l’orientation de repli s’applique ; sinon la cible la plus proche l’emporte, la première à égalité. |
+| `TwoOppositeEntriesTurnEachAttackerTowardTheCenter` | Avec deux entrées opposées, les attaquants de l’est regardent vers l’ouest et ceux de l’ouest vers l’est. |
+| `FrontageIs300MetersAndNeverBelowTheFloorOf180` | 300 m pour deux compagnies, plancher de 180 m pour huit, largeur exacte d’une part pour cinq ; des réglages invalides sont refusés. |
+| `CompaniesOfSeveralBattalionsInOneGroupStayContiguousInPlanOrder` | Quand plusieurs bataillons partagent un secteur de réserve, l’ordre sur le terrain est celui du plan et chaque bataillon reste contigu. |
+| `GroupLargerThanItsFreeCellsReusesCellsOnlyOnceAllAreTaken` | Quarante compagnies sur un grand secteur plus petit : toutes sont placées, et toutes ses cases sont occupées avant qu’une soit reprise. |
+| `TruncatedGrandSectorAtTheBorderHoldsItsCompaniesOnItsOwnCells` | Un bataillon de seconde ligne dans un grand secteur tronqué du bord reste sur les cases réelles de ce secteur, sur des cases distinctes et réparti en largeur. |
+| `SameInputsGiveTheSamePlacement` | Deux calculs sur deux mondes reconstruits donnent les mêmes cases, orientations et largeurs de front. |
+
+
+# COMMIT #
+### Champ de bataille, étape 3d.3 — Camps de déploiement d’un engagement sans rôles
+
+Cette itération décide qui fait face et qui entre quand la détection n’a pas donné les deux camps : arrivées simultanées, ou guerre déclarée entre divisions déjà présentes. C’est une convention de déploiement provisoire, pas une règle de mission : les rôles de l’engagement, la détection et le combat opérationnel ne changent pas, et aucune mission n’est enregistrée.
+
+**Règle et modifications**
+
+- `EngagementDeploymentZones.cs` :
+  - Les camps sont résolus avant le calcul des bandes. Rencontre et engagement avec attaquants et défenseurs : inchangés. Sans rôles, le camp du pays qui contrôle la province fait face s’il participe ; sinon, un tirage tiré de la graine de la province et de l’heure de début désigne ce pays, sans dépendre de l’ordre de création des engagements ni de celui des participants. Les divisions en guerre avec ce pays entrent.
+  - Un participant encore sans camp rejoint le camp avec lequel il n’est pas en guerre ; sinon, nouveau refus `ParticipantWithoutSide`, à revoir si des alliances apparaissent.
+  - Une division sans provenance utilisable entre par le bord de la première voisine contrôlée par son pays. `GetEntryProvince` donne le bord retenu pour chaque division entrante.
+  - `TryCompute` reçoit la diplomatie en dernier paramètre facultatif. Sans elle, deux pays différents sont tenus pour ennemis, ce qui est toujours vrai à deux pays.
+- `EngagementDeploymentPlan.cs` : chaque division entrante va sur la ligne du bord retenu par les zones, et non plus sur sa provenance brute, pour qu’une division entrée par une voisine de repli soit sur la bonne ligne.
+- `CONCEPTION_CHAMP_DE_BATAILLE.md` : la convention provisoire est ajoutée à la règle 1, avec ce qui reste à revoir ; un point ouvert note que la grille partagée reste en lecture seule.
+
+**Tests ajoutés et raison d’être**
+
+Dans `EngagementDeploymentZonesTests.cs`, le test qui fixait l’ancien refus d’un engagement sans rôles est remplacé, et six tests sont ajoutés.
+
+| Test | Raison d’être |
+| --- | --- |
+| `MeetingWithoutDivisionFromTheMeetingBorderIsRefusedWithoutException` | Remplace l’ancien test : une rencontre où personne ne vient du bord de rencontre est refusée (`MissingSide`), sans exception ; une grille d’une autre province reste une erreur d’appel. |
+| `SimultaneousArrivalLetsTheControllerHoldAndTheOtherSideEnterByItsProvenance` | Deux arrivées à la même heure, sans rôles : le contrôleur fait face, l’autre entre par sa provenance. |
+| `DivisionPlacedAtScenarioStartEntersByTheFirstNeighbourItsCountryControls` | Début de scénario, sans provenance : la division entre par la première voisine contrôlée par son pays ; sans telle voisine, refus `NoEntryBorder`. |
+| `WithoutAControllerAmongParticipantsADrawFromProvinceAndHourChoosesWhoHolds` | Sans contrôleur parmi les participants, le tirage ne dépend ni de l’identifiant de l’engagement ni de l’ordre des participants, et ne désigne pas toujours le même pays. |
+| `ParticipantWithoutRoleJoinsTheSideItIsNotAtWarWithOrIsRefused` | Un troisième pays rejoint le camp avec lequel il n’est pas en guerre, avec ou sans rôles ; en guerre avec les deux, avec aucun, ou sans diplomatie, refus `ParticipantWithoutSide`. |
+| `PlanPutsADivisionOnTheLineOfItsFallbackBorder` | Le plan place une division entrée par une voisine de repli sur la ligne de ce bord. |

@@ -3,6 +3,7 @@ using WoF.Simulation.Diplomacy;
 using WoF.Simulation.Military;
 using WoF.Simulation.Military.Combat;
 using WoF.Simulation.Military.Combat.Tactical;
+using WoF.Simulation.Military.Organization;
 using WoF.Simulation.World;
 using WoF.Simulation.World.Terrain;
 
@@ -304,12 +305,19 @@ public sealed class EngagementDeploymentZonesTests
     }
 
     [Fact]
-    public void EngagementWithoutSidesIsRefusedWithoutException()
+    public void MeetingWithoutDivisionFromTheMeetingBorderIsRefusedWithoutException()
     {
-        var (p, _, cache) = World(("E", 90));
-        var battle = new Engagement(1, 0, p);
-        battle.AddParticipant(new Division("R", p, 100, 100, country: Red), 0);
-        battle.AddParticipant(new Division("B", p, 100, 100, country: Blue), 0);
+        // Rencontre jouée dans B, face à A, mais les deux divisions viennent de B : personne n'entre.
+        var (b, around, cache) = World(("A", 270));
+        var a = around["A"];
+        var plan = new MovementPlan(DurationHours: 5, FuelPerHour: 0);
+        var red = new Division("R", b, 100, 100, country: Red);
+        var blue = new Division("B", b, 100, 100, country: Blue);
+        Assert.True(red.TryStartMovement(a, plan));
+        Assert.True(blue.TryStartMovement(a, plan));
+        var battle = new Engagement(1, 0, a, b, 0.6);
+        battle.AddParticipant(red, 0);
+        battle.AddParticipant(blue, 0);
         var field = cache.GetOrGenerate(battle);
 
         Assert.False(EngagementDeploymentZones.TryCompute(field, battle, out var zones, out var refusal));
@@ -320,6 +328,184 @@ public sealed class EngagementDeploymentZonesTests
         var (other, _, otherCache) = World(("E", 90));
         Assert.Throws<ArgumentException>(() => EngagementDeploymentZones.TryCompute(
             otherCache.GetOrGenerate(other), battle, out _, out _));
+    }
+
+    // ---- Camps sans rôles (3d.3) ----
+
+    private static readonly Country Green = new(3, "Vert");
+
+    /// <summary>Division bleue qui fait réellement le trajet de from vers to.</summary>
+    private static Division ArriveBlue(Province from, Province to, string name)
+    {
+        var division = new Division(name, from, 100, 100, country: Blue);
+        Assert.True(division.TryStartMovement(to, new MovementPlan(DurationHours: 1, FuelPerHour: 0)));
+        division.AdvanceOneHour();
+        Assert.True(division.FinalizeArrival());
+        return division;
+    }
+
+    /// <summary>Engagement de province détecté par le système, sans rôles attendus.</summary>
+    private static Engagement Detected(Division[] divisions, Division[] arrivals, params (Country, Country)[] wars)
+    {
+        var diplomacy = new DiplomacySystem();
+        foreach (var (first, second) in wars)
+            diplomacy.DeclareWar(first, second);
+        var system = new EngagementSystem(diplomacy);
+        system.DetectProvinceEngagements(divisions, currentHour: 1, arrivals: arrivals);
+        var battle = Assert.Single(system.ActiveEngagements);
+        Assert.Empty(battle.Attackers);
+        Assert.Empty(battle.Defenders);
+        return battle;
+    }
+
+    [Fact]
+    public void SimultaneousArrivalLetsTheControllerHoldAndTheOtherSideEnterByItsProvenance()
+    {
+        // P est contrôlée par Bleu. Rouge arrive de l'est, Bleu de l'ouest, à la même heure.
+        var (p, around, cache) = World(("E", 90), ("W", 270));
+        var red = Arrive(around["E"], p, "R");
+        var blue = ArriveBlue(around["W"], p, "B");
+        var battle = Detected(new[] { red, blue }, new[] { red, blue }, (Red, Blue));
+
+        var zones = Compute(cache.GetOrGenerate(battle), battle);
+
+        Assert.Equal(new[] { blue }, zones.FacingDivisions);
+        Assert.Equal(new[] { red }, zones.EnteringDivisions);
+        Assert.Equal(new[] { around["E"] }, zones.EntryProvinces);
+        Assert.Same(around["E"], zones.GetEntryProvince(red));
+        Assert.Null(zones.GetEntryProvince(blue));
+    }
+
+    [Fact]
+    public void DivisionPlacedAtScenarioStartEntersByTheFirstNeighbourItsCountryControls()
+    {
+        // Début de scénario : deux divisions placées dans P, sans provenance ; la guerre éclate.
+        var (p, around, cache) = World(("N", 0), ("E", 90), ("W", 270));
+        around["E"].ChangeController(Red);
+        around["N"].ChangeController(Red);
+        var red = new Division("R", p, 100, 100, country: Red);
+        var blue = new Division("B", p, 100, 100, country: Blue);
+        Assert.Null(red.EnteredFrom);
+        var battle = Detected(new[] { red, blue }, Array.Empty<Division>(), (Red, Blue));
+
+        var zones = Compute(cache.GetOrGenerate(battle), battle);
+
+        // N (identifiant 2) passe avant E (identifiant 3).
+        Assert.Equal(new[] { red }, zones.EnteringDivisions);
+        Assert.Equal(new[] { around["N"] }, zones.EntryProvinces);
+        Assert.Same(around["N"], zones.GetEntryProvince(red));
+
+        // Sans voisine contrôlée par son pays, aucun bord : refus.
+        var (q, _, cacheQ) = World(("E", 90));
+        var alone = Detected(new[] { new Division("R", q, 100, 100, country: Red),
+            new Division("B", q, 100, 100, country: Blue) }, Array.Empty<Division>(), (Red, Blue));
+        Assert.False(EngagementDeploymentZones.TryCompute(cacheQ.GetOrGenerate(alone), alone, out _, out var refusal));
+        Assert.Equal(DeploymentZoneRefusal.NoEntryBorder, refusal);
+    }
+
+    [Fact]
+    public void WithoutAControllerAmongParticipantsADrawFromProvinceAndHourChoosesWhoHolds()
+    {
+        // P est contrôlée par Vert, absent de la bataille ; E est rouge, W est bleue.
+        var (p, around, cache) = World(("E", 90), ("W", 270));
+        p.ChangeController(Green);
+        around["E"].ChangeController(Red);
+        around["W"].ChangeController(Blue);
+        var field = cache.GetOrGenerate(p);
+
+        Country Holder(int id, long hour, bool redFirst)
+        {
+            var red = new Division("R", p, 100, 100, country: Red);
+            var blue = new Division("B", p, 100, 100, country: Blue);
+            var battle = new Engagement(id, hour, p);
+            foreach (var division in redFirst ? new[] { red, blue } : new[] { blue, red })
+                battle.AddParticipant(division, hour);
+            var zones = Compute(field, battle);
+            return Assert.Single(zones.FacingDivisions).Country!;
+        }
+
+        var holders = new List<Country>();
+
+        for (long hour = 0; hour < 16; hour++)
+        {
+            var holder = Holder(1, hour, redFirst: true);
+
+            // Ni l'identifiant de l'engagement, ni l'ordre des participants ne changent le tirage.
+            Assert.Same(holder, Holder(99, hour, redFirst: false));
+            holders.Add(holder);
+        }
+
+        // Le tirage ne favorise pas toujours le même pays.
+        Assert.Contains(Red, holders);
+        Assert.Contains(Blue, holders);
+    }
+
+    [Fact]
+    public void ParticipantWithoutRoleJoinsTheSideItIsNotAtWarWithOrIsRefused()
+    {
+        var (p, around, cache) = World(("E", 90), ("W", 270));
+        var field = cache.GetOrGenerate(p);
+
+        DeploymentZoneRefusal Resolve(out EngagementDeploymentZones? zones, DiplomacySystem? diplomacy)
+        {
+            var battle = new Engagement(1, 0, p);
+            battle.AddParticipant(Arrive(around["E"], p, "R"), 0, EngagementRole.Attacker);
+            battle.AddParticipant(new Division("B", p, 100, 100, country: Blue), 0, EngagementRole.Defender);
+            battle.AddParticipant(new Division("V", p, 100, 100, country: Green), 0);
+            EngagementDeploymentZones.TryCompute(field, battle, out zones, out var refusal, diplomacy: diplomacy);
+            return refusal;
+        }
+
+        DiplomacySystem Wars(params (Country, Country)[] wars)
+        {
+            var diplomacy = new DiplomacySystem();
+            foreach (var (first, second) in wars)
+                diplomacy.DeclareWar(first, second);
+            return diplomacy;
+        }
+
+        // Vert n'est en guerre qu'avec Rouge, qui entre : il fait face avec Bleu.
+        Assert.Equal(DeploymentZoneRefusal.None, Resolve(out var zones, Wars((Red, Blue), (Red, Green))));
+        Assert.Equal(new[] { "B", "V" }, zones!.FacingDivisions.Select(d => d.Name));
+        Assert.Equal(new[] { "R" }, zones.EnteringDivisions.Select(d => d.Name));
+
+        // En guerre avec les deux camps, avec aucun, ou sans diplomacy (tout autre pays est ennemi) : refus.
+        Assert.Equal(DeploymentZoneRefusal.ParticipantWithoutSide,
+            Resolve(out _, Wars((Red, Blue), (Red, Green), (Blue, Green))));
+        Assert.Equal(DeploymentZoneRefusal.ParticipantWithoutSide, Resolve(out _, Wars((Red, Blue))));
+        Assert.Equal(DeploymentZoneRefusal.ParticipantWithoutSide, Resolve(out _, null));
+
+        // Sans rôles : Bleu contrôle P et tient. Vert n'est pas en guerre avec lui : il n'entre pas,
+        // il rejoint Bleu contre Rouge.
+        around["E"].ChangeController(Red);
+        var noRoles = new Engagement(2, 0, p);
+        noRoles.AddParticipant(new Division("R", p, 100, 100, country: Red), 0);
+        noRoles.AddParticipant(new Division("B", p, 100, 100, country: Blue), 0);
+        noRoles.AddParticipant(new Division("V", p, 100, 100, country: Green), 0);
+        Assert.True(EngagementDeploymentZones.TryCompute(field, noRoles, out var sides, out _,
+            diplomacy: Wars((Red, Blue), (Red, Green))));
+        Assert.Equal(new[] { "B", "V" }, sides!.FacingDivisions.Select(d => d.Name));
+        Assert.Equal(new[] { "R" }, sides.EnteringDivisions.Select(d => d.Name));
+    }
+
+    [Fact]
+    public void PlanPutsADivisionOnTheLineOfItsFallbackBorder()
+    {
+        // Rouge attaque depuis l'est ; une autre division rouge, placée au début dans P, entre par N.
+        var (p, around, cache) = World(("N", 0), ("E", 90), ("W", 270));
+        around["N"].ChangeController(Red);
+        var fromEast = Arrive(around["E"], p, "RE");
+        var placed = new Division("RP", p, 100, 100, country: Red);
+        var battalion = new Battalion(1, "RP-B1", BattalionType.Infantry);
+        battalion.AddCompany(new Company(1, "RP-B1-C1", CompanyType.Infantry));
+        placed.AddBattalion(battalion);
+        var battle = Provincial(p, fromEast, placed);
+
+        var zones = Compute(cache.GetOrGenerate(battle), battle);
+        var plan = EngagementDeploymentPlan.Compute(zones, battle);
+
+        Assert.Equal(new[] { around["E"], around["N"] }, zones.EntryProvinces);
+        Assert.Same(around["N"], Assert.Single(plan.Battalions, a => a.Battalion == battalion).Entry);
     }
 
     [Fact]
