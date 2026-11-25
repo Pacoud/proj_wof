@@ -1,14 +1,16 @@
 using WoF.Simulation.Diplomacy;
 using WoF.Simulation.World;
+using WoF.Simulation.World.Terrain;
 
 namespace WoF.Simulation.Military.Combat.Tactical;
 
-/// <summary>Contrôle réel des petits secteurs. Conserver une instance par bataille.</summary>
+/// <summary>Contrôle réel des petits et grands secteurs. Conserver une instance par bataille.</summary>
 public sealed class TacticalSectorOccupationControl
 {
     private readonly TacticalGeometryMap _geometry;
     private readonly DiplomacySystem _diplomacy;
     private readonly Country? _initial;
+    private readonly TacticalGrandSectorControl _grandSectors;
     private long? _lastControlHour;
     private readonly Dictionary<BattleSector, Country> _changes = new();
 
@@ -36,6 +38,8 @@ public sealed class TacticalSectorOccupationControl
         var province = provinces.FirstOrDefault(p => p?.Id == terrain.Grid.Descriptor.ProvinceId)
             ?? throw new InvalidOperationException("Grid province does not belong to this engagement.");
         _initial = province.Controller;
+        _grandSectors = new TacticalGrandSectorControl(_initial);
+
     }
 
     public Country? GetController(BattleSector sector)
@@ -47,12 +51,14 @@ public sealed class TacticalSectorOccupationControl
         return _changes.TryGetValue(sector, out var owner) ? owner : _initial;
     }
 
-    /// <summary>Occupation seule, pour les scénarios qui appellent cette phase isolément.</summary>
-    public int ApplyOccupation() => ApplyOccupation(CreatePresenceIndex());
+/// <summary>Détenteur initial ou dernier détenteur acquis à la fin d'une passe horaire.</summary>
+    public Country? GetGrandSectorController(ProvinceBattlefieldLayout layout, GrandSector sector)
+    {
+        EnsureLayout(layout);
+        return _grandSectors.GetController(layout, sector);
+    }
 
-    /// <summary>Nombre de cases prises par occupation puis par encerclement à cette heure.</summary>
-    public (int ByOccupation, int ByEncirclement) ApplyHourlyControl(
-        long hour, ProvinceBattlefieldLayout layout)
+    private void EnsureLayout(ProvinceBattlefieldLayout layout)
     {
         ArgumentNullException.ThrowIfNull(layout);
         var battle = _geometry.Battle;
@@ -60,7 +66,17 @@ public sealed class TacticalSectorOccupationControl
             || !ReferenceEquals(layout.Grid, _geometry.Terrain?.Grid)
             || layout.CellIndices.Count != battle.Battlefield.Sectors.Count)
             throw new InvalidOperationException("Layout must describe this entire battlefield.");
-        if (hour < battle.Engagement.StartHour)
+    }
+
+    /// <summary>Occupation seule, pour les scénarios qui appellent cette phase isolément.</summary>
+    public int ApplyOccupation() => ApplyOccupation(CreatePresenceIndex());
+
+    /// <summary>Nombre de cases prises par occupation puis par encerclement à cette heure.</summary>
+    public (int ByOccupation, int ByEncirclement) ApplyHourlyControl(
+        long hour, ProvinceBattlefieldLayout layout)
+    {
+       EnsureLayout(layout);
+        if (hour < _geometry.Battle.Engagement.StartHour)
             throw new ArgumentOutOfRangeException(nameof(hour));
         if (_lastControlHour is long last && hour <= last)
             throw new InvalidOperationException("Control hour already processed.");
@@ -82,6 +98,8 @@ public sealed class TacticalSectorOccupationControl
         foreach (var (cell, winner) in transfers)
             SetController(layout.GetSector(cell), winner);
 
+        // Les dernières cases prises par encerclement comptent dès cette heure.
+        _grandSectors.Update(layout, GetController);
         _lastControlHour = hour;
         return (byOccupation, transfers.Count);
     }

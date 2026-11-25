@@ -8377,7 +8377,7 @@ Dans `TacticalSectorOccupationControlTests.cs`, sept méthodes couvrent dix cas.
 | `SparsePass_MatchesFullRecalculationAfterEveryChange` | Comparer les détenteurs de toute la grille et le nombre de prises à une référence indépendante qui relit toutes les cases après chaque mouvement, déroute, ralliement ou changement diplomatique. |
 | `ForeignSectorWithSameId_IsRejected_AndDefaultIsCapturedOnce` | Refuser le secteur homonyme d’une autre bataille et conserver le contrôleur initial, même nul, si le contrôleur provincial évolue après l’initialisation. |
 
-# COMMIT # 
+# COMMIT f9317ae9686e964af5225b23d654e7708bddcbce # 
 ### Champ de bataille, étape 2c.4 — Encerclement des poches vides
 
 **Règle retenue**
@@ -8427,3 +8427,27 @@ Dans `TacticalSectorEncirclementTests.cs`, sept méthodes couvrent neuf cas.
 | `UnheldInteriorOrUnheldBorderPreventsCapture` | Préserver une case sans détenteur entourée de cases contrôlées. Une case sans détenteur dans le pourtour interrompt aussi l’encerclement. |
 | `RingAndCenterChangeSimultaneously` | Avec un centre B, un anneau A et un extérieur B, le centre doit devenir A et les six cases de l’anneau doivent devenir B. Une écriture pendant le parcours ferait disparaître l’une des deux décisions. |
 | `InvalidLayoutOrRepeatedHourFailsBeforeOccupation` | Refuser un champ étranger et les heures antérieures, répétées ou précédant l’engagement avant toute prise. L’heure valide suivante peut toujours être exécutée. |
+
+# COMMIT # 
+### Champ de bataille, étape 2c.5 — Contrôle des grands secteurs
+
+**Règle**
+
+Au début de la bataille, chaque grand secteur hérite du contrôleur initial de la province, éventuellement nul. À la fin de chaque passe horaire, un pays prend le grand secteur s’il détient toutes ses petites cases. Une case encore indépendante ou détenue par un autre pays suffit à conserver le dernier détenteur du grand secteur. La règle s’applique aussi aux grands secteurs voisins inclus dans le champ et aux secteurs partiels du bord, avec leurs seules cases réelles.
+
+**Modifications et rôle de chaque élément**
+
+- Dans `TacticalGrandSectorControl.cs`, `Update` lit les détenteurs des petites cases après l’occupation et l’encerclement. La première case donne le seul pays susceptible de tenir tout le secteur. La lecture peut s’arrêter dès qu’une case manque à ce pays. Le registre conserve les prises d’une heure à l’autre et retire l’écart mémorisé en cas de retour au détenteur initial.
+- Dans le même fichier, `GetController` vérifie que le grand secteur appartient au découpage et au champ demandés. Deux provinces peuvent réutiliser le même identifiant numérique.
+- Dans `TacticalSectorOccupationControl.cs`, le constructeur initialise le registre avec le même contrôleur provincial que les petites cases. `ApplyHourlyControl` met à jour les grands secteurs après l’écriture de toutes les prises par encerclement. Les deux compteurs horaires continuent à compter les petites cases. `GetGrandSectorController` permet de lire le détenteur dès l’initialisation et entre les passes. Il partage avec la passe horaire le contrôle d’appartenance du champ.
+
+**Tests ajoutés et raison d’être**
+
+Fichier ajouté : `TacticalGrandSectorControlTests.cs`.
+
+| Test | Raison d’être |
+| --- | --- |
+| `FullSector_RequiresTheLastCell_AndRemembersTheWinner` | Avec 36 cases sur 37, la dernière case ennemie ou sans détenteur suffit à bloquer la prise. Le test exerce ensuite la prise complète, une reprise partielle et la reconquête complète par le détenteur initial pour vérifier la mémoire entre les passes. |
+| `UnheldSectorWaitsForTheHourlyPassAndFullControl` | Une province sans contrôleur donne un grand secteur initialement sans détenteur. L’occupation de la dernière petite case et la lecture du grand secteur peuvent avoir lieu avant la passe horaire. Le grand secteur bascule à cette passe et la province reste sans contrôleur. |
+| `PartialNeighborUsesItsActualCells_AndLookupRejectsForeignSectors` | Un secteur du bord inclus comme voisin peut basculer avec moins de 37 cases. Un secteur de la province hors du champ, un secteur homonyme d’une autre partition et un champ étranger sont refusés à la lecture. |
+| `LastCellEncircledChangesTheGrandSectorThatHour` | Une compagnie tient la dernière case au centre. Lorsqu’elle part, l’encerclement ferme la poche et le grand secteur bascule dans la même passe. Le compteur renvoie une seule petite case prise par encerclement et la province conserve son contrôleur.
