@@ -8684,3 +8684,33 @@ Dans `EngagementDeploymentZonesTests.cs`, le test qui fixait l’ancien refus d�
 | `WithoutAControllerAmongParticipantsADrawFromProvinceAndHourChoosesWhoHolds` | Sans contrôleur parmi les participants, le tirage ne dépend ni de l’identifiant de l’engagement ni de l’ordre des participants, et ne désigne pas toujours le même pays. |
 | `ParticipantWithoutRoleJoinsTheSideItIsNotAtWarWithOrIsRefused` | Un troisième pays rejoint le camp avec lequel il n’est pas en guerre, avec ou sans rôles ; en guerre avec les deux, avec aucun, ou sans diplomatie, refus `ParticipantWithoutSide`. |
 | `PlanPutsADivisionOnTheLineOfItsFallbackBorder` | Le plan place une division entrée par une voisine de repli sur la ligne de ce bord. |
+
+
+# COMMIT # 
+### Champ de bataille, étape 3e.1a — Préparation du déploiement d’un engagement
+
+À partir de la grille de sa province, un engagement actif peut désormais recevoir une liste ordonnée de placements prêts à construire. Cette préparation donne à 3e.1b les compagnies physiques à déployer, leur case, leur rôle, leur point, leur orientation et leur front.
+
+**Règle et modifications**
+
+- `EngagementBattleBuilder.TryBuild` reçoit la grille déjà obtenue. Il transmet la diplomatie au calcul des zones et conserve ses quatre motifs de refus. Un engagement terminé, une grille d’une autre province ou un participant détaché sont des erreurs d’appel.
+- Chaque division participante doit utiliser les ressources hiérarchiques et compter au moins une compagnie avec une composition et un effectif courant positif. Un seul refus annule toute la préparation. Une compagnie réduite à zéro homme dans une division encore déployable laisse sa place libre. Les autres gardent les rôles et les positions calculés en 3d.
+- `EngagementBattlePreparation` rassemble l’engagement, la grille, les grands secteurs du champ et les placements dans leur ordre de construction. Les collections sont en lecture seule. Les références désignent les formations existantes ; la préparation se consomme dans la même opération de simulation.
+- `EngagementBattleTestScenario` fournit aux nouveaux tests deux divisions avec des identifiants locaux identiques, une grille en cache et un engagement détecté par le système. La même aide pourra servir aux tests de construction en 3e.1b.
+
+**Tests ajoutés et raison d’être**
+
+| Cas | Raison d’être |
+|---|---|
+| Préparation en province | Comparer les sept placements retenus au résultat de 3d, jusque dans leur ordre, malgré les numéros de compagnie répétés. Vérifier les réserves des deux camps, la lecture seule et le mode Legacy. |
+| Préparation sur une liaison | Exercer le même contrat pour deux divisions réellement en transit qui se rencontrent. |
+| `LegacyResources` | Refuser la seconde division en ressources Legacy même si la première est prête. |
+| `NoCompanies` | Refuser tout l’engagement quand toutes les compagnies d’une division ont perdu leur dernier homme. |
+| `MissingSide` | Conserver le refus d’une rencontre sans participant venu du bord de rencontre. |
+| `NoEntryBorder` | Conserver le refus quand le camp entrant n’a ni provenance utilisable ni voisine qu’il contrôle. |
+| `BattlefieldTooShallow` | Distinguer un vrai bord d’entrée sur une grille trop courte d’une absence de bord. |
+| `ParticipantWithoutSide` | Faire respecter la diplomatie fournie lorsqu’un troisième pays neutre ne peut rejoindre aucun camp. |
+| Déterminisme | Comparer les décisions ordonnées de deux mondes créés séparément à partir des mêmes données. |
+| Appels invalides | Détecter une grille étrangère de même identifiant, un participant détaché et un engagement déjà terminé avant la construction. |
+
+Les cas de succès et de refus comparent avant et après l’appel les participants, leurs parents et ressources, les rôles et provenances, l’état de l’engagement et les entrées du cache. Chaque refus exige une préparation nulle.
