@@ -25,7 +25,8 @@ internal sealed class EngagementBattleTestScenario
     public ProvinceBattlefieldGridCache Cache { get; }
     public ProvinceBattlefieldGrid Field { get; }
 
-    public EngagementBattleTestScenario(bool meeting = false, bool legacySecond = false)
+    public EngagementBattleTestScenario(bool meeting = false, bool legacySecond = false,
+        int menPerCompany = 1, int companiesPerBattalion = 4)
     {
         Province = new Province(1, "Champ", TerrainType.Plains, Blue);
         Border = new Province(2, "Voisine", TerrainType.Plains, Red);
@@ -35,8 +36,8 @@ internal sealed class EngagementBattleTestScenario
         catalog.SetBorders(Border, new[] { new ProvinceNeighborBorder(Province.Id, 270, 1) });
         Cache = new ProvinceBattlefieldGridCache(catalog);
 
-        First = Formation(meeting ? Border : Province, Red);
-        Second = Formation(Province, Blue, hierarchical: !legacySecond);
+        First = Formation(meeting ? Border : Province, Red, true, menPerCompany, companiesPerBattalion);
+        Second = Formation(Province, Blue, !legacySecond, menPerCompany, companiesPerBattalion);
         Diplomacy.DeclareWar(Red, Blue);
         System = new EngagementSystem(Diplomacy);
         if (meeting)
@@ -58,16 +59,17 @@ internal sealed class EngagementBattleTestScenario
         Field = Cache.GetOrGenerate(Battle);
     }
 
-    public static Division Formation(Province province, Country country, bool hierarchical = true)
+    public static Division Formation(Province province, Country country, bool hierarchical = true,
+        int menPerCompany = 1, int companiesPerBattalion = 4)
     {
-        // Un seul homme suffit à rendre une compagnie déployable. Les numéros locaux
-        // sont volontairement les mêmes dans chaque division.
+        // Les numéros locaux sont volontairement les mêmes dans les deux divisions.
+        int total = checked(companiesPerBattalion * menPerCompany);
         var division = new Division(country.Name, province, 100, 100, country: country,
-            composition: new DivisionComposition(manpower: 4, infantryEquipment: 0, artillery: 0, tanks: 0));
+            composition: new DivisionComposition(manpower: total, infantryEquipment: 0, artillery: 0, tanks: 0));
         var battalion = new Battalion(1, "B1", BattalionType.Infantry);
-        for (int i = 1; i <= 4; i++)
+        for (int i = 1; i <= companiesPerBattalion; i++)
             battalion.AddCompany(new Company(i, $"{country.Name}-{i}", CompanyType.Infantry,
-                new CompanyComposition(manpower: 1)));
+                new CompanyComposition(manpower: menPerCompany)));
         division.AddBattalion(battalion);
         if (hierarchical)
             division.EnableHierarchicalResources();

@@ -4,9 +4,22 @@ using WoF.Simulation.Military.Organization;
 
 namespace WoF.Simulation.Military.Combat.Tactical;
 
+/// <summary>État propre à une construction. Le layout conserve la grille de province partagée.</summary>
+public sealed record EngagementBattleBuildResult(
+    TacticalBattle Battle,
+    ProvinceBattlefieldLayout Layout,
+    TacticalGeometryMap Map,
+    TacticalSignatureFrame Signatures);
+
 /// <summary>Prépare le déploiement de tous les participants à partir d'une grille déjà obtenue.</summary>
 public static class EngagementBattleBuilder
 {
+    // Réglages provisoires repris du benchmark de densité, pas de données historiques.
+    // Le minimum d'un exposé à la construction étend la règle aux très petits effectifs.
+    private const int InitialExposedDivisor = 4;
+    private const int MinimumInitialExposed = 1;
+    private const int InitialSheltered = 0;
+
     public static bool TryBuild(
         ProvinceBattlefieldGrid field,
         Engagement engagement,
@@ -65,6 +78,36 @@ public static class EngagementBattleBuilder
             placement.Companies.Where(p => IsDeployable(p.Company)));
         refusal = EngagementBattleRefusal.None;
         return true;
+    }
+
+    /// <summary>Construit une bataille indépendante avec les décisions figées en 3e.1a.</summary>
+    public static EngagementBattleBuildResult BuildPrepared(EngagementBattlePreparation preparation)
+    {
+        ArgumentNullException.ThrowIfNull(preparation);
+        // Les opérations tactiques sont séquentielles. Vérifier toute la préparation
+        // avant de créer le premier secteur ou de déployer la première compagnie.
+        preparation.EnsureCurrent();
+        var field = preparation.Field;
+        var layout = TacticalBattlefieldBuilder.Build(field.Grid, field.Partition, preparation.BattlefieldSectorIds);
+        var battle = new TacticalBattle(preparation.Engagement, layout.Battlefield);
+        var map = new TacticalGeometryMap(battle);
+        layout.DefineGeometry(map);
+        var signatures = new TacticalSignatureFrame(battle);
+
+        foreach (var p in preparation.Companies)
+        {
+            var deployment = battle.DeployCompany(p.Company, layout.GetSector(p.Cell), p.Role);
+            map.PlaceCompany(deployment, p.Point, p.FacingDegrees, p.FrontageMeters);
+            signatures.Set(deployment, new(TacticalActivity.Stationary, TacticalConcealment.None));
+
+            // La préparation retient les effectifs positifs, réserves comprises.
+            int current = p.Company.Composition!.Manpower.Current;
+            int exposed = Math.Max(MinimumInitialExposed, current / InitialExposedDivisor);
+            battle.PersonnelExposure.Set(deployment, new TacticalPersonnelExposure(
+                exposed, InitialSheltered, current - exposed - InitialSheltered, p.FrontageMeters));
+        }
+
+        return new EngagementBattleBuildResult(battle, layout, map, signatures);
     }
 
     private static bool IsDeployable(Company company) => company.Composition?.Manpower.Current > 0;

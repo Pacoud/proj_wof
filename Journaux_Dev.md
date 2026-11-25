@@ -8624,7 +8624,7 @@ Dans `EngagementDeploymentPlanTests.cs`, douze méthodes couvrent dix-neuf cas. 
 | `ZonesOfAnotherEngagementAreRefused` | Des zones calculées pour un autre engagement sont une erreur d’appel. |
 | `SameInputsGiveTheSamePlan` | Deux calculs sur deux mondes reconstruits donnent le même plan. |
 
-# COMMIT # 
+# COMMIT 8fab2aaa5b08603d4b3813a18628731554ec0250 # 
 ### Champ de bataille, étape 3d.2 — Placement et orientation des compagnies
 
 Cette itération place chaque compagnie du plan de 3d.1 sur une case de la grille de la province : un point au centre de la case, à l’altitude du sol, une orientation et une largeur de front. Les compagnies sont réparties sur la largeur de leur grand secteur, et chacune regarde le point du front adverse le plus proche. Le calcul est pur et ne tient pas compte du terrain : la construction du champ, l’appel à `DeployCompany` et `PlaceCompany`, et le rattachement relèvent de 3e.
@@ -8657,7 +8657,7 @@ Dans `EngagementCompanyPlacementTests.cs`, dix tests. Chaque placement calculé 
 | `SameInputsGiveTheSamePlacement` | Deux calculs sur deux mondes reconstruits donnent les mêmes cases, orientations et largeurs de front. |
 
 
-# COMMIT #
+# COMMIT ab2cc98b31adf7ce583882daf1dbdf356a904034 #
 ### Champ de bataille, étape 3d.3 — Camps de déploiement d’un engagement sans rôles
 
 Cette itération décide qui fait face et qui entre quand la détection n’a pas donné les deux camps : arrivées simultanées, ou guerre déclarée entre divisions déjà présentes. C’est une convention de déploiement provisoire, pas une règle de mission : les rôles de l’engagement, la détection et le combat opérationnel ne changent pas, et aucune mission n’est enregistrée.
@@ -8686,7 +8686,7 @@ Dans `EngagementDeploymentZonesTests.cs`, le test qui fixait l’ancien refus d�
 | `PlanPutsADivisionOnTheLineOfItsFallbackBorder` | Le plan place une division entrée par une voisine de repli sur la ligne de ce bord. |
 
 
-# COMMIT # 
+# COMMIT fda1513a11ffe3ec1ae3a3b6ede7475f23026ed1 # 
 ### Champ de bataille, étape 3e.1a — Préparation du déploiement d’un engagement
 
 À partir de la grille de sa province, un engagement actif peut désormais recevoir une liste ordonnée de placements prêts à construire. Cette préparation donne à 3e.1b les compagnies physiques à déployer, leur case, leur rôle, leur point, leur orientation et leur front.
@@ -8714,3 +8714,41 @@ Dans `EngagementDeploymentZonesTests.cs`, le test qui fixait l’ancien refus d�
 | Appels invalides | Détecter une grille étrangère de même identifiant, un participant détaché et un engagement déjà terminé avant la construction. |
 
 Les cas de succès et de refus comparent avant et après l’appel les participants, leurs parents et ressources, les rôles et provenances, l’état de l’engagement et les entrées du cache. Chaque refus exige une préparation nulle.
+
+
+# COMMIT # 
+### Champ de bataille, étape 3e.1b — Construire la bataille à partir du déploiement préparé
+
+La préparation de 3e.1a donne les compagnies et leurs placements. 3e.1b crée la bataille, sa carte et ses signatures à partir de ces décisions. Le rattachement au moteur viendra dans une itération ultérieure.
+
+**Règle et modifications**
+
+- `EngagementBattlePreparation.cs` mémorise les divisions participantes et l’effectif courant de chacune de leurs compagnies, y compris celles écartées à zéro homme. Avant la construction, il vérifie que l’engagement est actif, que les mêmes divisions lui appartiennent encore et que les effectifs individuels concordent. Une préparation périmée lève une exception qui en indique la cause.
+- `EngagementBattleBuilder.cs` construit un champ propre à la bataille sur la grille partagée de la province. Pour chaque placement, il déploie la vraie compagnie sur sa case, puis applique son rôle, son point au sol, son orientation et son front. Le résultat regroupe bataille, correspondance cases-secteurs, carte et signatures.
+- Chaque déploiement reçoit une signature immobile sans dissimulation. L’exposition initiale prend le quart inférieur de l’effectif courant, avec un minimum d’un exposé pour toute compagnie déployée. Zéro homme est à l’abri, le reste est en retrait. La profondeur est égale au front individuel. Les réserves suivent la même règle. Les constantes sont provisoires, reprises du benchmark de densité et complétées par le minimum validé pour les petits effectifs.
+- `EngagementBattleTestScenario.cs` permet de choisir l’effectif initial des compagnies et la taille d’un bataillon. Les scénarios existants de 3e.1a gardent leurs valeurs par défaut.
+- `EngagementBattleConstructionTests.cs` couvre la construction, la conservation de l’état physique, l’indépendance des batailles et le refus des préparations périmées.
+
+**Tests ajoutés et raison d’être**
+
+| Test | Raison d’être |
+|---|---|
+| `InitialExposureUsesCurrentManpowerIncludingReserves` | Partir de 104 hommes puis appliquer des pertes. À 100, retrouver 25 exposés et 75 en retrait. À 8, obtenir 2/6. À 7 et 5, vérifier le quart inférieur (1/6 et 1/4). À 3, 2 et 1, exercer le minimum (1/2, 1/1 et 1/0), y compris sur la réserve. Chaque cas vérifie zéro homme à l’abri. |
+| `ZeroManCompanyIsNotDeployed` | Vérifier l’absence de la compagnie vide parmi les déploiements de la bataille construite. |
+| `ExposureDepthEqualsPreparedFrontage` | Utiliser un bataillon dont certaines compagnies ont un front inférieur à 300 m. Une profondeur fixe de 300 m doit échouer. |
+| `EveryDeploymentHasStationaryUnconcealedSignature` | Exiger une signature présente, immobile et sans dissimulation pour chaque déploiement. |
+| `ConstructionLeavesEngagementInLegacyAndPreservesPhysicalState` | Comparer participants, organisation, carburant, munitions, ressources des formations, appartenance et cache avant et après. L’engagement reste actif en mode Legacy et le résultat utilise la grille et la partition d’origine. |
+| `SameCompanyIdInTwoDivisionsCreatesTwoDistinctDeployments` | Déployer une fois chacune des deux compagnies de même identifiant dans leurs parents physiques respectifs. |
+| `ProvinceAndMeetingUsePreparedPlacements` | Pour une bataille en province puis pour une rencontre, comparer les déploiements au plan dans son ordre et vérifier les réserves dans la zone arrière de leur camp. |
+| `SecondBuildProducesIdenticalPlacementsInAnIndependentBattle` | Construire deux batailles avec la même préparation. Les décisions sont identiques. Modifier la signature dans la première et la relire dans la seconde prouve leur indépendance. |
+| `EndedEngagementIsRejected` | Refuser explicitement une préparation dont l’engagement s’est terminé. |
+| `ChangedParticipantsAreRejected` | Détecter l’arrivée d’un renfort et le détachement d’une division encore présente dans la liste des participants. |
+| `ChangedCompanyStrengthIsRejected` | Invalider la préparation dès qu’une compagnie passe de 7 à 6 ou qu’une compagnie auparavant vide passe de 0 à 1. |
+
+**Limite à reprendre avant 3e.5**
+
+Une compagnie de toute taille dont tous les exposés ont été tués ou rendus indisponibles ne peut plus subir de perte de personnel par tir direct tant qu’aucun survivant ne redevient exposé. La réconciliation soustrait les pertes aux exposés et laisse en place les hommes en retrait. Un contact mobile confirmé peut augmenter l’exposition et l’arrivée d’un mouvement de réaction la recalcule selon le rôle d’arrivée. Le minimum d’un homme s’applique à la construction. La relève des exposés reste une décision de conception.
+
+**Correctifs Post build et tests**
+
+Une mutation jetable retirait un point d’organisation à la première division pendant la construction. Le premier test de conservation comparait les ressources des formations, qui ne contiennent pas l’organisation. Le test compare désormais aussi l’organisation, le carburant et les munitions de chaque division avant et après la construction. La même mutation doit faire échouer cette comparaison.
